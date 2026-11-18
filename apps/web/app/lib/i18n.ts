@@ -1,0 +1,272 @@
+import 'server-only';
+import { cookies } from 'next/headers';
+
+export type Lang = 'en' | 'my';
+export const LANG_COOKIE = 'e360_lang';
+
+const en = {
+  appName: 'Event 360 Portal',
+  login: 'Sign in',
+  logout: 'Sign out',
+  email: 'Email',
+  password: 'Password',
+  newPassword: 'Choose a password (min 10 characters)',
+  displayName: 'Your name',
+  acceptInvite: 'Accept invitation',
+  invitedTo: 'You are invited to',
+  invitedAsAdmin: 'You are invited as a platform administrator',
+  invalidLogin: 'Invalid email or password',
+  admin: 'Admin',
+  organizer: 'Organizer',
+  organizations: 'Organizations',
+  newOrganization: 'New organization',
+  name: 'Name',
+  slug: 'URL name (slug)',
+  description: 'Description',
+  ownerEmail: 'Owner email',
+  contactPhone: 'Contact phone',
+  create: 'Create',
+  save: 'Save',
+  cancel: 'Cancel',
+  inviteLink: 'Invite link — send this to the person (valid 7 days)',
+  copy: 'Copy',
+  kyc: 'Verification (KYC)',
+  kycStatus: { NOT_SUBMITTED: 'Not verified', PENDING: 'Pending', APPROVED: 'Verified', REJECTED: 'Rejected' } as Record<string, string>,
+  approve: 'Approve',
+  reject: 'Reject',
+  verify: 'Mark verified',
+  unverify: 'Mark rejected',
+  note: 'Note',
+  reason: 'Reason',
+  members: 'Members',
+  pendingInvites: 'Pending invites',
+  inviteMember: 'Invite member',
+  role: 'Role',
+  roles: { ORG_OWNER: 'Owner', ORG_MANAGER: 'Manager', ORG_FINANCE: 'Finance', CREW: 'Crew' } as Record<string, string>,
+  moderation: 'Review queue',
+  noEventsToReview: 'Nothing to review.',
+  events: 'Events',
+  newEvent: 'New event',
+  noEvents: 'No events yet.',
+  status: 'Status',
+  statuses: {
+    DRAFT: 'Draft',
+    SUBMITTED: 'In review',
+    APPROVED: 'Approved',
+    REJECTED: 'Rejected',
+    PUBLISHED: 'Published',
+    ONGOING: 'Ongoing',
+    COMPLETED: 'Completed',
+    CANCELLED: 'Cancelled',
+  } as Record<string, string>,
+  title: 'Title (English)',
+  titleMy: 'Title (Myanmar)',
+  summary: 'Short summary (English)',
+  summaryMy: 'Short summary (Myanmar)',
+  descriptionEn: 'Description (English)',
+  descriptionMy: 'Description (Myanmar)',
+  category: 'Category',
+  format: 'Format',
+  formats: { IN_PERSON: 'In person', ONLINE: 'Online (live stream)', HYBRID: 'Hybrid' } as Record<string, string>,
+  visibility: 'Visibility',
+  visibilities: { PUBLIC: 'Public (listed in the app)', PRIVATE: 'Private (link only)' } as Record<string, string>,
+  startsAt: 'Starts (Myanmar time)',
+  endsAt: 'Ends (Myanmar time)',
+  venue: 'Venue',
+  venueName: 'Venue name (English)',
+  venueNameMy: 'Venue name (Myanmar)',
+  address: 'Address',
+  city: 'City',
+  coverImage: 'Cover image (JPEG/PNG/WebP, max 5 MB)',
+  ticketTypes: 'Ticket types',
+  addTicketType: 'Add ticket type',
+  price: 'Price (MMK, 0 = free)',
+  quota: 'Quantity available',
+  maxPerOrder: 'Max per person',
+  sold: 'Issued',
+  remaining: 'Remaining',
+  free: 'Free',
+  delete: 'Delete',
+  submit: 'Submit',
+  submitHint: 'Verified organizers publish immediately; others are reviewed by the Event 360 team.',
+  publish: 'Publish',
+  cancelEvent: 'Cancel event',
+  confirmCancel: 'Cancel this event? Ticket holders will be notified.',
+  attendees: 'Attendees',
+  noAttendees: 'No registrations yet.',
+  rejectionReason: 'Reason given by the reviewer',
+  reReview: 'Your changes were sent for review again.',
+  team: 'Team',
+  chooseOrg: 'Choose organization',
+  noOrgs: 'You are not a member of any organization yet.',
+  paidLater: 'Paid ticket sales open in a later release; paid ticket types are saved but not sold yet.',
+  saved: 'Saved',
+  view: 'View',
+  back: 'Back',
+  language: 'မြန်မာ',
+  whenPublished: 'Published',
+  organizer_: 'Organizer',
+  phone: 'Phone',
+  registeredAt: 'Registered',
+  verifiedNote: 'Verified: events publish without review',
+  unverifiedNote: 'Not verified: every event is reviewed before it appears in the app',
+};
+
+type Dict = typeof en;
+
+const my: Dict = {
+  ...en,
+  appName: 'Event 360 စီမံခန့်ခွဲမှု',
+  login: 'ဝင်ရန်',
+  logout: 'ထွက်ရန်',
+  email: 'အီးမေးလ်',
+  password: 'စကားဝှက်',
+  newPassword: 'စကားဝှက်သတ်မှတ်ပါ (အနည်းဆုံး ၁၀ လုံး)',
+  displayName: 'အမည်',
+  acceptInvite: 'ဖိတ်ကြားချက်ကို လက်ခံမည်',
+  invitedTo: 'ဖိတ်ကြားထားသော အဖွဲ့',
+  invitedAsAdmin: 'Platform စီမံခန့်ခွဲသူအဖြစ် ဖိတ်ကြားထားပါသည်',
+  invalidLogin: 'အီးမေးလ် သို့မဟုတ် စကားဝှက် မှားနေပါသည်',
+  admin: 'စီမံခန့်ခွဲသူ',
+  organizer: 'ပွဲစီစဉ်သူ',
+  organizations: 'အဖွဲ့အစည်းများ',
+  newOrganization: 'အဖွဲ့အစည်းအသစ်',
+  name: 'အမည်',
+  slug: 'URL အမည်',
+  description: 'ဖော်ပြချက်',
+  ownerEmail: 'ပိုင်ရှင်၏ အီးမေးလ်',
+  contactPhone: 'ဆက်သွယ်ရန်ဖုန်း',
+  create: 'ဖန်တီးမည်',
+  save: 'သိမ်းမည်',
+  cancel: 'မလုပ်တော့ပါ',
+  inviteLink: 'ဖိတ်ကြားချက်လင့်ခ် — ဤလင့်ခ်ကို ပို့ပေးပါ (၇ ရက် သက်တမ်း)',
+  copy: 'ကူးယူမည်',
+  kyc: 'အတည်ပြုခြင်း (KYC)',
+  kycStatus: { NOT_SUBMITTED: 'မအတည်ပြုရသေး', PENDING: 'စစ်ဆေးဆဲ', APPROVED: 'အတည်ပြုပြီး', REJECTED: 'ပယ်ချထား' },
+  approve: 'အတည်ပြုမည်',
+  reject: 'ပယ်ချမည်',
+  verify: 'အတည်ပြုမည်',
+  unverify: 'ပယ်ချမည်',
+  note: 'မှတ်ချက်',
+  reason: 'အကြောင်းပြချက်',
+  members: 'အဖွဲ့ဝင်များ',
+  pendingInvites: 'စောင့်ဆိုင်းဆဲ ဖိတ်ကြားချက်များ',
+  inviteMember: 'အဖွဲ့ဝင် ဖိတ်ကြားမည်',
+  role: 'တာဝန်',
+  roles: { ORG_OWNER: 'ပိုင်ရှင်', ORG_MANAGER: 'မန်နေဂျာ', ORG_FINANCE: 'ငွေစာရင်း', CREW: 'ဝန်ထမ်း' },
+  moderation: 'စစ်ဆေးရန် စာရင်း',
+  noEventsToReview: 'စစ်ဆေးရန် မရှိပါ။',
+  events: 'ပွဲများ',
+  newEvent: 'ပွဲအသစ်',
+  noEvents: 'ပွဲ မရှိသေးပါ။',
+  status: 'အခြေအနေ',
+  statuses: {
+    DRAFT: 'မူကြမ်း',
+    SUBMITTED: 'စစ်ဆေးဆဲ',
+    APPROVED: 'အတည်ပြုပြီး',
+    REJECTED: 'ပယ်ချထား',
+    PUBLISHED: 'ထုတ်ပြန်ပြီး',
+    ONGOING: 'ကျင်းပဆဲ',
+    COMPLETED: 'ပြီးဆုံး',
+    CANCELLED: 'ဖျက်သိမ်းပြီး',
+  },
+  title: 'ခေါင်းစဉ် (အင်္ဂလိပ်)',
+  titleMy: 'ခေါင်းစဉ် (မြန်မာ)',
+  summary: 'အကျဉ်းချုပ် (အင်္ဂလိပ်)',
+  summaryMy: 'အကျဉ်းချုပ် (မြန်မာ)',
+  descriptionEn: 'အသေးစိတ် (အင်္ဂလိပ်)',
+  descriptionMy: 'အသေးစိတ် (မြန်မာ)',
+  category: 'အမျိုးအစား',
+  format: 'ပုံစံ',
+  formats: { IN_PERSON: 'တိုက်ရိုက်တက်ရောက်', ONLINE: 'အွန်လိုင်း (Live)', HYBRID: 'နှစ်မျိုးလုံး' },
+  visibility: 'မြင်နိုင်မှု',
+  visibilities: { PUBLIC: 'အများမြင် (App တွင်ပြမည်)', PRIVATE: 'လင့်ခ်ဖြင့်သာ' },
+  startsAt: 'စတင်ချိန် (မြန်မာစံတော်ချိန်)',
+  endsAt: 'ပြီးဆုံးချိန် (မြန်မာစံတော်ချိန်)',
+  venue: 'နေရာ',
+  venueName: 'နေရာအမည် (အင်္ဂလိပ်)',
+  venueNameMy: 'နေရာအမည် (မြန်မာ)',
+  address: 'လိပ်စာ',
+  city: 'မြို့',
+  coverImage: 'မျက်နှာဖုံးပုံ (JPEG/PNG/WebP, 5 MB အထိ)',
+  ticketTypes: 'လက်မှတ်အမျိုးအစားများ',
+  addTicketType: 'လက်မှတ်အမျိုးအစား ထည့်မည်',
+  price: 'ဈေးနှုန်း (ကျပ်၊ 0 = အခမဲ့)',
+  quota: 'ရရှိနိုင်သော အရေအတွက်',
+  maxPerOrder: 'တစ်ဦးလျှင် အများဆုံး',
+  sold: 'ထုတ်ပေးပြီး',
+  remaining: 'ကျန်',
+  free: 'အခမဲ့',
+  delete: 'ဖျက်မည်',
+  submit: 'တင်သွင်းမည်',
+  submitHint: 'အတည်ပြုပြီး ပွဲစီစဉ်သူများ ချက်ချင်းထုတ်ပြန်နိုင်သည်။ အခြားသူများကို Event 360 အဖွဲ့က စစ်ဆေးပါမည်။',
+  publish: 'ထုတ်ပြန်မည်',
+  cancelEvent: 'ပွဲဖျက်သိမ်းမည်',
+  confirmCancel: 'ဤပွဲကို ဖျက်သိမ်းမလား။ လက်မှတ်ကိုင်ဆောင်သူများကို အကြောင်းကြားပါမည်။',
+  attendees: 'တက်ရောက်သူများ',
+  noAttendees: 'စာရင်းသွင်းသူ မရှိသေးပါ။',
+  rejectionReason: 'စစ်ဆေးသူ၏ အကြောင်းပြချက်',
+  reReview: 'ပြင်ဆင်ချက်များကို ထပ်မံစစ်ဆေးရန် ပို့ထားပါသည်။',
+  team: 'အဖွဲ့',
+  chooseOrg: 'အဖွဲ့အစည်း ရွေးပါ',
+  noOrgs: 'မည်သည့်အဖွဲ့အစည်းတွင်မှ အဖွဲ့ဝင် မဖြစ်သေးပါ။',
+  paidLater: 'ငွေပေးလက်မှတ်ရောင်းချခြင်းကို နောက်ဗားရှင်းတွင် ဖွင့်ပါမည်။',
+  saved: 'သိမ်းပြီးပါပြီ',
+  view: 'ကြည့်မည်',
+  back: 'နောက်သို့',
+  language: 'English',
+  whenPublished: 'ထုတ်ပြန်ချိန်',
+  organizer_: 'စီစဉ်သူ',
+  phone: 'ဖုန်း',
+  registeredAt: 'စာရင်းသွင်းချိန်',
+  verifiedNote: 'အတည်ပြုပြီး — ပွဲများ စစ်ဆေးစရာမလိုဘဲ ထုတ်ပြန်နိုင်သည်',
+  unverifiedNote: 'မအတည်ပြုရသေး — ပွဲတိုင်း App တွင်မပြမီ စစ်ဆေးပါမည်',
+};
+
+export async function getLang(): Promise<Lang> {
+  return (await cookies()).get(LANG_COOKIE)?.value === 'en' ? 'en' : 'my';
+}
+
+export async function t(): Promise<Dict & { lang: Lang }> {
+  const lang = await getLang();
+  return { ...(lang === 'my' ? my : en), lang };
+}
+
+/** Picks the Myanmar field when the UI is in Myanmar and it is filled in. */
+export function pick(lang: Lang, en_: string | null | undefined, my_: string | null | undefined): string {
+  return (lang === 'my' && my_) || en_ || my_ || '';
+}
+
+const TZ = 'Asia/Yangon';
+
+export function fmtDate(d: string | Date, lang: Lang): string {
+  return new Intl.DateTimeFormat(lang === 'my' ? 'my-MM' : 'en-GB', {
+    timeZone: TZ,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(d));
+}
+
+/** Value for <input type="datetime-local"> in Myanmar time. */
+export function toLocalInput(d: string | Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(d));
+  const g = (t: string) => parts.find((p) => p.type === t)?.value;
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+}
+
+/** datetime-local value entered in Myanmar time → ISO string (UTC+06:30, no DST). */
+export function fromLocalInput(v: string): string {
+  return new Date(`${v}:00+06:30`).toISOString();
+}
+
+export function fmtMmk(n: number, lang: Lang): string {
+  return `${new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US').format(n)} ${lang === 'my' ? 'ကျပ်' : 'MMK'}`;
+}
