@@ -53,8 +53,8 @@ function backendEnv(env) {
 }
 
 /** Keeps pods off nodes listed in envs.json `avoidNodes` (e.g. a node with broken networking). */
-function avoidNodesAffinity(config) {
-  const nodes = config.avoidNodes ?? [];
+function avoidNodesAffinity(config, extra = []) {
+  const nodes = [...new Set([...(config.avoidNodes ?? []), ...extra])];
   if (nodes.length === 0) return {};
   return {
     affinity: {
@@ -132,7 +132,8 @@ export function buildManifests(envName, config) {
           metadata: { labels: labels('redis') },
           spec: {
             securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999 },
-            ...avoidNodesAffinity(config),
+            // Pods with a block-storage volume also avoid nodes that can't mount it (storageAvoidNodes)
+            ...avoidNodesAffinity(config, config.storageAvoidNodes ?? []),
             containers: [
               {
                 name: 'redis',

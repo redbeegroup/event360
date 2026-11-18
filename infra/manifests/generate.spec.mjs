@@ -34,11 +34,14 @@ for (const envName of Object.keys(config.environments)) {
     );
   });
 
-  test(`${envName}: workloads avoid nodes listed in avoidNodes`, () => {
-    for (const w of [...byKind('Deployment'), ...byKind('StatefulSet')]) {
-      const terms = w.spec.template.spec.affinity?.nodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms;
-      if ((config.avoidNodes ?? []).length === 0) assert.equal(terms, undefined);
-      else assert.deepEqual(terms[0].matchExpressions[0].values, config.avoidNodes, w.metadata.name);
+  test(`${envName}: workloads avoid avoidNodes; storage workloads also avoid storageAvoidNodes`, () => {
+    const avoided = (w) =>
+      w.spec.template.spec.affinity?.nodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms?.[0]
+        ?.matchExpressions?.[0]?.values ?? [];
+    for (const w of byKind('Deployment')) assert.deepEqual(avoided(w), config.avoidNodes ?? [], w.metadata.name);
+    for (const w of byKind('StatefulSet')) {
+      const expected = [...new Set([...(config.avoidNodes ?? []), ...(config.storageAvoidNodes ?? [])])];
+      assert.deepEqual(avoided(w), expected, w.metadata.name);
     }
   });
 

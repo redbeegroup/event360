@@ -27,5 +27,8 @@
       }
     }
   },
-  "avoidNodes": []
+  "avoidNodes": [],
+  "storageAvoidNodes": [
+    "wo4"
+  ]
 }
