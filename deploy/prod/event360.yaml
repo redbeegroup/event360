@@ -26,15 +26,6 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: NotIn
-                    values:
-                      - wo4
       containers:
         - name: redis
           image: redis:7.4-alpine
