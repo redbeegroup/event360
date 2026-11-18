@@ -59,6 +59,58 @@ jobs:
       - run: melos run analyze
       - run: melos run test
 
+  user-app-apk:
+    # Debug-signed Android build pointing at dev — download from the run's Artifacts and install on a phone.
+    needs: [flutter]
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: mobile/apps/user_app }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get
+      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://api.dev.event360.corexlab.net
+      - uses: actions/upload-artifact@v4
+        with:
+          name: event360-user-app-dev-${{ github.sha }}
+          path: mobile/apps/user_app/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+
+  user-web-image:
+    # Flutter web preview of the User app for app.dev.event360.corexlab.net (dev only).
+    if: github.event_name == 'push'
+    needs: [flutter]
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Build Flutter web
+        working-directory: mobile/apps/user_app
+        run: |
+          flutter pub get
+          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=https://api.dev.event360.corexlab.net
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Branch tag
+        run: echo "BRANCH_TAG=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: mobile/apps/user_app
+          file: mobile/apps/user_app/Dockerfile.web
+          push: true
+          tags: |
+            ghcr.io/redbeegroup/event360-user-web:${{ github.sha }}
+            ghcr.io/redbeegroup/event360-user-web:${{ env.BRANCH_TAG }}
+
   images:
     # Every push builds images so a branch can be deployed to dev before merging.
     if: github.event_name == 'push'
@@ -67,7 +119,9 @@ jobs:
     permissions: { contents: read, packages: write }
     strategy:
       matrix:
-        app: [api, web]
+        include:
+          - { app: api, context: ., file: apps/api/Dockerfile }
+          - { app: web, context: ., file: apps/web/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -80,8 +134,8 @@ jobs:
         run: echo "BRANCH_TAG=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
       - uses: docker/build-push-action@v6
         with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           tags: |
             ghcr.io/redbeegroup/event360-${{ matrix.app }}:${{ github.sha }}
@@ -93,7 +147,7 @@ jobs:
     # Pin dev to the freshly built images; Portainer GitOps (stack event360-dev) picks up the commit.
     # Runs for main and for the branch the dev stack currently tracks.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/relaxed-dirac-qj6kax')
-    needs: [images]
+    needs: [images, user-web-image]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:

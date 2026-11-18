@@ -159,7 +159,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
             - name: PUBLIC_API_URL
               value: https://api.dev.event360.corexlab.net
             - name: PORTAL_URL
@@ -255,7 +255,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
             - name: PUBLIC_API_URL
               value: https://api.dev.event360.corexlab.net
             - name: PORTAL_URL
@@ -335,7 +335,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
             - name: PUBLIC_API_URL
               value: https://api.dev.event360.corexlab.net
             - name: PORTAL_URL
@@ -455,6 +455,72 @@ spec:
       port: 3000
       targetPort: http
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-web
+  namespace: event360-dev
+  labels:
+    app.kubernetes.io/name: user-web
+    app.kubernetes.io/part-of: event360
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-web
+        app.kubernetes.io/part-of: event360
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+        - name: user-web
+          image: ghcr.io/redbeegroup/event360-user-web:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env: []
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-web
+  namespace: event360-dev
+  labels:
+    app.kubernetes.io/name: user-web
+    app.kubernetes.io/part-of: event360
+spec:
+  selector:
+    app.kubernetes.io/name: user-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -494,6 +560,16 @@ spec:
             backend:
               service:
                 name: web
+                port:
+                  name: http
+    - host: app.dev.event360.corexlab.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: user-web
                 port:
                   name: http
 ---

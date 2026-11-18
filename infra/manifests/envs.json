@@ -12,7 +12,8 @@
         "realtime": 1,
         "worker": 1,
         "web": 1
-      }
+      },
+      "userWeb": true
     },
     "prod": {
       "namespace": "event360-prod",
@@ -24,7 +25,8 @@
         "realtime": 2,
         "worker": 2,
         "web": 2
-      }
+      },
+      "userWeb": false
     }
   },
   "avoidNodes": [],

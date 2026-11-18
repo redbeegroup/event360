@@ -1,52 +1,41 @@
-import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  final config = AppConfig.fromEnvironment(Event360App.user);
-  runApp(App(api: Event360Api(config)));
+import 'app/providers.dart';
+import 'app/router.dart';
+import 'l10n/app_localizations.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Future.wait([initializeDateFormatting('en'), initializeDateFormatting('my')]);
+  final prefs = await SharedPreferences.getInstance();
+  runApp(ProviderScope(overrides: [prefsProvider.overrideWithValue(prefs)], child: const UserApp()));
 }
 
-class App extends StatelessWidget {
-  const App({super.key, required this.api});
-
-  final Event360Api api;
+class UserApp extends ConsumerWidget {
+  const UserApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Event 360',
-        theme: Event360Theme.light(),
-        darkTheme: Event360Theme.dark(),
-        home: HomeScreen(api: api),
-      );
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.api});
-
-  final Event360Api api;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Event 360')),
-        body: FutureBuilder<List<Map<String, dynamic>>>(
-          future: api.categories(),
-          builder: (context, snap) {
-            if (snap.hasError) return Center(child: Text('Cannot reach API: ${snap.error}'));
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            return ListView(
-              children: [
-                for (final c in snap.data!)
-                  ExpansionTile(
-                    title: Text(c['nameEn'] as String),
-                    children: [
-                      for (final s in (c['children'] as List).cast<Map<String, dynamic>>())
-                        ListTile(title: Text(s['nameEn'] as String)),
-                    ],
-                  ),
-              ],
-            );
-          },
-        ),
-      );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
+    return MaterialApp.router(
+      title: 'Event 360',
+      debugShowCheckedModeBanner: false,
+      theme: Event360Theme.light(),
+      darkTheme: Event360Theme.dark(),
+      locale: locale ?? const Locale('my'),
+      supportedLocales: L10n.supportedLocales,
+      localizationsDelegates: const [
+        L10n.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      routerConfig: ref.watch(routerProvider),
+    );
+  }
 }

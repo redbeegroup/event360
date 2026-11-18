@@ -48,7 +48,7 @@ function backendEnv(env) {
     { name: 'OTP_TTL_SECONDS', value: '300' },
     { name: 'OTP_DEV_ECHO', value: String(env.otpDevEcho) },
     { name: 'JWT_ACCESS_TTL', value: '15m' },
-    { name: 'CORS_ORIGINS', value: `https://portal.${env.domain}` },
+    { name: 'CORS_ORIGINS', value: [`https://portal.${env.domain}`, ...(env.userWeb ? [`https://app.${env.domain}`] : [])].join(',') },
     // Used to build media URLs and invite links
     { name: 'PUBLIC_API_URL', value: `https://api.${env.domain}` },
     { name: 'PORTAL_URL', value: `https://portal.${env.domain}` },
@@ -70,7 +70,7 @@ function avoidNodesAffinity(config, extra = []) {
   };
 }
 
-function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources, config }) {
+function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources, config, port = 3000 }) {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -90,7 +90,7 @@ function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAs
               name,
               image,
               imagePullPolicy: pullPolicy,
-              ports: [{ name: 'http', containerPort: 3000 }],
+              ports: [{ name: 'http', containerPort: port }],
               env,
               ...(envFrom ? { envFrom } : {}),
               ...probes,
@@ -244,11 +244,32 @@ export function buildManifests(envName, config) {
     service('web', ns, 3000),
   );
 
+  // ── User app web preview (dev only): Flutter web build behind unprivileged nginx ──
+  if (env.userWeb) {
+    objects.push(
+      deployment({
+        name: 'user-web',
+        ns,
+        image: `${config.registry}/event360-user-web:${env.imageTag}`,
+        pullPolicy,
+        config,
+        replicas: 1,
+        env: [],
+        runAsUser: 101,
+        port: 8080,
+        probes: { readinessProbe: { httpGet: { path: '/', port: 'http' }, periodSeconds: 10 } },
+        resources: { requests: { cpu: '20m', memory: '32Mi' }, limits: { memory: '128Mi' } },
+      }),
+      service('user-web', ns, 80),
+    );
+  }
+
   // ── Ingress (Traefik; TLS terminated upstream by NPMPlus) ──
   const routes = [
     ['api', 'api'],
     ['ws', 'realtime'],
     ['portal', 'web'],
+    ...(env.userWeb ? [['app', 'user-web']] : []),
   ];
   objects.push({
     apiVersion: 'networking.k8s.io/v1',

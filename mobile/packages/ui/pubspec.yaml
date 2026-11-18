@@ -1,5 +1,5 @@
 name: event360_ui
-description: Event 360 design system (theme, typography incl. Myanmar font, shared widgets).
+description: Event 360 design system (theme, Myanmar font, shared widgets).
 publish_to: none
 version: 0.1.0
 environment:
@@ -8,3 +8,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+flutter:
+  fonts:
+    # Noto Sans Myanmar (SIL OFL 1.1, see fonts/OFL.txt) — bundled so Myanmar Unicode renders the same on every phone.
+    - family: NotoSansMyanmar
+      fonts:
+        - asset: fonts/NotoSansMyanmar-400.ttf
+          weight: 400
+        - asset: fonts/NotoSansMyanmar-600.ttf
+          weight: 600
+        - asset: fonts/NotoSansMyanmar-700.ttf
+          weight: 700

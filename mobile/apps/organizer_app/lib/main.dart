@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 void main() {
   final config = AppConfig.fromEnvironment(Event360App.organizer);
-  runApp(App(api: Event360Api(config)));
+  runApp(App(api: Event360Api(config, SecureTokenStore())));
 }
 
 class App extends StatelessWidget {
@@ -29,7 +29,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Event 360 Organizer')),
-        body: FutureBuilder<List<Map<String, dynamic>>>(
+        body: FutureBuilder<List<Category>>(
           future: api.categories(),
           builder: (context, snap) {
             if (snap.hasError) return Center(child: Text('Cannot reach API: ${snap.error}'));
@@ -38,11 +38,8 @@ class HomeScreen extends StatelessWidget {
               children: [
                 for (final c in snap.data!)
                   ExpansionTile(
-                    title: Text(c['nameEn'] as String),
-                    children: [
-                      for (final s in (c['children'] as List).cast<Map<String, dynamic>>())
-                        ListTile(title: Text(s['nameEn'] as String)),
-                    ],
+                    title: Text(c.name('en')),
+                    children: [for (final s in c.children) ListTile(title: Text(s.name('en')))],
                   ),
               ],
             );

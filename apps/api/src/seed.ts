@@ -7,14 +7,14 @@ async function main() {
   for (const [i, parent] of CATEGORY_SEED.entries()) {
     const p = await prisma.category.upsert({
       where: { slug: parent.slug },
-      update: { nameEn: parent.nameEn, iconKey: parent.iconKey, sortOrder: i },
-      create: { slug: parent.slug, nameEn: parent.nameEn, iconKey: parent.iconKey, sortOrder: i },
+      update: { nameEn: parent.nameEn, nameMy: parent.nameMy, iconKey: parent.iconKey, sortOrder: i },
+      create: { slug: parent.slug, nameEn: parent.nameEn, nameMy: parent.nameMy, iconKey: parent.iconKey, sortOrder: i },
     });
     for (const [j, child] of parent.children.entries()) {
       await prisma.category.upsert({
         where: { slug: child.slug },
-        update: { nameEn: child.nameEn, parentId: p.id, sortOrder: j },
-        create: { slug: child.slug, nameEn: child.nameEn, parentId: p.id, sortOrder: j },
+        update: { nameEn: child.nameEn, nameMy: child.nameMy, parentId: p.id, sortOrder: j },
+        create: { slug: child.slug, nameEn: child.nameEn, nameMy: child.nameMy, parentId: p.id, sortOrder: j },
       });
     }
   }

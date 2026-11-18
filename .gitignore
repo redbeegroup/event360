@@ -16,3 +16,8 @@ mobile/**/pubspec.lock
 .vscode/
 .DS_Store
 *.tsbuildinfo
+*.iml
+mobile/**/.flutter-plugins-dependencies
+mobile/**/ios/Flutter/ephemeral/
+mobile/**/android/local.properties
+mobile/**/ios/Pods/

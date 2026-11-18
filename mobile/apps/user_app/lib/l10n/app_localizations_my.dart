@@ -1,0 +1,220 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for Burmese (`my`).
+class L10nMy extends L10n {
+  L10nMy([String locale = 'my']) : super(locale);
+
+  @override
+  String get appTitle => 'Event 360';
+
+  @override
+  String get home => 'ပင်မ';
+
+  @override
+  String get explore => 'ရှာဖွေ';
+
+  @override
+  String get myTickets => 'လက်မှတ်များ';
+
+  @override
+  String get profile => 'ပရိုဖိုင်';
+
+  @override
+  String get searchHint => 'ပွဲများ ရှာဖွေရန်';
+
+  @override
+  String get allCategories => 'အားလုံး';
+
+  @override
+  String get upcoming => 'လာမည့်ပွဲများ';
+
+  @override
+  String get freeEvents => 'အခမဲ့ပွဲများ';
+
+  @override
+  String get seeAll => 'အားလုံးကြည့်ရန်';
+
+  @override
+  String get noEvents => 'ပွဲ မတွေ့ပါ။';
+
+  @override
+  String get loadError => 'ဖွင့်၍မရပါ။ အင်တာနက်ကို စစ်ဆေးပါ။';
+
+  @override
+  String get retry => 'ထပ်ကြိုးစားမည်';
+
+  @override
+  String get free => 'အခမဲ့';
+
+  @override
+  String get soldOut => 'ကုန်သွားပါပြီ';
+
+  @override
+  String fromPrice(String price) {
+    return '$price မှစ၍';
+  }
+
+  @override
+  String mmk(String amount) {
+    return '$amount ကျပ်';
+  }
+
+  @override
+  String get register => 'စာရင်းသွင်းမည်';
+
+  @override
+  String get registerFree => 'အခမဲ့ စာရင်းသွင်းမည်';
+
+  @override
+  String get quantity => 'လက်မှတ်';
+
+  @override
+  String perPersonLimit(int n) {
+    return 'တစ်ဦးလျှင် $n စောင်အထိ';
+  }
+
+  @override
+  String remaining(int n) {
+    return '$n စောင် ကျန်';
+  }
+
+  @override
+  String get tickets => 'လက်မှတ်များ';
+
+  @override
+  String get about => 'အကြောင်း';
+
+  @override
+  String get organizer => 'စီစဉ်သူ';
+
+  @override
+  String get verified => 'အတည်ပြုထားသော စီစဉ်သူ';
+
+  @override
+  String get venue => 'နေရာ';
+
+  @override
+  String get formatOnline => 'အွန်လိုင်း';
+
+  @override
+  String get formatInPerson => 'တိုက်ရိုက်တက်ရောက်';
+
+  @override
+  String get formatHybrid => 'တိုက်ရိုက် + အွန်လိုင်း';
+
+  @override
+  String get paidSoon => 'ငွေပေးလက်မှတ်များကို မကြာမီ ဝယ်ယူနိုင်ပါမည်။';
+
+  @override
+  String get signIn => 'ဝင်ရန်';
+
+  @override
+  String get signInToRegister => 'စာရင်းသွင်းရန် ဖုန်းနံပါတ်ဖြင့် ဝင်ပါ။';
+
+  @override
+  String get phoneNumber => 'ဖုန်းနံပါတ်';
+
+  @override
+  String get phoneHint => '09xxxxxxxxx';
+
+  @override
+  String get sendCode => 'ကုဒ်ပို့မည်';
+
+  @override
+  String codeSentTo(String phone) {
+    return '$phone သို့ ပို့ထားသော ဂဏန်း ၆ လုံး ကုဒ်ကို ထည့်ပါ';
+  }
+
+  @override
+  String get code => 'ကုဒ်';
+
+  @override
+  String get verify => 'အတည်ပြုမည်';
+
+  @override
+  String get changeNumber => 'နံပါတ်ပြောင်းမည်';
+
+  @override
+  String devCode(String code) {
+    return 'စမ်းသပ်ကုဒ်: $code';
+  }
+
+  @override
+  String get invalidPhone => 'မှန်ကန်သော မိုဘိုင်းနံပါတ် ထည့်ပါ (09…)';
+
+  @override
+  String get invalidCode => 'ဂဏန်း ၆ လုံး ကုဒ်ကို ထည့်ပါ';
+
+  @override
+  String get tooManyCodes =>
+      'ကုဒ်တောင်းဆိုမှု များလွန်းပါသည်။ မိနစ်အနည်းငယ် စောင့်ပါ။';
+
+  @override
+  String get signOut => 'ထွက်မည်';
+
+  @override
+  String get language => 'ဘာသာစကား';
+
+  @override
+  String signedInAs(String phone) {
+    return '$phone ဖြင့် ဝင်ထားသည်';
+  }
+
+  @override
+  String get notSignedIn => 'မဝင်ရသေးပါ။';
+
+  @override
+  String get registered => 'စာရင်းသွင်းပြီးပါပြီ! 🎉';
+
+  @override
+  String get viewTickets => 'လက်မှတ်များ ကြည့်မည်';
+
+  @override
+  String get showAtEntrance => 'ဝင်ပေါက်တွင် ဤ QR ကုဒ်ကို ပြပါ';
+
+  @override
+  String get offlineReady => 'အင်တာနက်မရှိလည်း ကြည့်နိုင်သည်';
+
+  @override
+  String get noTickets => 'လက်မှတ် မရှိသေးပါ။ ပွဲတစ်ခု ရှာဖွေလိုက်ပါ!';
+
+  @override
+  String get past => 'ပြီးခဲ့သော';
+
+  @override
+  String get upcomingTickets => 'လာမည့်';
+
+  @override
+  String get ticketCancelled => 'ဤလက်မှတ် အသုံးမပြုနိုင်တော့ပါ';
+
+  @override
+  String get share => 'မျှဝေမည်';
+
+  @override
+  String get freeOnly => 'အခမဲ့သာ';
+
+  @override
+  String get city => 'မြို့';
+
+  @override
+  String get anyCity => 'မြို့အားလုံး';
+
+  @override
+  String get clearFilters => 'ရှင်းမည်';
+
+  @override
+  String get eventCancelled => 'ဤပွဲကို ဖျက်သိမ်းလိုက်ပါပြီ';
+
+  @override
+  String get eventEnded => 'ဤပွဲ ပြီးဆုံးသွားပါပြီ';
+
+  @override
+  String get chooseLanguage => 'ဘာသာစကား ရွေးချယ်ပါ';
+
+  @override
+  String get continueLabel => 'ဆက်လက်မည်';
+}

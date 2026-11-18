@@ -1,0 +1,117 @@
+{
+  "appTitle": "Event 360",
+  "home": "Home",
+  "explore": "Explore",
+  "myTickets": "My tickets",
+  "profile": "Profile",
+  "searchHint": "Search events",
+  "allCategories": "All",
+  "upcoming": "Upcoming events",
+  "freeEvents": "Free events",
+  "seeAll": "See all",
+  "noEvents": "No events found.",
+  "loadError": "Couldn't load. Check your connection.",
+  "retry": "Retry",
+  "free": "Free",
+  "soldOut": "Sold out",
+  "fromPrice": "From {price}",
+  "@fromPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "mmk": "{amount} MMK",
+  "@mmk": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "register": "Register",
+  "registerFree": "Register for free",
+  "quantity": "Tickets",
+  "perPersonLimit": "Up to {n} per person",
+  "@perPersonLimit": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "remaining": "{n} left",
+  "@remaining": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tickets": "Tickets",
+  "about": "About",
+  "organizer": "Organizer",
+  "verified": "Verified organizer",
+  "venue": "Venue",
+  "formatOnline": "Online",
+  "formatInPerson": "In person",
+  "formatHybrid": "In person + online",
+  "paidSoon": "Paid tickets will be available soon.",
+  "signIn": "Sign in",
+  "signInToRegister": "Sign in with your phone number to register.",
+  "phoneNumber": "Phone number",
+  "phoneHint": "09xxxxxxxxx",
+  "sendCode": "Send code",
+  "codeSentTo": "Enter the 6-digit code sent to {phone}",
+  "@codeSentTo": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "code": "Code",
+  "verify": "Verify",
+  "changeNumber": "Change number",
+  "devCode": "Test environment code: {code}",
+  "@devCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "invalidPhone": "Enter a valid Myanmar mobile number (09…)",
+  "invalidCode": "Enter the 6-digit code",
+  "tooManyCodes": "Too many codes requested. Please wait a few minutes.",
+  "signOut": "Sign out",
+  "language": "Language",
+  "signedInAs": "Signed in as {phone}",
+  "@signedInAs": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "notSignedIn": "You are not signed in.",
+  "registered": "You're registered! 🎉",
+  "viewTickets": "View my tickets",
+  "showAtEntrance": "Show this QR code at the entrance",
+  "offlineReady": "Available offline",
+  "noTickets": "No tickets yet. Find an event to join!",
+  "past": "Past",
+  "upcomingTickets": "Upcoming",
+  "ticketCancelled": "This ticket is no longer valid",
+  "share": "Share",
+  "freeOnly": "Free only",
+  "city": "City",
+  "anyCity": "Any city",
+  "clearFilters": "Clear",
+  "eventCancelled": "This event has been cancelled",
+  "eventEnded": "This event has ended",
+  "chooseLanguage": "Choose your language",
+  "continueLabel": "Continue",
+  "@@locale": "en"
+}

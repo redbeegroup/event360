@@ -21,7 +21,8 @@ for (const envName of Object.keys(config.environments)) {
   });
 
   test(`${envName}: expected workloads`, () => {
-    assert.deepEqual(byKind('Deployment').map((d) => d.metadata.name).sort(), ['api', 'realtime', 'web', 'worker']);
+    const expected = ['api', 'realtime', 'web', 'worker', ...(env.userWeb ? ['user-web'] : [])].sort();
+    assert.deepEqual(byKind('Deployment').map((d) => d.metadata.name).sort(), expected);
     assert.deepEqual(byKind('StatefulSet').map((d) => d.metadata.name), ['redis']);
   });
 
@@ -30,7 +31,7 @@ for (const envName of Object.keys(config.environments)) {
     assert.equal(ing.spec.ingressClassName, 'traefik');
     assert.deepEqual(
       ing.spec.rules.map((r) => r.host),
-      ['api', 'ws', 'portal'].map((h) => `${h}.${env.domain}`),
+      ['api', 'ws', 'portal', ...(env.userWeb ? ['app'] : [])].map((h) => `${h}.${env.domain}`),
     );
   });
 
