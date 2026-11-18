@@ -34,7 +34,6 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - wo1
                       - wo4
       containers:
         - name: redis
@@ -134,7 +133,6 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - wo1
                       - wo4
       initContainers:
         - name: migrate
@@ -258,7 +256,6 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - wo1
                       - wo4
       containers:
         - name: realtime
@@ -344,7 +341,6 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - wo1
                       - wo4
       containers:
         - name: worker
@@ -448,7 +444,6 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                      - wo1
                       - wo4
       containers:
         - name: web
