@@ -8,9 +8,9 @@ Architecture and roadmap: [docs/adr/0001-platform-architecture.md](docs/adr/0001
 | `apps/api` | NestJS modular monolith (API / worker / realtime roles), Prisma + PostgreSQL |
 | `apps/web` | Next.js portal — `/admin` and `/organizer` |
 | `mobile/` | Flutter (melos): `user_app`, `organizer_app`, `crew_app` + shared packages |
-| `infra/helm/event360` | Helm chart (api, worker, realtime, web, PgBouncer, Redis) |
-| `infra/argocd` | ArgoCD Applications for dev / staging / prod |
-| `infra/k8s` | Namespaces and example secret shapes |
+| `infra/manifests` | Generator (`generate.mjs`) + per-environment settings (`envs.json`) |
+| `deploy/<env>/event360.yaml` | Generated manifests that Portainer GitOps applies — do not edit by hand |
+| `infra/k8s` | Example secret shape |
 
 ## Local development
 
@@ -32,19 +32,31 @@ API docs (Swagger) at http://localhost:3000/docs. Portal: `cd apps/web && pnpm d
 
 Dev login: `POST /v1/auth/otp/request {"phone":"09..."}` returns `devCode` when `OTP_DEV_ECHO=true`.
 
-## Deploying to Kubernetes
+## Deploying to Kubernetes (Portainer GitOps)
 
-1. Apply `infra/k8s/namespaces.yaml`.
-2. Create the `event360-secrets` and `event360-pgbouncer` secrets (shape in `infra/k8s/secrets.example.yaml`) via External Secrets or Sealed Secrets. `DIRECT_DATABASE_URL` points at the external PostgreSQL cluster (used by migrations); `DATABASE_URL` points at PgBouncer.
-3. Set `image.registry` and `domain` in the `values-<env>.yaml` files.
-4. Apply `infra/argocd/event360-<env>.yaml`. Migrations run as a Helm pre-upgrade Job.
+Cluster: Talos, managed in Portainer (environment `talos-corexlab-portainer`). Ingress is Traefik
+(`172.16.16.180:80`) behind NPMPlus, which terminates TLS — see [docs/npmplus-setup.md](docs/npmplus-setup.md).
+
+| Environment | Namespace | Database | Bucket |
+|---|---|---|---|
+| dev | `event360-dev` | `event360`, schema `dev` | `event360`, prefix `dev/` |
+| prod | `event360-prod` | `event360`, schema `prod` | `event360`, prefix `prod/` |
+
+1. Each namespace holds the Secret `event360-secrets` (shape: `infra/k8s/secrets.example.yaml`), created once in the cluster.
+2. Portainer has one Git application per environment, tracking `deploy/<env>/event360.yaml`, polling every 5 minutes.
+3. On every push, CI builds `ghcr.io/redbeegroup/event360-{api,web}` tagged with the commit SHA and the branch name.
+   On `main`, CI also pins dev to the new SHA and commits the regenerated manifest, which Portainer then applies.
+4. To promote to prod, open a PR that runs `node infra/manifests/generate.mjs --set-tag prod=<sha>`.
+5. The API pod's init container runs `prisma migrate deploy` plus the idempotent seed before the app starts.
+
+Changing deployment settings: edit `infra/manifests/envs.json` or `generate.mjs`, then run `pnpm manifests`.
+CI fails if `deploy/` is stale.
 
 ## Hostnames
 
 | Environment | API | WebSocket | Portal |
 |---|---|---|---|
 | prod | api.event360.corexlab.net | ws.event360.corexlab.net | portal.event360.corexlab.net |
-| staging | api.staging.event360.corexlab.net | ws.staging.event360.corexlab.net | portal.staging.event360.corexlab.net |
 | dev | api.dev.event360.corexlab.net | ws.dev.event360.corexlab.net | portal.dev.event360.corexlab.net |
 
 Streaming (Phase 5b): `ingest.event360.corexlab.net` (RTMP/SRT), `media.event360.corexlab.net` (HLS playback), `watch.event360.corexlab.net` (web player).

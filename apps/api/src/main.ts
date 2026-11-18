@@ -15,7 +15,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const role = process.env.APP_ROLE ?? 'api';
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
-  // Behind NPMPlus → ingress-nginx: trust N proxy hops so req.ip is the real client IP
+  // Behind NPMPlus → Traefik: trust N proxy hops so req.ip is the real client IP
   // (used by rate limiting). Never trust arbitrary X-Forwarded-For when exposed directly.
   const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
   if (trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);

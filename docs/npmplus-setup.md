@@ -1,13 +1,13 @@
 # Running Event 360 behind NPMPlus
 
 ```
-Internet ──HTTPS──▶ NPMPlus (TLS, Let's Encrypt) ──HTTP──▶ ingress-nginx (k8s) ──▶ api / ws / portal
+Internet ──HTTPS──▶ NPMPlus (TLS, Let's Encrypt) ──HTTP──▶ Traefik 172.16.16.180:80 (k8s) ──▶ api / ws / portal
           ──RTMP/SRT──▶ NPMPlus "Streams" (TCP/UDP) ──▶ srs-ingest LoadBalancer/NodePort   (Phase 5b)
 ```
 
 ## 1. Proxy hosts (one per public hostname)
 
-Forward each host to the ingress-nginx Service (NodePort or LoadBalancer IP), scheme `http`.
+Forward each host to **`http://172.16.16.180:80`** (the Traefik LoadBalancer).
 The ingress routes by `Host` header, so NPMPlus must pass the original host through (it does by default).
 
 | Host | Websockets | Notes |
@@ -18,31 +18,32 @@ The ingress routes by `Host` header, so NPMPlus must pass the original host thro
 | `media.event360.corexlab.net` | off | HLS playback (Phase 5b). Disable buffering for low latency |
 | `watch.event360.corexlab.net` | off | Web player (Phase 5b) |
 
-Repeat with `.staging.` / `.dev.` hostnames (see certificates below).
+Repeat for the `.dev.` hostnames (`api.dev.`, `ws.dev.`, `portal.dev.event360.corexlab.net`). See certificates below.
 
 ## 2. Certificates
 
 Use a DNS-challenge wildcard certificate in NPMPlus. A wildcard covers **one** label only:
 
 - `*.event360.corexlab.net` → prod hosts
-- `*.staging.event360.corexlab.net` and `*.dev.event360.corexlab.net` → need their own wildcard certs
+- `*.dev.event360.corexlab.net` → needs its own wildcard cert
 
 ## 3. Real client IP (required)
 
 Rate limits (OTP, checkout) and audit logs need the real client IP, not the NPMPlus IP.
 
 - NPMPlus sends `X-Forwarded-For` / `X-Real-IP` by default.
-- ingress-nginx controller ConfigMap (cluster-wide):
+- Traefik must trust NPMPlus's forwarded headers. Add to Traefik's `web` entrypoint (Traefik Helm values):
   ```yaml
-  use-forwarded-headers: "true"
-  proxy-real-ip-cidr: "<NPMPlus IP>/32"
+  additionalArguments:
+    - "--entryPoints.web.forwardedHeaders.trustedIPs=<NPMPlus LAN IP>/32"
   ```
+  Without this, Traefik replaces `X-Forwarded-For` with the NPMPlus IP, and per-IP rate limits throttle all users together.
 - The API trusts 2 proxy hops (`TRUST_PROXY: "2"` in `values.yaml`).
-- **Firewall the ingress so only NPMPlus can reach it.** Otherwise clients could spoof `X-Forwarded-For`.
+- **Firewall 172.16.16.180 so only NPMPlus can reach it.** Otherwise clients could spoof `X-Forwarded-For`.
 
 ## 4. Per-host custom Nginx config
 
-For `ws.` (Advanced tab):
+For `ws.` (Advanced tab). Traefik itself has no idle timeout for WebSockets:
 ```nginx
 proxy_read_timeout 3600s;
 proxy_send_timeout 3600s;

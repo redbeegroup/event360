@@ -333,35 +333,39 @@ All of these go through the same order, ledger and commission flow as normal tic
 
 ## 8. Kubernetes & DevOps
 
-- **Environments:** namespaces `event360-dev`, `event360-staging` and `event360-prod`, or separate clusters if you have them. Each environment uses its own database on the PostgreSQL cluster.
-- **Deployment:**
-  - One Helm chart, `infra/helm/event360`, with values per environment.
-  - ArgoCD (GitOps) syncs from `infra/argocd`.
-  - Prisma migrations run as a Helm `pre-upgrade` Job.
+> **Updated 2026-11-18 to match the actual cluster.** The original draft assumed ArgoCD, cert-manager and ingress-nginx; none of them are installed.
+
+- **Cluster:**
+  - Talos Kubernetes 1.36 (3 control-plane nodes, 4 workers with 8 vCPU / 8 GB each), managed through Portainer EE.
+  - MetalLB; storage classes `synology-iscsi` (block) and `synology-nfs`.
+- **Edge:**
+  - NPMPlus terminates TLS for `*.event360.corexlab.net` and `*.dev.event360.corexlab.net`.
+  - It forwards to Traefik at `172.16.16.180:80` (ingress class `traefik`). See `docs/npmplus-setup.md`.
+- **Environments:**
+  - `event360-dev` and `event360-prod` share PostgreSQL database `event360` on the external cluster (`172.16.16.39:5433`), one schema each (`dev`, `prod`).
+  - They share SeaweedFS bucket `event360`, one prefix each.
+  - Separate databases and buckets for staging/prod can come later. Only `DATABASE_URL`/`S3_*` in the Secret change.
+- **Deployment (Portainer GitOps):**
+  - `infra/manifests/generate.mjs` renders plain manifests to `deploy/<env>/event360.yaml`, and Portainer polls them from Git.
+  - CI builds images to `ghcr.io/redbeegroup` (public packages) on every push. On `main` it pins dev to the new commit SHA.
+  - Prod is promoted by PR.
+- **Migrations:** an init container on `api` runs `prisma migrate deploy` (with Prisma's advisory lock) and an idempotent seed.
 - **Workloads:**
-  - `api`: at least 2 replicas, HPA on CPU and RPS.
-  - `realtime`: Socket.IO with the Redis adapter and sticky sessions on the ingress.
-  - `worker`: at least 2 replicas. BullMQ queues: payments-reconcile, holds-expire, notifications, media, payouts, reports.
-  - `web`: Next.js standalone build.
-  - Redis (Bitnami chart or the operator, with persistence).
-  - **SeaweedFS (yours)** replaces MinIO for all object storage: buckets `media`, `live`, `vod` and `recordings-raw`, with an S3 access key scoped to each bucket.
-  - `event360-media` namespace: `srs-ingest`, `transcoder` Jobs, `vod-worker`, `playback-edge`, running on a dedicated node pool.
-- **Networking:**
-  - ingress-nginx with cert-manager (Let's Encrypt).
-  - Hosts: `api.`, `ws.`, `portal.`, `media.event360.corexlab.net`.
-  - NetworkPolicies: egress to the DB cluster IPs and payment provider endpoints only. A static egress IP or NAT so payment providers can whitelist our IP.
-- **Secrets:** External Secrets Operator (Vault or cloud KMS), or Sealed Secrets.
-- **Observability:**
-  - OpenTelemetry SDK in NestJS → Tempo for traces; Prometheus and Grafana for metrics; Loki for logs.
-  - Alerts on payment webhook failures, reconciliation backlog, 5xx rate and queue lag.
-- **CI (GitHub Actions):**
-  - On each PR: lint, typecheck, unit tests, `prisma migrate diff`, Flutter analyze and tests.
-  - On merge to main: build and push images (GHCR or your registry), bump the image tag in the infra values, and ArgoCD deploys to dev. Promotion to staging and prod is by PR or tag.
-  - Mobile: fastlane builds for TestFlight and Play Internal testing (via GitHub Actions on macOS or Codemagic), with flavors dev, staging and prod.
+  - `api`, `realtime` (sticky cookie on its Traefik service), `worker` and `web`.
+  - A dedicated Redis StatefulSet (AOF, `noeviction` for BullMQ) on `synology-iscsi`.
+  - PgBouncer is deferred. Prisma caps each pod at `connection_limit=5`.
+- **Secrets:**
+  - `event360-secrets` per namespace is created directly in the cluster through the Portainer API. It is never in Git.
+  - External Secrets/Sealed Secrets can be adopted later.
+- **Streaming (Phase 5b):**
+  - a dedicated `event360-media` namespace;
+  - RTMP/SRT exposed through a MetalLB IP or NPMPlus Streams;
+  - transcoders sized against the 4×8-vCPU workers, so add worker capacity before large live events.
+- **Observability (to add):** Prometheus/Grafana/Loki are not installed yet; to be decided in Phase 1.
+- **CI (GitHub Actions):** Prisma validate + drift check, typecheck, unit tests, manifest freshness, image builds, and Flutter analyze/test.
 - **Security baseline:**
-  - Rate limiting, using the Redis throttler on OTP and checkout.
-  - Helmet and CORS, input validation (class-validator), OWASP ASVS L2 checklist.
-  - Signed URLs for media, PII encryption for KYC documents, audit logging, and a backup and restore drill.
+  - rate limiting (real client IP via `TRUST_PROXY=2` and Traefik trusted IPs), Helmet, validation, OWASP ASVS L2;
+  - signed media URLs, PII encryption for KYC, audit log, backup/restore drill.
 
 ---
 

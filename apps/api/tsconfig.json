@@ -14,5 +14,5 @@
     "baseUrl": "./",
     "incremental": true
   },
-  "include": ["src/**/*", "test/**/*", "prisma/**/*"]
+  "include": ["src/**/*", "test/**/*"]
 }

@@ -1,0 +1,20 @@
+{
+  "registry": "ghcr.io/redbeegroup",
+  "storageClass": "synology-iscsi",
+  "environments": {
+    "dev": {
+      "namespace": "event360-dev",
+      "domain": "dev.event360.corexlab.net",
+      "imageTag": "claude-relaxed-dirac-qj6kax",
+      "otpDevEcho": true,
+      "replicas": { "api": 1, "realtime": 1, "worker": 1, "web": 1 }
+    },
+    "prod": {
+      "namespace": "event360-prod",
+      "domain": "event360.corexlab.net",
+      "imageTag": "claude-relaxed-dirac-qj6kax",
+      "otpDevEcho": false,
+      "replicas": { "api": 2, "realtime": 2, "worker": 2, "web": 2 }
+    }
+  }
+}
