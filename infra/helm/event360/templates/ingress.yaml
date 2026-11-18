@@ -5,12 +5,21 @@ metadata:
   labels:
     {{- include "event360.labels" . | nindent 4 }}
   annotations:
-    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+    {{- if .Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.clusterIssuer }}
+    {{- else }}
+    # TLS is terminated upstream (NPMPlus); don't redirect plain-HTTP traffic from it to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    {{- end }}
     nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    # Long-lived WebSocket connections (realtime host)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     # Sticky sessions for Socket.IO on the realtime host
     nginx.ingress.kubernetes.io/affinity: cookie
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
   tls:
     - secretName: event360-tls
       hosts:
@@ -19,6 +28,7 @@ spec:
         - {{ $c.host }}.{{ $.Values.domain }}
         {{- end }}
         {{- end }}
+  {{- end }}
   rules:
     {{- range $name, $c := .Values.components }}
     {{- if and $c.enabled $c.host }}

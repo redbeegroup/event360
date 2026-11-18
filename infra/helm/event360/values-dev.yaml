@@ -8,5 +8,3 @@ components:
   web: { replicas: 1 }
 pgbouncer:
   replicas: 1
-ingress:
-  clusterIssuer: letsencrypt-staging

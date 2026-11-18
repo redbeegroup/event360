@@ -9,6 +9,9 @@ domain: event360.corexlab.net
 # Non-secret config injected into api/worker/realtime
 env:
   NODE_ENV: production
+  # Proxy hops in front of the app: NPMPlus → ingress-nginx. Needed so rate limits
+  # (e.g. OTP) see the real client IP instead of the proxy's.
+  TRUST_PROXY: "2"
   OTP_TTL_SECONDS: "300"
   OTP_DEV_ECHO: "false"
   JWT_ACCESS_TTL: 15m
@@ -61,7 +64,11 @@ migrations:
 
 ingress:
   className: nginx
-  clusterIssuer: letsencrypt-prod
+  # Public TLS is terminated by NPMPlus in front of the cluster, so in-cluster TLS is off.
+  # Set enabled: true (with cert-manager) only if the ingress is ever exposed directly.
+  tls:
+    enabled: false
+    clusterIssuer: letsencrypt-prod
 
 # In-cluster connection pooler in front of the external PostgreSQL cluster
 pgbouncer:
