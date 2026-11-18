@@ -8,13 +8,19 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import type { OrgRole, PlatformRole } from '@prisma/client';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
+import { hashPassword, verifyPassword } from '../../common/util';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeMyanmarPhone } from './phone';
 
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_MS = 60_000;
+/** Per phone number, independent of IP (mobile carriers often share one IP across many users). */
+export const OTP_PER_PHONE_WINDOW_MS = 10 * 60_000;
+export const OTP_PER_PHONE_MAX = 5;
 const REFRESH_TTL_MS = 30 * 24 * 3600 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 3600 * 1000;
 
 export interface TokenPair {
   accessToken: string;
@@ -48,6 +54,12 @@ export class AuthService {
     });
     if (last && Date.now() - last.createdAt.getTime() < RESEND_COOLDOWN_MS) {
       throw new HttpException('Please wait before requesting another code', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const recent = await this.prisma.otpChallenge.count({
+      where: { phone, createdAt: { gt: new Date(Date.now() - OTP_PER_PHONE_WINDOW_MS) } },
+    });
+    if (recent >= OTP_PER_PHONE_MAX) {
+      throw new HttpException('Too many codes requested for this number; try again later', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const ttl = Number(this.config.get('OTP_TTL_SECONDS') ?? 300);
@@ -110,6 +122,107 @@ export class AuthService {
     }
     await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
     return this.issueTokens(stored.user);
+  }
+
+  /** Portal staff (admins, organizer members) sign in with email + password. */
+  async passwordLogin(email: string, password: string): Promise<TokenPair> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    const ok = await verifyPassword(password, user?.passwordHash);
+    if (!user || !ok || !user.isActive) throw new UnauthorizedException('Invalid email or password');
+    return this.issueTokens(user);
+  }
+
+  /**
+   * Creates a one-time invite link (no SMTP yet: the admin copies the link to the invitee).
+   * Joining either an organization (orgRole) or the platform staff (platformRole).
+   */
+  async createInvitation(input: {
+    email: string;
+    organizationId?: string;
+    orgRole?: OrgRole;
+    platformRole?: PlatformRole;
+    invitedById?: string;
+  }): Promise<{ token: string; url: string; expiresAt: Date }> {
+    if (!input.orgRole && !input.platformRole) throw new BadRequestException('orgRole or platformRole required');
+    if (input.orgRole && !input.organizationId) throw new BadRequestException('organizationId required for orgRole');
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    await this.prisma.invitation.create({
+      data: {
+        email: input.email.trim().toLowerCase(),
+        tokenHash: sha256(token),
+        organizationId: input.organizationId,
+        orgRole: input.orgRole,
+        platformRole: input.platformRole,
+        invitedById: input.invitedById,
+        expiresAt,
+      },
+    });
+    const portal = (this.config.get<string>('PORTAL_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
+    return { token, url: `${portal}/invite/${token}`, expiresAt };
+  }
+
+  /** Looks up an invite for the accept page (no secrets returned). */
+  async getInvitation(token: string) {
+    const inv = await this.prisma.invitation.findUnique({
+      where: { tokenHash: sha256(token) },
+      include: { organization: { select: { name: true } } },
+    });
+    if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invite is invalid or expired');
+    return { email: inv.email, organization: inv.organization?.name ?? null, orgRole: inv.orgRole, platformRole: inv.platformRole };
+  }
+
+  async acceptInvitation(token: string, password: string, displayName?: string): Promise<TokenPair> {
+    const inv = await this.prisma.invitation.findUnique({ where: { tokenHash: sha256(token) } });
+    if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invite is invalid or expired');
+    const passwordHash = await hashPassword(password);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({ where: { email: inv.email } });
+      const roles = new Set<PlatformRole>(existing?.platformRoles ?? ['CONSUMER']);
+      if (inv.platformRole) roles.add(inv.platformRole);
+      const u = existing
+        ? await tx.user.update({
+            where: { id: existing.id },
+            data: { passwordHash, platformRoles: [...roles], displayName: displayName ?? existing.displayName },
+          })
+        : await tx.user.create({
+            data: {
+              email: inv.email,
+              passwordHash,
+              displayName,
+              platformRoles: [...roles],
+              identities: { create: { provider: 'EMAIL', subject: inv.email } },
+            },
+          });
+      if (inv.organizationId && inv.orgRole) {
+        await tx.organizationMember.upsert({
+          where: { organizationId_userId: { organizationId: inv.organizationId, userId: u.id } },
+          update: { role: inv.orgRole },
+          create: { organizationId: inv.organizationId, userId: u.id, role: inv.orgRole },
+        });
+      }
+      await tx.invitation.update({ where: { id: inv.id }, data: { acceptedAt: new Date() } });
+      return u;
+    });
+    return this.issueTokens(user);
+  }
+
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { memberships: { include: { organization: { select: { id: true, name: true, slug: true, kycStatus: true } } } } },
+    });
+    if (!user) throw new UnauthorizedException();
+    return {
+      id: user.id,
+      displayName: user.displayName,
+      phone: user.phone,
+      email: user.email,
+      locale: user.locale,
+      platformRoles: user.platformRoles,
+      organizations: user.memberships.map((m) => ({ ...m.organization, role: m.role })),
+    };
   }
 
   private async issueTokens(user: { id: string; phone: string | null; platformRoles: string[] }): Promise<TokenPair> {

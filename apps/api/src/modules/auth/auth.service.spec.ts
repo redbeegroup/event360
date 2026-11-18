@@ -24,6 +24,7 @@ function makePrisma() {
               (!where.expiresAt || o.expiresAt > where.expiresAt.gt),
           ),
         ),
+      count: async ({ where }: any) => otps.filter((o) => o.phone === where.phone && o.createdAt > where.createdAt.gt).length,
       create: async ({ data }: any) => {
         const row = { id: id(), attempts: 0, consumedAt: null, createdAt: new Date(), ...data };
         otps.push(row);

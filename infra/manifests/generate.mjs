@@ -49,6 +49,9 @@ function backendEnv(env) {
     { name: 'OTP_DEV_ECHO', value: String(env.otpDevEcho) },
     { name: 'JWT_ACCESS_TTL', value: '15m' },
     { name: 'CORS_ORIGINS', value: `https://portal.${env.domain}` },
+    // Used to build media URLs and invite links
+    { name: 'PUBLIC_API_URL', value: `https://api.${env.domain}` },
+    { name: 'PORTAL_URL', value: `https://portal.${env.domain}` },
   ];
 }
 

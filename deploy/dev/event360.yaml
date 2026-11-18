@@ -160,6 +160,10 @@ spec:
               value: 15m
             - name: CORS_ORIGINS
               value: https://portal.dev.event360.corexlab.net
+            - name: PUBLIC_API_URL
+              value: https://api.dev.event360.corexlab.net
+            - name: PORTAL_URL
+              value: https://portal.dev.event360.corexlab.net
             - name: APP_ROLE
               value: api
           envFrom:
@@ -252,6 +256,10 @@ spec:
               value: 15m
             - name: CORS_ORIGINS
               value: https://portal.dev.event360.corexlab.net
+            - name: PUBLIC_API_URL
+              value: https://api.dev.event360.corexlab.net
+            - name: PORTAL_URL
+              value: https://portal.dev.event360.corexlab.net
             - name: APP_ROLE
               value: realtime
           envFrom:
@@ -327,6 +335,10 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
+              value: https://portal.dev.event360.corexlab.net
+            - name: PUBLIC_API_URL
+              value: https://api.dev.event360.corexlab.net
+            - name: PORTAL_URL
               value: https://portal.dev.event360.corexlab.net
             - name: APP_ROLE
               value: worker
