@@ -5,7 +5,7 @@
     "dev": {
       "namespace": "event360-dev",
       "domain": "dev.event360.corexlab.net",
-      "imageTag": "21c6483cfd45c8b116640b4562ed234c31845458",
+      "imageTag": "ff3d7d98b2f7becb3200833cc104dee61d4fb9b0",
       "otpDevEcho": true,
       "replicas": {
         "api": 1,
