@@ -26,6 +26,15 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - wo4
       containers:
         - name: redis
           image: redis:7.4-alpine
@@ -116,6 +125,15 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - wo4
       initContainers:
         - name: migrate
           image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
@@ -230,6 +248,15 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - wo4
       containers:
         - name: realtime
           image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
@@ -306,6 +333,15 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - wo4
       containers:
         - name: worker
           image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
@@ -400,6 +436,15 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - wo4
       containers:
         - name: web
           image: ghcr.io/redbeegroup/event360-web:claude-relaxed-dirac-qj6kax

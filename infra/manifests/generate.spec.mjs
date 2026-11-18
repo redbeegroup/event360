@@ -34,6 +34,14 @@ for (const envName of Object.keys(config.environments)) {
     );
   });
 
+  test(`${envName}: workloads avoid nodes listed in avoidNodes`, () => {
+    for (const w of [...byKind('Deployment'), ...byKind('StatefulSet')]) {
+      const terms = w.spec.template.spec.affinity?.nodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms;
+      if ((config.avoidNodes ?? []).length === 0) assert.equal(terms, undefined);
+      else assert.deepEqual(terms[0].matchExpressions[0].values, config.avoidNodes, w.metadata.name);
+    }
+  });
+
   test(`${envName}: API runs migrations before starting`, () => {
     const api = byKind('Deployment').find((d) => d.metadata.name === 'api');
     assert.match(api.spec.template.spec.initContainers[0].command.join(' '), /prisma migrate deploy && node dist\/seed\.js/);

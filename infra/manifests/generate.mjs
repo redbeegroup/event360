@@ -52,7 +52,22 @@ function backendEnv(env) {
   ];
 }
 
-function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources }) {
+/** Keeps pods off nodes listed in envs.json `avoidNodes` (e.g. a node with broken networking). */
+function avoidNodesAffinity(config) {
+  const nodes = config.avoidNodes ?? [];
+  if (nodes.length === 0) return {};
+  return {
+    affinity: {
+      nodeAffinity: {
+        requiredDuringSchedulingIgnoredDuringExecution: {
+          nodeSelectorTerms: [{ matchExpressions: [{ key: 'kubernetes.io/hostname', operator: 'NotIn', values: nodes }] }],
+        },
+      },
+    },
+  };
+}
+
+function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources, config }) {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -65,6 +80,7 @@ function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAs
         metadata: { labels: labels(name) },
         spec: {
           securityContext: { runAsNonRoot: true, runAsUser, runAsGroup: runAsUser, fsGroup: runAsUser },
+          ...avoidNodesAffinity(config),
           ...(initContainers ? { initContainers } : {}),
           containers: [
             {
@@ -116,6 +132,7 @@ export function buildManifests(envName, config) {
           metadata: { labels: labels('redis') },
           spec: {
             securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999 },
+            ...avoidNodesAffinity(config),
             containers: [
               {
                 name: 'redis',
@@ -164,6 +181,7 @@ export function buildManifests(envName, config) {
       ns,
       image: apiImage,
       pullPolicy,
+      config,
       replicas: env.replicas.api,
       env: [...backendEnv(env), { name: 'APP_ROLE', value: 'api' }],
       envFrom,
@@ -193,6 +211,7 @@ export function buildManifests(envName, config) {
         ns,
         image: apiImage,
         pullPolicy,
+        config,
         replicas: env.replicas[role],
         env: [...backendEnv(env), { name: 'APP_ROLE', value: role }],
         envFrom,
@@ -211,6 +230,7 @@ export function buildManifests(envName, config) {
       ns,
       image: webImage,
       pullPolicy,
+      config,
       replicas: env.replicas.web,
       env: [{ name: 'API_URL', value: 'http://api:3000' }],
       runAsUser: 1000,

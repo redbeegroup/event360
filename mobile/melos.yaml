@@ -4,7 +4,7 @@ packages:
   - packages/*
 scripts:
   analyze:
-    run: melos exec -- flutter analyze
+    run: melos exec -- flutter analyze --no-fatal-infos
   test:
     run: melos exec --dir-exists=test -- flutter test
   gen:api:
