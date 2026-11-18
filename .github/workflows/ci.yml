@@ -110,3 +110,10 @@ jobs:
           git add infra/manifests/envs.json deploy/dev/event360.yaml
           git diff --cached --quiet || git commit -m "deploy(dev): ${{ github.sha }} [skip ci]"
           git push origin HEAD:${{ github.ref_name }}
+      - name: Tell Portainer to redeploy dev
+        # Portainer's own Git polling does not fire on this cluster, so call the stack webhook.
+        env:
+          HOOK: ${{ secrets.PORTAINER_DEV_WEBHOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "PORTAINER_DEV_WEBHOOK secret not set - skipping"; exit 0; fi
+          curl -fsS -X POST --retry 3 --retry-delay 5 "$HOOK" && echo "Portainer redeploy triggered"

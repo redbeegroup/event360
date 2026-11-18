@@ -118,8 +118,8 @@ spec:
         fsGroup: 10001
       initContainers:
         - name: migrate
-          image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
-          imagePullPolicy: Always
+          image: ghcr.io/redbeegroup/event360-api:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - '-c'
@@ -140,8 +140,8 @@ spec:
               memory: 768Mi
       containers:
         - name: api
-          image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
-          imagePullPolicy: Always
+          image: ghcr.io/redbeegroup/event360-api:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
@@ -236,8 +236,8 @@ spec:
         fsGroup: 10001
       containers:
         - name: realtime
-          image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
-          imagePullPolicy: Always
+          image: ghcr.io/redbeegroup/event360-api:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
@@ -316,8 +316,8 @@ spec:
         fsGroup: 10001
       containers:
         - name: worker
-          image: ghcr.io/redbeegroup/event360-api:claude-relaxed-dirac-qj6kax
-          imagePullPolicy: Always
+          image: ghcr.io/redbeegroup/event360-api:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
@@ -414,8 +414,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: web
-          image: ghcr.io/redbeegroup/event360-web:claude-relaxed-dirac-qj6kax
-          imagePullPolicy: Always
+          image: ghcr.io/redbeegroup/event360-web:21c6483cfd45c8b116640b4562ed234c31845458
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000

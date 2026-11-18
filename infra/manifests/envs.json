@@ -17,7 +17,7 @@
     "prod": {
       "namespace": "event360-prod",
       "domain": "event360.corexlab.net",
-      "imageTag": "claude-relaxed-dirac-qj6kax",
+      "imageTag": "21c6483cfd45c8b116640b4562ed234c31845458",
       "otpDevEcho": false,
       "replicas": {
         "api": 2,
