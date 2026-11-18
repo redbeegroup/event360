@@ -1,0 +1,84 @@
+# Shared defaults. Override per environment with values-<env>.yaml.
+image:
+  registry: ghcr.io/redbeegroup
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+domain: event360.example.com
+
+# Non-secret config injected into api/worker/realtime
+env:
+  NODE_ENV: production
+  OTP_TTL_SECONDS: "300"
+  OTP_DEV_ECHO: "false"
+  JWT_ACCESS_TTL: 15m
+  S3_ENDPOINT: http://seaweedfs-s3.seaweedfs.svc:8333
+  S3_REGION: us-east-1
+  S3_BUCKET_MEDIA: media
+
+# Secret holding DATABASE_URL, DIRECT_DATABASE_URL, REDIS_URL, JWT_*_SECRET, S3 keys, provider creds.
+# Create it with External Secrets / Sealed Secrets — never commit values.
+existingSecret: event360-secrets
+
+components:
+  api:
+    enabled: true
+    image: event360-api
+    role: api
+    replicas: 2
+    port: 3000
+    host: api
+    resources: { requests: { cpu: 250m, memory: 384Mi }, limits: { memory: 768Mi } }
+    hpa: { enabled: true, min: 2, max: 10, cpu: 70 }
+  realtime:
+    enabled: true
+    image: event360-api
+    role: realtime
+    replicas: 2
+    port: 3000
+    host: ws
+    resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+    hpa: { enabled: false }
+  worker:
+    enabled: true
+    image: event360-api
+    role: worker
+    replicas: 2
+    port: 3000
+    resources: { requests: { cpu: 200m, memory: 384Mi }, limits: { memory: 768Mi } }
+    hpa: { enabled: false }
+  web:
+    enabled: true
+    image: event360-web
+    replicas: 2
+    port: 3000
+    host: portal
+    resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+    hpa: { enabled: false }
+
+migrations:
+  enabled: true
+
+ingress:
+  className: nginx
+  clusterIssuer: letsencrypt-prod
+
+# In-cluster connection pooler in front of the external PostgreSQL cluster
+pgbouncer:
+  enabled: true
+  image: edoburu/pgbouncer:v1.23.1-p2
+  replicas: 2
+  poolMode: transaction
+  maxClientConn: 2000
+  defaultPoolSize: 40
+  # Secret with DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME for the external cluster
+  existingSecret: event360-pgbouncer
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    existingSecret: event360-redis
+    existingSecretPasswordKey: redis-password
+  master:
+    persistence: { size: 8Gi }

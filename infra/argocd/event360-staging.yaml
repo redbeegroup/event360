@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: event360-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/redbeegroup/event360.git
+    targetRevision: main
+    path: infra/helm/event360
+    helm:
+      valueFiles: [values.yaml, values-staging.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: event360-staging
+  syncPolicy:
+    automated: null
+    syncOptions: [CreateNamespace=false]

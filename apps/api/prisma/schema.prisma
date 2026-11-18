@@ -1,0 +1,557 @@
+// Event 360 — Prisma schema v1 (Phase 0/1 core + placeholders for later phases)
+// Conventions: UUID PKs, money in MMK as BigInt, snake_case table names.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ───────────────────────────── Identity & tenancy ─────────────────────────────
+
+enum PlatformRole {
+  CONSUMER
+  PLATFORM_ADMIN
+  PLATFORM_FINANCE
+  SUPPORT
+}
+
+enum OrgRole {
+  ORG_OWNER
+  ORG_MANAGER
+  ORG_FINANCE
+  CREW
+}
+
+enum Locale {
+  en
+  my
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  displayName   String?        @map("display_name")
+  phone         String?        @unique
+  email         String?        @unique
+  locale        Locale         @default(my)
+  platformRoles PlatformRole[] @default([CONSUMER]) @map("platform_roles")
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  identities    UserIdentity[]
+  devices       Device[]
+  memberships   OrganizationMember[]
+  refreshTokens RefreshToken[]
+  orders        Order[]
+  tickets       Ticket[]       @relation("TicketHolder")
+
+  @@map("users")
+}
+
+enum IdentityProvider {
+  PHONE
+  EMAIL
+  GOOGLE
+  FACEBOOK
+}
+
+model UserIdentity {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  provider   IdentityProvider
+  subject    String
+  createdAt  DateTime         @default(now()) @map("created_at")
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@map("user_identities")
+}
+
+model OtpChallenge {
+  id          String    @id @default(uuid()) @db.Uuid
+  phone       String
+  codeHash    String    @map("code_hash")
+  attempts    Int       @default(0)
+  expiresAt   DateTime  @map("expires_at")
+  consumedAt  DateTime? @map("consumed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([phone, createdAt])
+  @@map("otp_challenges")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  platform  String // ios | android | web
+  pushToken String?  @map("push_token")
+  appId     String   @map("app_id") // user_app | organizer_app | crew_app
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+enum KycStatus {
+  NOT_SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Organization {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String    @unique
+  description String?
+  logoUrl     String?   @map("logo_url")
+  kycStatus   KycStatus @default(NOT_SUBMITTED) @map("kyc_status")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  members       OrganizationMember[]
+  events        Event[]
+  subscriptions Subscription[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  role           OrgRole
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+// ───────────────────────────── Catalog & events ─────────────────────────────
+
+model Category {
+  id        String     @id @default(uuid()) @db.Uuid
+  parentId  String?    @map("parent_id") @db.Uuid
+  slug      String     @unique
+  nameEn    String     @map("name_en")
+  nameMy    String?    @map("name_my")
+  iconKey   String?    @map("icon_key")
+  sortOrder Int        @default(0) @map("sort_order")
+  isActive  Boolean    @default(true) @map("is_active")
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  events    Event[]
+
+  @@map("categories")
+}
+
+model Venue {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  address   String?
+  city      String
+  latitude  Float?
+  longitude Float?
+  events    Event[]
+
+  @@map("venues")
+}
+
+enum EventStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventFormat {
+  IN_PERSON
+  ONLINE
+  HYBRID
+}
+
+enum EventVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+model Event {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  categoryId     String          @map("category_id") @db.Uuid
+  venueId        String?         @map("venue_id") @db.Uuid
+  title          String
+  slug           String          @unique
+  summary        String?
+  description    String?
+  coverImageUrl  String?         @map("cover_image_url")
+  status         EventStatus     @default(DRAFT)
+  format         EventFormat     @default(IN_PERSON)
+  visibility     EventVisibility @default(PUBLIC)
+  isFree         Boolean         @default(false) @map("is_free")
+  startsAt       DateTime        @map("starts_at")
+  endsAt         DateTime        @map("ends_at")
+  publishedAt    DateTime?       @map("published_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  category       Category        @relation(fields: [categoryId], references: [id])
+  venue          Venue?          @relation(fields: [venueId], references: [id])
+  sessions       EventSession[]
+  ticketTypes    TicketType[]
+  orders         Order[]
+  promoBookings  PromoBooking[]
+
+  @@index([status, startsAt])
+  @@index([categoryId, startsAt])
+  @@map("events")
+}
+
+model EventSession {
+  id          String       @id @default(uuid()) @db.Uuid
+  eventId     String       @map("event_id") @db.Uuid
+  title       String
+  startsAt    DateTime     @map("starts_at")
+  endsAt      DateTime     @map("ends_at")
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  liveChannel LiveChannel?
+
+  @@map("event_sessions")
+}
+
+// ───────────────────────────── Ticketing & orders ─────────────────────────────
+
+enum DeliveryMode {
+  IN_PERSON
+  LIVE_ONLINE
+  RECORDING
+  BUNDLE
+}
+
+model TicketType {
+  id             String       @id @default(uuid()) @db.Uuid
+  eventId        String       @map("event_id") @db.Uuid
+  name           String
+  priceMmk       BigInt       @default(0) @map("price_mmk")
+  quota          Int
+  sold           Int          @default(0)
+  held           Int          @default(0)
+  maxPerOrder    Int          @default(10) @map("max_per_order")
+  deliveryMode   DeliveryMode @default(IN_PERSON) @map("delivery_mode")
+  salesStartAt   DateTime?    @map("sales_start_at")
+  salesEndAt     DateTime?    @map("sales_end_at")
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  orderItems     OrderItem[]
+  tickets        Ticket[]
+
+  @@map("ticket_types")
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED // free orders
+  EXPIRED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  eventId         String      @map("event_id") @db.Uuid
+  status          OrderStatus @default(PENDING_PAYMENT)
+  subtotalMmk     BigInt      @map("subtotal_mmk")
+  buyerFeeMmk     BigInt      @default(0) @map("buyer_fee_mmk")
+  totalMmk        BigInt      @map("total_mmk")
+  commissionMmk   BigInt      @default(0) @map("commission_mmk") // frozen at checkout
+  idempotencyKey  String?     @unique @map("idempotency_key")
+  holdExpiresAt   DateTime?   @map("hold_expires_at")
+  channel         String      @default("APP") // APP | WEB | POS
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  user     User        @relation(fields: [userId], references: [id])
+  event    Event       @relation(fields: [eventId], references: [id])
+  items    OrderItem[]
+  payments Payment[]
+  tickets  Ticket[]
+
+  @@index([status, holdExpiresAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String     @id @default(uuid()) @db.Uuid
+  orderId      String     @map("order_id") @db.Uuid
+  ticketTypeId String     @map("ticket_type_id") @db.Uuid
+  quantity     Int
+  unitPriceMmk BigInt     @map("unit_price_mmk")
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+
+  @@map("order_items")
+}
+
+enum TicketStatus {
+  VALID
+  CHECKED_IN
+  TRANSFERRED
+  REFUNDED
+  VOID
+}
+
+model Ticket {
+  id           String       @id @default(uuid()) @db.Uuid
+  orderId      String       @map("order_id") @db.Uuid
+  ticketTypeId String       @map("ticket_type_id") @db.Uuid
+  holderUserId String       @map("holder_user_id") @db.Uuid
+  status       TicketStatus @default(VALID)
+  qrVersion    Int          @default(1) @map("qr_version")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  order        Order        @relation(fields: [orderId], references: [id])
+  ticketType   TicketType   @relation(fields: [ticketTypeId], references: [id])
+  holder       User         @relation("TicketHolder", fields: [holderUserId], references: [id])
+  checkins     Checkin[]
+
+  @@map("tickets")
+}
+
+model Checkin {
+  id          String   @id @default(uuid()) @db.Uuid
+  ticketId    String   @map("ticket_id") @db.Uuid
+  crewUserId  String   @map("crew_user_id") @db.Uuid
+  gate        String?
+  deviceId    String?  @map("device_id")
+  scannedAt   DateTime @map("scanned_at")
+  offline     Boolean  @default(false)
+  isDuplicate Boolean  @default(false) @map("is_duplicate")
+  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId, scannedAt])
+  @@map("checkins")
+}
+
+// ───────────────────────────── Payments & ledger ─────────────────────────────
+
+enum PaymentProviderCode {
+  KBZPAY
+  WAVEPAY
+  CBPAY
+  AYAPAY
+  MPU
+  CB_MPGS
+  CASH
+  MOCK
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+model Payment {
+  id          String              @id @default(uuid()) @db.Uuid
+  orderId     String?             @map("order_id") @db.Uuid
+  purpose     String              @default("ORDER") // ORDER | SUBSCRIPTION | PROMOTION
+  provider    PaymentProviderCode
+  providerRef String?             @map("provider_ref")
+  amountMmk   BigInt              @map("amount_mmk")
+  status      PaymentStatus       @default(INITIATED)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  order       Order?              @relation(fields: [orderId], references: [id])
+  events      PaymentEvent[]
+
+  @@unique([provider, providerRef])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  paymentId  String?  @map("payment_id") @db.Uuid
+  provider   PaymentProviderCode
+  rawPayload Json     @map("raw_payload")
+  verified   Boolean
+  receivedAt DateTime @default(now()) @map("received_at")
+  payment    Payment? @relation(fields: [paymentId], references: [id])
+
+  @@map("payment_events")
+}
+
+model LedgerEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  journalId   String   @map("journal_id") @db.Uuid // groups balanced debit/credit lines
+  account     String // e.g. provider_clearing:KBZPAY, platform_commission, organizer_payable:<orgId>
+  debitMmk    BigInt   @default(0) @map("debit_mmk")
+  creditMmk   BigInt   @default(0) @map("credit_mmk")
+  refType     String   @map("ref_type")
+  refId       String   @map("ref_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([journalId])
+  @@index([account])
+  @@map("ledger_entries")
+}
+
+// ───────────────────────────── Billing ─────────────────────────────
+
+enum FeeScope {
+  GLOBAL
+  CATEGORY
+  ORGANIZATION
+  EVENT
+}
+
+model FeeRule {
+  id         String   @id @default(uuid()) @db.Uuid
+  scope      FeeScope
+  scopeId    String?  @map("scope_id") @db.Uuid
+  percentBp  Int      @map("percent_bp") // basis points: 500 = 5%
+  fixedMmk   BigInt   @default(0) @map("fixed_mmk")
+  minMmk     BigInt?  @map("min_mmk")
+  maxMmk     BigInt?  @map("max_mmk")
+  buyerPays  Boolean  @default(false) @map("buyer_pays")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("fee_rules")
+}
+
+enum PlanScope {
+  ORGANIZER
+  EVENT
+}
+
+model Plan {
+  id            String         @id @default(uuid()) @db.Uuid
+  code          String         @unique
+  name          String
+  scope         PlanScope
+  priceMmk      BigInt         @map("price_mmk")
+  periodDays    Int?           @map("period_days") // null for one-off per-event plans
+  limits        Json // { maxEvents, maxTickets, crewSeats, liveHours, maxViewers, storageGb, commissionBp }
+  isActive      Boolean        @default(true) @map("is_active")
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id             String       @id @default(uuid()) @db.Uuid
+  planId         String       @map("plan_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  eventId        String?      @map("event_id") @db.Uuid
+  status         String       @default("PENDING") // PENDING | ACTIVE | EXPIRED | CANCELLED
+  startsAt       DateTime?    @map("starts_at")
+  endsAt         DateTime?    @map("ends_at")
+  plan           Plan         @relation(fields: [planId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("subscriptions")
+}
+
+// ───────────────────────────── Streaming (Phase 5b) ─────────────────────────────
+
+model LiveChannel {
+  id            String       @id @default(uuid()) @db.Uuid
+  sessionId     String       @unique @map("session_id") @db.Uuid
+  streamKeyHash String       @map("stream_key_hash")
+  status        String       @default("IDLE") // IDLE | LIVE | ENDED
+  s3Prefix      String       @map("s3_prefix")
+  session       EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  vodAssets     VodAsset[]
+
+  @@map("live_channels")
+}
+
+model VodAsset {
+  id               String       @id @default(uuid()) @db.Uuid
+  liveChannelId    String?      @map("live_channel_id") @db.Uuid
+  title            String
+  status           String       @default("PROCESSING") // PROCESSING | READY | FAILED | ARCHIVED
+  s3Prefix         String       @map("s3_prefix")
+  durationSec      Int?         @map("duration_sec")
+  availableFrom    DateTime?    @map("available_from")
+  availableUntil   DateTime?    @map("available_until")
+  liveChannel      LiveChannel? @relation(fields: [liveChannelId], references: [id])
+
+  @@map("vod_assets")
+}
+
+// ───────────────────────────── Featured promotions (Phase 5a) ─────────────────────────────
+
+model PromoPlacement {
+  id              String         @id @default(uuid()) @db.Uuid
+  code            String         @unique // HOME_HERO | HOME_FEATURED_ROW | CATEGORY_TOP | SEARCH_BOOST | CITY_TOP | PUSH_BLAST | ORGANIZER_SPOTLIGHT
+  name            String
+  slotsPerDay     Int            @map("slots_per_day")
+  pricePerDayMmk  BigInt         @map("price_per_day_mmk")
+  isActive        Boolean        @default(true) @map("is_active")
+  bookings        PromoBooking[]
+
+  @@map("promo_placements")
+}
+
+model PromoBooking {
+  id           String         @id @default(uuid()) @db.Uuid
+  placementId  String         @map("placement_id") @db.Uuid
+  eventId      String         @map("event_id") @db.Uuid
+  targetKey    String?        @map("target_key") // e.g. category slug or city
+  startDate    DateTime       @map("start_date") @db.Date
+  endDate      DateTime       @map("end_date") @db.Date
+  priceMmk     BigInt         @map("price_mmk")
+  status       String         @default("PENDING_PAYMENT") // PENDING_PAYMENT | PENDING_APPROVAL | APPROVED | LIVE | ENDED | REJECTED | REFUNDED
+  creativeUrl  String?        @map("creative_url")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  placement    PromoPlacement @relation(fields: [placementId], references: [id])
+  event        Event          @relation(fields: [eventId], references: [id])
+
+  @@index([placementId, startDate, endDate])
+  @@map("promo_bookings")
+}
+
+// ───────────────────────────── Audit ─────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  data       Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

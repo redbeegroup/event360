@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: event360-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/redbeegroup/event360.git
+    targetRevision: release
+    path: infra/helm/event360
+    helm:
+      valueFiles: [values.yaml, values-prod.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: event360-prod
+  syncPolicy:
+    automated: null
+    syncOptions: [CreateNamespace=false]

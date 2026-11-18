@@ -1,0 +1,18 @@
+name: crew_app
+description: Event 360 Crew
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  event360_core:
+    path: ../../packages/core
+  event360_ui:
+    path: ../../packages/ui
+  event360_ticketing:
+    path: ../../packages/ticketing
+flutter:
+  uses-material-design: true

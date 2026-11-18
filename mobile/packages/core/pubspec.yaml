@@ -1,0 +1,12 @@
+name: event360_core
+description: Auth, API config, i18n and app-wide state shared by all Event 360 apps.
+publish_to: none
+version: 0.1.0
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.7.0
+  flutter_secure_storage: ^9.2.2

@@ -1,0 +1,10 @@
+name: event360_ui
+description: Event 360 design system (theme, typography incl. Myanmar font, shared widgets).
+publish_to: none
+version: 0.1.0
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+dependencies:
+  flutter:
+    sdk: flutter

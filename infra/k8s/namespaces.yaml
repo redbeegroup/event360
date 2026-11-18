@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: event360-dev }
+---
+apiVersion: v1
+kind: Namespace
+metadata: { name: event360-staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata: { name: event360-prod }
+---
+apiVersion: v1
+kind: Namespace
+metadata: { name: event360-media } # SRS ingest, transcoders, vod-worker, playback-edge (Phase 5b)

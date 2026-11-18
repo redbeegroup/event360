@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+# Flutter
+mobile/**/.dart_tool/
+mobile/**/build/
+mobile/**/.flutter-plugins*
+mobile/**/pubspec.lock
+.idea/
+.vscode/
+.DS_Store
+*.tsbuildinfo

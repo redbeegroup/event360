@@ -1,0 +1,93 @@
+{{- range $name, $c := .Values.components }}
+{{- if $c.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event360-{{ $name }}
+  labels:
+    {{- include "event360.labels" $ | nindent 4 }}
+    app.kubernetes.io/name: event360-{{ $name }}
+spec:
+  replicas: {{ $c.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: event360-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: event360-{{ $name }}
+        app.kubernetes.io/part-of: event360
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: {{ $name }}
+          image: {{ include "event360.image" (dict "root" $ "image" $c.image) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $c.port }}
+          {{- if ne $name "web" }}
+          env:
+            - name: APP_ROLE
+              value: {{ $c.role }}
+            {{- range $k, $v := $.Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $.Values.existingSecret }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          {{- else }}
+          env:
+            - name: API_URL
+              value: http://event360-api:{{ $.Values.components.api.port }}
+          readinessProbe:
+            httpGet: { path: /, port: http }
+          {{- end }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event360-{{ $name }}
+  labels:
+    {{- include "event360.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: event360-{{ $name }}
+  ports:
+    - name: http
+      port: {{ $c.port }}
+      targetPort: http
+{{- if and $c.hpa $c.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: event360-{{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: event360-{{ $name }}
+  minReplicas: {{ $c.hpa.min }}
+  maxReplicas: {{ $c.hpa.max }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $c.hpa.cpu }}
+{{- end }}
+{{- end }}
+{{- end }}

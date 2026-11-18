@@ -1,0 +1,4 @@
+domain: event360.example.com
+components:
+  api: { hpa: { enabled: true, min: 3, max: 20, cpu: 65 } }
+  worker: { replicas: 3 }

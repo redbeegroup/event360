@@ -1,0 +1,14 @@
+name: event360_mobile
+packages:
+  - apps/*
+  - packages/*
+scripts:
+  analyze:
+    run: melos exec -- flutter analyze
+  test:
+    run: melos exec --dir-exists=test -- flutter test
+  gen:api:
+    description: Regenerate the Dart API client from the NestJS OpenAPI spec
+    run: >
+      npx @openapitools/openapi-generator-cli generate
+      -i ../apps/api/openapi.json -g dart-dio -o packages/api_client

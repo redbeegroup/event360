@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: event360
+  labels:
+    {{- include "event360.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+    # Sticky sessions for Socket.IO on the realtime host
+    nginx.ingress.kubernetes.io/affinity: cookie
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - secretName: event360-tls
+      hosts:
+        {{- range $name, $c := .Values.components }}
+        {{- if and $c.enabled $c.host }}
+        - {{ $c.host }}.{{ $.Values.domain }}
+        {{- end }}
+        {{- end }}
+  rules:
+    {{- range $name, $c := .Values.components }}
+    {{- if and $c.enabled $c.host }}
+    - host: {{ $c.host }}.{{ $.Values.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: event360-{{ $name }}
+                port: { name: http }
+    {{- end }}
+    {{- end }}

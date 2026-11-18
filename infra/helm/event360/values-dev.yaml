@@ -1,0 +1,12 @@
+domain: dev.event360.example.com
+env:
+  OTP_DEV_ECHO: "true"
+components:
+  api: { replicas: 1, hpa: { enabled: false } }
+  realtime: { replicas: 1 }
+  worker: { replicas: 1 }
+  web: { replicas: 1 }
+pgbouncer:
+  replicas: 1
+ingress:
+  clusterIssuer: letsencrypt-staging
