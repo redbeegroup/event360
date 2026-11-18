@@ -28,6 +28,7 @@
     }
   },
   "avoidNodes": [
+    "wo1",
     "wo4"
   ]
 }
