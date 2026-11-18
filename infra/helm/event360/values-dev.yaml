@@ -1,4 +1,4 @@
-domain: dev.event360.example.com
+domain: dev.event360.corexlab.net
 env:
   OTP_DEV_ECHO: "true"
 components:

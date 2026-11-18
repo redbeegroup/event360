@@ -38,3 +38,13 @@ Dev login: `POST /v1/auth/otp/request {"phone":"09..."}` returns `devCode` when 
 2. Create the `event360-secrets` and `event360-pgbouncer` secrets (shape in `infra/k8s/secrets.example.yaml`) via External Secrets or Sealed Secrets. `DIRECT_DATABASE_URL` points at the external PostgreSQL cluster (used by migrations); `DATABASE_URL` points at PgBouncer.
 3. Set `image.registry` and `domain` in the `values-<env>.yaml` files.
 4. Apply `infra/argocd/event360-<env>.yaml`. Migrations run as a Helm pre-upgrade Job.
+
+## Hostnames
+
+| Environment | API | WebSocket | Portal |
+|---|---|---|---|
+| prod | api.event360.corexlab.net | ws.event360.corexlab.net | portal.event360.corexlab.net |
+| staging | api.staging.event360.corexlab.net | ws.staging.event360.corexlab.net | portal.staging.event360.corexlab.net |
+| dev | api.dev.event360.corexlab.net | ws.dev.event360.corexlab.net | portal.dev.event360.corexlab.net |
+
+Streaming (Phase 5b): `ingest.event360.corexlab.net` (RTMP/SRT), `media.event360.corexlab.net` (HLS playback), `watch.event360.corexlab.net` (web player).

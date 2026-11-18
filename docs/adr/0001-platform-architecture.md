@@ -243,7 +243,7 @@ The schema is managed by Prisma migrations. Main tables:
 
 **Video stack.** Everything below runs in Kubernetes (the `event360-media` namespace) and stores video on your SeaweedFS:
 - **Ingest:** SRS (Simple Realtime Server).
-  - The organizer streams with OBS or vMix, or a hardware encoder, over RTMP or SRT to `ingest.event360.<domain>/live/<channel>?key=<streamKey>`.
+  - The organizer streams with OBS or vMix, or a hardware encoder, over RTMP or SRT to `ingest.event360.corexlab.net/live/<channel>?key=<streamKey>`.
   - The SRS `on_publish` hook calls the API to validate the stream key and session time window.
   - A TCP/UDP LoadBalancer Service exposes ports 1935 (RTMP) and 10080/udp (SRT).
 - **Transcode:** an FFmpeg transcoder pod per live channel, launched by the `streaming` module as a Kubernetes Job.
@@ -280,7 +280,7 @@ All of these go through the same order, ledger and commission flow as normal tic
 - The player is `better_player_plus` or `media_kit` in Flutter, and hls.js on the web.
 - Viewers can pick quality, use picture-in-picture, keep audio playing in the background, see live chat, ask questions in Q&A with upvotes, and answer polls.
 - Recordings show chapters and remember where the viewer stopped.
-- Online events can also be watched on the web portal (`watch.event360.<domain>`) so viewers on desktop are covered.
+- Online events can also be watched on the web portal (`watch.event360.corexlab.net`) so viewers on desktop are covered.
 
 **Organizer tools:**
 - In the web portal: the stream key and ingest URL, a test-stream preview, live health (bitrate, frames dropped, viewers), moderation of chat and Q&A, start/stop recording, and VOD editing.
@@ -348,7 +348,7 @@ All of these go through the same order, ledger and commission flow as normal tic
   - `event360-media` namespace: `srs-ingest`, `transcoder` Jobs, `vod-worker`, `playback-edge`, running on a dedicated node pool.
 - **Networking:**
   - ingress-nginx with cert-manager (Let's Encrypt).
-  - Hosts: `api.`, `ws.`, `portal.`, `media.event360.<domain>`.
+  - Hosts: `api.`, `ws.`, `portal.`, `media.event360.corexlab.net`.
   - NetworkPolicies: egress to the DB cluster IPs and payment provider endpoints only. A static egress IP or NAT so payment providers can whitelist our IP.
 - **Secrets:** External Secrets Operator (Vault or cloud KMS), or Sealed Secrets.
 - **Observability:**

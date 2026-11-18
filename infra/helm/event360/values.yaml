@@ -4,7 +4,7 @@ image:
   tag: "0.1.0"
   pullPolicy: IfNotPresent
 
-domain: event360.example.com
+domain: event360.corexlab.net
 
 # Non-secret config injected into api/worker/realtime
 env:
