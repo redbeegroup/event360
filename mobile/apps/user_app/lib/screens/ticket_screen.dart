@@ -72,7 +72,7 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                   Text(t.offlineReady, style: theme.textTheme.bodySmall),
                 ]),
               ] else
-                MessageView(icon: Icons.block, message: t.ticketCancelled),
+                MessageView(icon: Icons.block, message: ticket.status == 'REFUNDED' ? t.ticketRefunded : t.ticketCancelled),
               const SizedBox(height: 20),
               Card(
                 child: ListTile(

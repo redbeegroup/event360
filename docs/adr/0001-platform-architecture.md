@@ -150,7 +150,13 @@ interface PaymentProvider {
 5. **Daily settlement:** the provider settlement files and reports are compared against the ledger. Mismatches are shown in the admin finance screen.
 
 **Security and compliance:**
-- Provider credentials are stored in Kubernetes Secrets through External Secrets or Sealed Secrets.
+- Provider credentials are stored in the database (`platform_settings`, key `payment.<provider>`), with secrets sealed by AES-256-GCM under `SETTINGS_KEY` (a Kubernetes Secret), the same way as the SMS keys. Admins manage them in the portal (Admin → Settings → Payments); the API never returns a secret.
+
+**As built (Phase 2, 2026-11):**
+- Fees: the organizer absorbs the platform commission (`FeeRule`, most specific of EVENT > ORGANIZATION > CATEGORY > GLOBAL); the buyer pays the ticket price. Payouts are report-only (Admin → Finance → balances, CSV); refunds are admin-only and whole-order.
+- Holds: `ticket_types.held` with a 10-minute `orders.hold_expires_at`; the API pods sweep expired holds and poll pending payments every 30 s (no BullMQ yet).
+- Ledger accounts: `provider_clearing:<P>`, `organizer_payable:<org>`, `platform_commission`, `refunds_payable`, `unallocated_receipts` (duplicate or mismatched payments, flagged for review).
+- Providers: `MOCK` (dev only, `PAYMENTS_MOCK=true`), `KBZPAY` (precreate → PWA URL on phones / EMV QR on the web; queryorder; refunds need KBZ's client certificate, so they are manual for now), `WAVEPAY` (POST /payment → /authenticate; callbacks only, no status or refund API documented, so refunds are manual). Both adapters were built from public docs and still need a sandbox test with real merchant keys.
 - Card data never touches our servers: the MPGS hosted checkout keeps us at PCI SAQ-A scope.
 - Every amount is in MMK and stored as an integer.
 

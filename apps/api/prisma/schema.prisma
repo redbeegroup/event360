@@ -410,6 +410,9 @@ model Order {
   idempotencyKey String?     @unique @map("idempotency_key")
   holdExpiresAt  DateTime?   @map("hold_expires_at")
   channel        String      @default("APP") // APP | WEB | POS
+  paidAt         DateTime?   @map("paid_at")
+  needsReview    Boolean     @default(false) @map("needs_review") // paid after the hold expired with no seats left → refund
+  reviewNote     String?     @map("review_note")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 
@@ -418,8 +421,10 @@ model Order {
   items    OrderItem[]
   payments Payment[]
   tickets  Ticket[]
+  refunds  Refund[]
 
   @@index([status, holdExpiresAt])
+  @@index([eventId, status])
   @@map("orders")
 }
 
@@ -545,21 +550,55 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id          String              @id @default(uuid()) @db.Uuid
-  orderId     String?             @map("order_id") @db.Uuid
-  purpose     String              @default("ORDER") // ORDER | SUBSCRIPTION | PROMOTION
-  provider    PaymentProviderCode
-  providerRef String?             @map("provider_ref")
-  amountMmk   BigInt              @map("amount_mmk")
-  status      PaymentStatus       @default(INITIATED)
-  createdAt   DateTime            @default(now()) @map("created_at")
-  updatedAt   DateTime            @updatedAt @map("updated_at")
-  order       Order?              @relation(fields: [orderId], references: [id])
-  events      PaymentEvent[]
+  id            String              @id @default(uuid()) @db.Uuid
+  orderId       String?             @map("order_id") @db.Uuid
+  purpose       String              @default("ORDER") // ORDER | SUBSCRIPTION | PROMOTION
+  provider      PaymentProviderCode
+  providerRef   String?             @map("provider_ref")
+  amountMmk     BigInt              @map("amount_mmk")
+  status        PaymentStatus       @default(INITIATED)
+  /// What the client does next: { type: REDIRECT|DEEPLINK|QR, url?, deeplink?, qr? }
+  action        Json?
+  expiresAt     DateTime?           @map("expires_at")
+  failureReason String?             @map("failure_reason")
+  lastCheckedAt DateTime?           @map("last_checked_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  order         Order?              @relation(fields: [orderId], references: [id])
+  events        PaymentEvent[]
+  refunds       Refund[]
 
   @@unique([provider, providerRef])
   @@index([status, createdAt])
   @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  MANUAL // provider has no refund API: admin returns the money and records the reference
+}
+
+model Refund {
+  id          String       @id @default(uuid()) @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  paymentId   String?      @map("payment_id") @db.Uuid
+  amountMmk   BigInt       @map("amount_mmk")
+  status      RefundStatus @default(PENDING)
+  reason      String
+  providerRef String?      @map("provider_ref")
+  reference   String? // manual transfer reference entered by the admin
+  error       String?
+  createdById String       @map("created_by_id") @db.Uuid
+  completedAt DateTime?    @map("completed_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  order       Order        @relation(fields: [orderId], references: [id])
+  payment     Payment?     @relation(fields: [paymentId], references: [id])
+
+  @@index([status])
+  @@map("refunds")
 }
 
 model PaymentEvent {

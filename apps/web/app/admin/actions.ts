@@ -100,3 +100,76 @@ export async function sendTestSmsAction(_: FormState, fd: FormData): Promise<For
     return err(e);
   }
 }
+
+// ───────────── finance ─────────────
+
+const num = (fd: FormData, k: string) => {
+  const v = String(fd.get(k) ?? '').trim();
+  return v === '' ? null : Number(v);
+};
+
+export async function saveFeeAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    const pct = Number(String(fd.get('percent') ?? '0').trim() || '0');
+    await api('/admin/finance/fee', {
+      method: 'PUT',
+      json: {
+        percentBp: Math.round(pct * 100),
+        fixedMmk: num(fd, 'fixedMmk') ?? 0,
+        minMmk: num(fd, 'minMmk'),
+        maxMmk: num(fd, 'maxMmk'),
+        isActive: fd.get('isActive') === 'on',
+      },
+    });
+    revalidatePath('/admin/finance');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function refundOrderAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    await api(`/admin/finance/orders/${fd.get('id')}/refund`, { method: 'POST', json: { reason: fd.get('reason') } });
+    revalidatePath('/admin/finance');
+    return { ok: 'refunded' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function completeRefundAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    await api(`/admin/finance/refunds/${fd.get('id')}/complete`, { method: 'POST', json: { reference: fd.get('reference') } });
+    revalidatePath('/admin/finance');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function retryRefundAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    await api(`/admin/finance/refunds/${fd.get('id')}/retry`, { method: 'POST' });
+    revalidatePath('/admin/finance');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function savePaymentSettingsAction(_: FormState, fd: FormData): Promise<FormState> {
+  const provider = String(fd.get('provider'));
+  try {
+    const values: Record<string, string> = {};
+    for (const [k, v] of fd.entries()) if (k.startsWith('v_')) values[k.slice(2)] = String(v).trim();
+    await api(`/admin/settings/payments/${provider}`, {
+      method: 'PUT',
+      json: { values, mode: fd.get('mode'), enabled: fd.get('enabled') === 'on' },
+    });
+    revalidatePath('/admin/settings');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}

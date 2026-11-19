@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
@@ -50,7 +52,10 @@ class _Detail extends ConsumerWidget {
     final cancelled = e.status == 'CANCELLED';
     final description = pickLang(lang, e.description, e.descriptionMy);
     final summary = pickLang(lang, e.summary, e.summaryMy);
-    final canRegister = !ended && !cancelled && e.ticketTypes.any((tt) => tt.isFree && !tt.soldOut);
+    final payable = (ref.watch(paymentMethodsProvider).value ?? const <PaymentMethod>[]).isNotEmpty;
+    bool sellable(TicketType tt) => !tt.soldOut && (tt.isFree || payable);
+    final canRegister = !ended && !cancelled && e.ticketTypes.any(sellable);
+    final sellsPaid = e.ticketTypes.any((tt) => !tt.isFree && sellable(tt));
     final bold = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
     void open(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
@@ -216,7 +221,7 @@ class _Detail extends ConsumerWidget {
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   ),
                 ),
-              if (e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
+              if (!payable && e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
             ]),
             if (practical.isNotEmpty)
               section(t.practicalInfo, [
@@ -283,7 +288,11 @@ class _Detail extends ConsumerWidget {
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                child: FilledButton(onPressed: () => _startRegister(context, ref), child: Text(t.registerFree)),
+                child: FilledButton(
+                  key: const Key('getTickets'),
+                  onPressed: () => _startRegister(context, ref, payable),
+                  child: Text(sellsPaid ? t.getTickets : t.registerFree),
+                ),
               ),
             )
           : null,
@@ -334,14 +343,20 @@ class _Detail extends ConsumerWidget {
     ));
   }
 
-  Future<void> _startRegister(BuildContext context, WidgetRef ref) async {
+  Future<void> _startRegister(BuildContext context, WidgetRef ref, bool payable) async {
     final me = await ref.read(sessionProvider.future);
     if (!context.mounted) return;
     if (me == null) {
       await context.push('/login?from=${Uri.encodeComponent('/event/${event.id}')}');
       return;
     }
-    await showModalBottomSheet<void>(context: context, isScrollControlled: true, showDragHandle: true, builder: (_) => _RegisterSheet(event: event));
+    final orderId = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _RegisterSheet(event: event, payable: payable),
+    );
+    if (orderId != null && context.mounted) await context.push('/checkout/$orderId');
   }
 }
 
@@ -360,14 +375,18 @@ class _Banner extends StatelessWidget {
 }
 
 class _RegisterSheet extends ConsumerStatefulWidget {
-  const _RegisterSheet({required this.event});
+  const _RegisterSheet({required this.event, required this.payable});
   final EventSummary event;
+  final bool payable;
   @override
   ConsumerState<_RegisterSheet> createState() => _RegisterSheetState();
 }
 
 class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
-  late TicketType _type = widget.event.ticketTypes.firstWhere((t) => t.isFree && !t.soldOut);
+  late final List<TicketType> _options = widget.event.ticketTypes.where((t) => !t.soldOut && (t.isFree || widget.payable)).toList();
+  late TicketType _type = _options.first;
+  // Same key for retries of this sheet: the API returns the same order instead of holding seats twice
+  final String _idempotencyKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   int _qty = 1;
   bool _busy = false;
   String? _error;
@@ -381,10 +400,15 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
       _error = null;
     });
     try {
-      await ref.read(apiProvider).register(widget.event.id, _type.id, _qty);
-      ref.invalidate(myTicketsProvider);
+      final o = await ref.read(apiProvider).createOrder(widget.event.id, {_type.id: _qty}, idempotencyKey: '$_idempotencyKey-${_type.id}-$_qty');
       ref.invalidate(eventProvider(widget.event.id));
-      setState(() => _done = true);
+      if (o.isPaid) {
+        ref.invalidate(myTicketsProvider);
+        setState(() => _done = true);
+      } else {
+        ref.invalidate(pendingOrdersProvider);
+        if (mounted) Navigator.of(context).pop(o.id); // → checkout
+      }
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -397,7 +421,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
-    final free = widget.event.ticketTypes.where((tt) => tt.isFree && !tt.soldOut).toList();
+    final free = _options;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: _done
@@ -427,6 +451,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                   }),
                   title: Text(pickLang(lang, tt.name, tt.nameMy)),
                   subtitle: Text(t.remaining(tt.remaining)),
+                  secondary: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)), style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               const SizedBox(height: 8),
               Row(children: [
@@ -435,11 +460,22 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', style: theme.textTheme.titleLarge)),
                 IconButton.outlined(onPressed: _qty < _max ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
               ]),
+              if (!_type.isFree)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
+                    Text(t.mmk(formatAmount(_type.priceMmk * _qty, lang)), key: const Key('sheetTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  ]),
+                ),
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
               const SizedBox(height: 16),
               FilledButton(
+                key: const Key('sheetSubmit'),
                 onPressed: _busy ? null : _submit,
-                child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.register),
+                child: _busy
+                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                    : Text(_type.isFree ? t.register : t.checkout),
               ),
             ]),
     );

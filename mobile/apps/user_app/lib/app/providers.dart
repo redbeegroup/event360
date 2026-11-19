@@ -135,3 +135,25 @@ class MyTicketsNotifier extends AsyncNotifier<List<MyTicket>> {
 }
 
 final myTicketsProvider = AsyncNotifierProvider<MyTicketsNotifier, List<MyTicket>>(MyTicketsNotifier.new);
+
+// ───── Paid checkout ─────
+
+/// Payment methods buyers can use now (empty → paid tickets show "available soon").
+final paymentMethodsProvider = FutureProvider<List<PaymentMethod>>((ref) async {
+  try {
+    return await ref.watch(apiProvider).paymentMethods();
+  } on ApiException {
+    return const [];
+  }
+});
+
+/// The signed-in user's orders still waiting for payment.
+final pendingOrdersProvider = FutureProvider<List<Order>>((ref) async {
+  final me = await ref.watch(sessionProvider.future);
+  if (me == null) return const [];
+  try {
+    return await ref.watch(apiProvider).pendingOrders();
+  } on ApiException {
+    return const [];
+  }
+});

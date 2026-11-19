@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../l10n/app_localizations.dart';
+import '../screens/checkout_screen.dart';
 import '../screens/event_detail_screen.dart';
 import '../screens/explore_screen.dart';
 import '../screens/home_screen.dart';
@@ -32,6 +33,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/event/:id', builder: (_, s) => EventDetailScreen(idOrSlug: s.pathParameters['id']!)),
       GoRoute(path: '/ticket/:id', builder: (_, s) => TicketScreen(ticketId: s.pathParameters['id']!)),
+      GoRoute(path: '/checkout/:id', builder: (_, s) => CheckoutScreen(orderId: s.pathParameters['id']!)),
       GoRoute(
         path: '/watch/:kind/:id',
         builder: (_, s) => WatchScreen(kind: s.pathParameters['kind']!, id: s.pathParameters['id']!, title: s.uri.queryParameters['title'] ?? ''),

@@ -18,6 +18,7 @@ class TicketsScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final tickets = ref.watch(myTicketsProvider);
     final fromCache = ref.read(myTicketsProvider.notifier).fromCache;
+    final pending = (ref.watch(pendingOrdersProvider).value ?? const <Order>[]).where((o) => o.isOpen).toList();
 
     Widget body;
     if (session.value == null && !session.isLoading) {
@@ -27,16 +28,21 @@ class TicketsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: () => ref.invalidate(myTicketsProvider)),
         data: (list) {
-          if (list.isEmpty) {
+          if (list.isEmpty && pending.isEmpty) {
             return MessageView(icon: Icons.confirmation_number_outlined, message: t.noTickets, actionLabel: t.explore, onAction: () => context.go('/explore'));
           }
           final upcoming = list.where((x) => x.isUpcoming).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
           final past = list.where((x) => !x.isUpcoming).toList();
           return RefreshIndicator(
-            onRefresh: () => ref.read(myTicketsProvider.notifier).refresh(),
+            onRefresh: () async {
+              ref.invalidate(pendingOrdersProvider);
+              await ref.read(myTicketsProvider.notifier).refresh();
+            },
             child: ListView(padding: const EdgeInsets.all(16), children: [
               if (fromCache)
                 Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [const Icon(Icons.cloud_off, size: 18), const SizedBox(width: 6), Text(t.offlineReady)])),
+              if (pending.isNotEmpty) _Header(t.pendingPayments),
+              for (final o in pending) _PendingTile(order: o),
               if (upcoming.isNotEmpty) _Header(t.upcomingTickets),
               for (final x in upcoming) _TicketTile(ticket: x),
               if (past.isNotEmpty) _Header(t.past),
@@ -92,6 +98,39 @@ class _TicketTile extends ConsumerWidget {
             const Padding(padding: EdgeInsets.only(right: 12), child: Icon(Icons.qr_code_2)),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+class _PendingTile extends ConsumerWidget {
+  const _PendingTile({required this.order});
+  final Order order;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = L10n.of(context);
+    final lang = ref.watch(langProvider);
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.hourglass_top),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(pickLang(lang, order.eventTitle, order.eventTitleMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                Text('${order.quantity} × · ${t.mmk(formatAmount(order.totalMmk, lang))}'),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          FilledButton.tonal(onPressed: () => context.push('/checkout/${order.id}'), child: Text(t.continuePayment)),
+        ]),
       ),
     );
   }

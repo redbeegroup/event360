@@ -48,6 +48,7 @@ function backendEnv(env, config) {
     { name: 'TRUST_PROXY', value: '2' },
     { name: 'OTP_TTL_SECONDS', value: '300' },
     { name: 'OTP_DEV_ECHO', value: String(env.otpDevEcho) },
+    { name: 'PAYMENTS_MOCK', value: String(!!env.paymentsMock) },
     { name: 'JWT_ACCESS_TTL', value: '15m' },
     { name: 'CORS_ORIGINS', value: [`https://portal.${env.domain}`, ...(env.userWeb ? [`https://app.${env.domain}`] : [])].join(',') },
     // Used to build media URLs and invite links

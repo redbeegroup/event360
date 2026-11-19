@@ -325,4 +325,76 @@ class L10nMy extends L10n {
   @override
   String get liveEnded =>
       'တိုက်ရိုက်ထုတ်လွှင့်မှု ပြီးဆုံးပါပြီ။ မှတ်တမ်း မကြာမီ ရနိုင်ပါသည်။';
+
+  @override
+  String get getTickets => 'လက်မှတ်ဝယ်မည်';
+
+  @override
+  String get checkout => 'ငွေပေးချေရန်';
+
+  @override
+  String get total => 'စုစုပေါင်း';
+
+  @override
+  String get payWith => 'ငွေပေးနည်း';
+
+  @override
+  String payNow(String amount) {
+    return '$amount ပေးချေမည်';
+  }
+
+  @override
+  String holdExpiresIn(String time) {
+    return 'လက်မှတ်များကို $time ထိန်းထားပါသည်';
+  }
+
+  @override
+  String get waitingForPayment => 'ငွေပေးချေမှုကို စောင့်နေပါသည်…';
+
+  @override
+  String get waitingHint =>
+      'ပိုက်ဆံအိတ် App တွင် ငွေပေးချေပြီး ဤနေရာသို့ ပြန်လာပါ။ ဤစာမျက်နှာ အလိုအလျောက် ပြောင်းပါမည်။';
+
+  @override
+  String get openWalletAgain => 'ငွေပေးစာမျက်နှာ ပြန်ဖွင့်မည်';
+
+  @override
+  String get scanToPay => 'ပိုက်ဆံအိတ် App ဖြင့် ဤ QR ကို စကင်ဖတ်ပါ';
+
+  @override
+  String get paymentReceived =>
+      'ငွေလက်ခံရရှိပါပြီ။ လက်မှတ်များ အသင့်ဖြစ်ပါပြီ။';
+
+  @override
+  String get holdExpired =>
+      'ငွေမရောက်မီ ထိန်းထားချိန် ကုန်သွားပါပြီ။ ငွေပေးပြီးပါက မကြာမီ လက်မှတ်ရရှိမည် သို့မဟုတ် ငွေပြန်အမ်းပါမည်။';
+
+  @override
+  String get startAgain => 'ပြန်စမည်';
+
+  @override
+  String get cancelOrder => 'အော်ဒါ ပယ်ဖျက်မည်';
+
+  @override
+  String get orderCancelled => 'အော်ဒါ ပယ်ဖျက်ပြီးပါပြီ။';
+
+  @override
+  String get paymentNotAvailable => 'လောလောဆယ် ငွေပေးနည်း မရှိပါ။';
+
+  @override
+  String get continuePayment => 'ငွေဆက်ပေးမည်';
+
+  @override
+  String get pendingPayments => 'ငွေပေးရန် ကျန်';
+
+  @override
+  String get ticketRefunded => 'ဤလက်မှတ်ကို ငွေပြန်အမ်းပြီးပါပြီ။';
+
+  @override
+  String get choosePayment => 'ငွေပေးနည်း ရွေးပါ';
+
+  @override
+  String orderSummary(String qty, String name) {
+    return '$qty × $name';
+  }
 }

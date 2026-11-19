@@ -4,6 +4,7 @@ import 'app_config.dart';
 import 'crew.dart';
 import 'streams.dart';
 import 'models.dart';
+import 'orders.dart';
 import 'token_store.dart';
 
 /// Error with a user-presentable message from the API (`message` field) and the HTTP status.
@@ -149,6 +150,37 @@ class Event360Api {
   Future<List<String>> register(String eventId, String ticketTypeId, int quantity) => _call(
         () => _dio.post('/events/$eventId/registrations', data: {'ticketTypeId': ticketTypeId, 'quantity': quantity}),
         (d) => ((d as Map<String, dynamic>)['ticketIds'] as List).cast<String>(),
+      );
+
+  // ───── Paid checkout ─────
+
+  Future<List<PaymentMethod>> paymentMethods() => _call(
+        () => _dio.get('/payments/methods', options: Options(extra: {'auth': false})),
+        (d) => (d as List).map((x) => PaymentMethod.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  /// Creates an order (free → confirmed with tickets; paid → seats held for 10 minutes).
+  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP'}) => _call(
+        () => _dio.post('/events/$eventId/orders', data: {
+          'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
+          'idempotencyKey': idempotencyKey,
+          'channel': channel,
+        }),
+        (d) => Order.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<Order> order(String id) => _call(() => _dio.get('/orders/$id'), (d) => Order.fromJson(d as Map<String, dynamic>));
+
+  Future<Order> payOrder(String id, String provider, {String? returnUrl}) => _call(
+        () => _dio.post('/orders/$id/pay', data: {'provider': provider, if (returnUrl != null) 'returnUrl': returnUrl}),
+        (d) => Order.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<Order> cancelOrder(String id) => _call(() => _dio.post('/orders/$id/cancel'), (d) => Order.fromJson(d as Map<String, dynamic>));
+
+  Future<List<Order>> pendingOrders() => _call(
+        () => _dio.get('/me/orders', queryParameters: {'pending': '1'}),
+        (d) => (d as List).map((x) => Order.fromJson(x as Map<String, dynamic>)).toList(),
       );
 
   Future<List<MyTicket>> myTickets() => _call(

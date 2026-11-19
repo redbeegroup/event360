@@ -7,6 +7,7 @@
       "domain": "dev.event360.app",
       "imageTag": "9943316d37d75bd76d45918daaf643dafa0dabc0",
       "otpDevEcho": true,
+      "paymentsMock": true,
       "replicas": {
         "api": 1,
         "realtime": 1,
@@ -26,6 +27,7 @@
       "domain": "event360.app",
       "imageTag": "9943316d37d75bd76d45918daaf643dafa0dabc0",
       "otpDevEcho": false,
+      "paymentsMock": false,
       "replicas": {
         "api": 2,
         "realtime": 2,

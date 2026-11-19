@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
 import 'package:user_app/main.dart';
+import 'package:user_app/screens/checkout_screen.dart';
 import 'package:user_app/screens/watch_screen.dart';
 
 /// Fake API: canned events/tickets, no network.
@@ -21,6 +22,55 @@ class FakeApi extends Event360Api {
   bool takenOver = false;
   final heartbeats = <String>[];
   final registered = <String>[];
+  List<PaymentMethod> methods = [];
+  final orders = <String, Map<String, dynamic>>{};
+  final paid = <String>[];
+
+  static Map<String, dynamic> orderJson(String id, String status, {int total = 10000, int qty = 2, String? provider, Map<String, dynamic>? action, DateTime? expires}) => {
+        'id': id,
+        'status': status,
+        'event': {'id': 'e2', 'title': 'Yangon Food Fair e2', 'titleMy': null},
+        'items': [
+          {'ticketTypeId': 'tt-e2', 'name': 'General', 'nameMy': null, 'quantity': qty, 'unitPriceMmk': total ~/ qty},
+        ],
+        'subtotalMmk': total,
+        'totalMmk': total,
+        'holdExpiresAt': (expires ?? DateTime.now().toUtc().add(const Duration(minutes: 10))).toIso8601String(),
+        'payment': provider == null ? null : {'id': 'p1', 'provider': provider, 'status': 'PENDING', 'action': action},
+        'ticketIds': status == 'PAID' ? ['t1', 't2'] : <String>[],
+      };
+
+  @override
+  Future<List<PaymentMethod>> paymentMethods() async => methods;
+
+  @override
+  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP'}) async {
+    final e = quantities.entries.first;
+    registered.add('$eventId:${e.key}:${e.value}');
+    if (eventId == 'e1') return Order.fromJson({...orderJson('free-1', 'CONFIRMED', total: 0, qty: e.value), 'ticketIds': ['t1']});
+    final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 5000 * e.value, qty: e.value);
+    orders['ord-1'] = o;
+    return Order.fromJson(o);
+  }
+
+  @override
+  Future<Order> order(String id) async => Order.fromJson(orders[id]!);
+
+  @override
+  Future<Order> payOrder(String id, String provider, {String? returnUrl}) async {
+    paid.add('$id:$provider');
+    orders[id] = {...orders[id]!, 'payment': {'id': 'p1', 'provider': provider, 'status': 'PENDING', 'action': {'type': 'REDIRECT', 'url': 'https://pay.example/$id'}}};
+    return Order.fromJson(orders[id]!);
+  }
+
+  @override
+  Future<Order> cancelOrder(String id) async {
+    orders[id] = {...orders[id]!, 'status': 'CANCELLED'};
+    return Order.fromJson(orders[id]!);
+  }
+
+  @override
+  Future<List<Order>> pendingOrders() async => orders.values.where((o) => o['status'] == 'PENDING_PAYMENT').map(Order.fromJson).toList();
 
   static Map<String, dynamic> eventJson(String id, {bool free = true}) => {
         'id': id,
@@ -72,7 +122,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<EventSummary> event(String idOrSlug) async =>
-      EventSummary.fromJson(idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug));
+      EventSummary.fromJson(idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
 
   @override
   Future<OrganizerProfile> organizer(String slug) async => OrganizerProfile.fromJson({
@@ -154,14 +204,19 @@ void phoneScreen(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}}) async {
+final openedUrls = <String>[];
+
+Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}, void Function(FakeApi)? setup}) async {
   phoneScreen(tester);
   SharedPreferences.setMockInitialValues({'lang': lang, ...prefs});
   final sp = await SharedPreferences.getInstance();
   final store = MemoryTokenStore();
   if (signedIn) await store.save('a', 'r');
   final api = FakeApi(store);
+  setup?.call(api);
+  openedUrls.clear();
   await tester.pumpWidget(ProviderScope(overrides: [
+    openPaymentUrlProvider.overrideWithValue((url) async => openedUrls.add(url)),
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
     // No video plugin in tests: show the URL the real player would open
@@ -327,5 +382,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('watchError')), findsOneWidget);
     expect(find.text('Register for this event to watch.'), findsOneWidget);
+  });
+
+  testWidgets('paid tickets: "available soon" until a payment method is enabled', (tester) async {
+    await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Paid tickets will be available soon.'), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Paid tickets will be available soon.'), findsOneWidget);
+    expect(find.byKey(const Key('getTickets')), findsNothing);
+  });
+
+  testWidgets('buy paid tickets: hold → choose wallet → pay → tickets ready', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'KBZPAY', label: 'KBZPay'), PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    expect(find.text('Paid tickets will be available soon.'), findsNothing);
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    expect(find.text('10,000 MMK'), findsWidgets); // 2 × 5,000
+    await tester.tap(find.byKey(const Key('sheetSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.registered, ['e2:tt-e2:2']);
+    expect(find.text('Checkout'), findsWidgets);
+    expect(find.byKey(const Key('countdown')), findsOneWidget);
+    expect(find.textContaining('Tickets held for 9:'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('method-MOCK')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('pay')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.paid, ['ord-1:MOCK']);
+    expect(openedUrls, ['https://pay.example/ord-1']);
+    expect(find.text('Waiting for your payment…'), findsOneWidget);
+
+    // The wallet confirms; the next poll shows the tickets
+    api.orders['ord-1'] = {...api.orders['ord-1']!, 'status': 'PAID', 'ticketIds': ['t1', 't2']};
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump();
+    expect(find.byKey(const Key('paid')), findsOneWidget);
+    expect(find.text('Payment received. Your tickets are ready.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); // dispose timers
+  });
+
+  testWidgets('expired hold explains what happens; pending orders offer "Continue payment"', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
+      a.orders['ord-2'] = FakeApi.orderJson('ord-2', 'EXPIRED', expires: DateTime.now().toUtc().subtract(const Duration(minutes: 1)));
+    });
+    await tester.tap(find.text('My tickets'));
+    await tester.pumpAndSettle();
+    expect(find.text('Awaiting payment'), findsOneWidget);
+    expect(find.text('Continue payment'), findsOneWidget);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/checkout/ord-2');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('expired')), findsOneWidget);
+    expect(api.paid, isEmpty);
+    await tester.pumpWidget(const SizedBox());
   });
 }

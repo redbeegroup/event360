@@ -40,9 +40,20 @@ interface Attendee {
   holder: { displayName: string | null; phone: string | null };
 }
 
+interface Sales {
+  ticketTypes: { id: string; name: string; priceMmk: number; quota: number; sold: number; held: number; revenueMmk: number }[];
+  paidOrders: number;
+  grossMmk: number;
+  commissionMmk: number;
+  netMmk: number;
+  refundedOrders: number;
+  refundedMmk: number;
+  recent: { id: string; status: string; createdAt: string; totalMmk: number; quantity: number; buyer: string | null }[];
+}
+
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -50,7 +61,9 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<AttendanceStats>(`/organizations/${orgId}/events/${id}/attendance`).catch(() => null),
     api<CrewCode[]>(`/organizations/${orgId}/events/${id}/crew-codes`).catch(() => null), // null = not an editor
     api<StreamingOverview>(`/organizations/${orgId}/events/${id}/streaming`).catch(() => null),
+    api<Sales>(`/organizations/${orgId}/events/${id}/sales`).catch(() => null),
   ]);
+  const hasPaid = e.ticketTypes.some((tt) => tt.priceMmk > 0);
   const crewAppUrl = process.env.CREW_APP_URL ?? '';
   const crewLabels: CrewLabels = {
     label: tr.crewCodeLabel, labelHint: tr.crewCodeLabelHint, gate: tr.crewGate, create: tr.crewCreate,
@@ -109,7 +122,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
         {!closed && (
           <>
             <h2>{tr.addTicketType}</h2>
-            <p className="muted">{tr.paidLater}</p>
+            <p className="muted">{tr.paidFeeNote}</p>
             <ActionForm action={addTicketTypeAction} submitLabel={tr.addTicketType} okText={okText}>
               {hidden}
               <div className="grid">
@@ -123,6 +136,48 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
           </>
         )}
       </div>
+
+      {sales && hasPaid && (
+        <>
+          <h2>{tr.salesTitle}</h2>
+          <div className="card table-wrap">
+            <div className="grid">
+              <div><div className="muted">{tr.paidOrders}</div><strong>{sales.paidOrders}</strong></div>
+              <div><div className="muted">{tr.gross}</div><strong>{fmtMmk(sales.grossMmk, tr.lang)}</strong></div>
+              <div><div className="muted">{tr.commission}</div><strong>{fmtMmk(sales.commissionMmk, tr.lang)}</strong></div>
+              <div><div className="muted">{tr.net}</div><strong>{fmtMmk(sales.netMmk, tr.lang)}</strong></div>
+              <div><div className="muted">{tr.refunded}</div><strong>{sales.refundedOrders} · {fmtMmk(sales.refundedMmk, tr.lang)}</strong></div>
+            </div>
+            <table style={{ marginTop: 12 }}>
+              <thead><tr><th>{tr.name}</th><th>{tr.price}</th><th>{tr.sold}</th><th>{tr.held}</th><th>{tr.quota}</th><th>{tr.revenue}</th></tr></thead>
+              <tbody>
+                {sales.ticketTypes.filter((x) => x.priceMmk > 0).map((x) => (
+                  <tr key={x.id}><td>{x.name}</td><td>{fmtMmk(x.priceMmk, tr.lang)}</td><td>{x.sold}</td><td>{x.held}</td><td>{x.quota}</td><td>{fmtMmk(x.revenueMmk, tr.lang)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <h3>{tr.recentOrders}</h3>
+            {sales.recent.length === 0 ? (
+              <p className="muted">{tr.nothingYet}</p>
+            ) : (
+              <table>
+                <thead><tr><th>{tr.time}</th><th>{tr.buyer}</th><th>{tr.qty}</th><th>{tr.total}</th><th>{tr.status}</th></tr></thead>
+                <tbody>
+                  {sales.recent.map((o) => (
+                    <tr key={o.id}>
+                      <td>{fmtDate(o.createdAt, tr.lang)}</td>
+                      <td>{o.buyer ?? ''}</td>
+                      <td>{o.quantity}</td>
+                      <td>{fmtMmk(o.totalMmk, tr.lang)}</td>
+                      <td><span className={`badge ${o.status === 'PAID' ? 'PUBLISHED' : o.status === 'REFUNDED' ? 'DRAFT' : 'SUBMITTED'}`}>{o.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
 
       {!closed && (
         <>

@@ -140,3 +140,135 @@ export class SettingsService {
     };
   }
 }
+
+// ───────────── payment providers ─────────────
+
+export type PaymentProviderKey = 'kbzpay' | 'wavepay';
+
+/** Plain and secret (sealed) fields per payment provider. */
+export const PAYMENT_PROVIDER_FIELDS: Record<PaymentProviderKey, { plain: string[]; secret: string[] }> = {
+  kbzpay: { plain: ['merchantCode', 'appId'], secret: ['appKey'] },
+  wavepay: { plain: ['merchantId'], secret: ['secretKey'] },
+};
+
+interface StoredPayment {
+  plain?: Record<string, string>;
+  sealed?: Record<string, string>;
+  mode?: 'sandbox' | 'production';
+  enabled?: boolean;
+}
+
+export interface PaymentProviderConfig {
+  key: PaymentProviderKey;
+  mode: 'sandbox' | 'production';
+  enabled: boolean;
+  values: Record<string, string>; // plain + decrypted secrets
+}
+
+export interface PaymentSettingsInput {
+  values?: Record<string, string | undefined>; // empty secret = keep the current one
+  mode?: 'sandbox' | 'production';
+  enabled?: boolean;
+}
+
+@Injectable()
+export class PaymentSettingsService {
+  private readonly logger = new Logger(PaymentSettingsService.name);
+  private box: SecretBox | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService,
+  ) {
+    try {
+      this.box = new SecretBox(config.get<string>('SETTINGS_KEY'));
+    } catch {
+      this.box = null;
+    }
+  }
+
+  private async stored(key: PaymentProviderKey): Promise<StoredPayment> {
+    const row = await this.prisma.platformSetting.findUnique({ where: { key: `payment.${key}` } });
+    return (row?.value as unknown as StoredPayment) ?? {};
+  }
+
+  private open(sealed: string): string | null {
+    if (!this.box) return null;
+    try {
+      return this.box.open(sealed);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Admin view: plain values, secrets only as "set" + last 4 characters. */
+  async view(key: PaymentProviderKey) {
+    const s = await this.stored(key);
+    const f = PAYMENT_PROVIDER_FIELDS[key];
+    const secrets: Record<string, { set: boolean; hint: string | null }> = {};
+    for (const k of f.secret) {
+      const sealed = s.sealed?.[k];
+      const v = sealed ? this.open(sealed) : null;
+      secrets[k] = { set: !!sealed, hint: sealed ? (v ? last4(v) : '(cannot decrypt — re-enter)') : null };
+    }
+    return {
+      provider: key,
+      plain: Object.fromEntries(f.plain.map((k) => [k, s.plain?.[k] ?? ''])),
+      secrets,
+      mode: s.mode ?? 'sandbox',
+      enabled: !!s.enabled,
+      canStoreSecrets: !!this.box,
+    };
+  }
+
+  async update(key: PaymentProviderKey, input: PaymentSettingsInput, actorId: string) {
+    if (!this.box) throw new Error('SETTINGS_KEY is not configured on the server');
+    const cur = await this.stored(key);
+    const f = PAYMENT_PROVIDER_FIELDS[key];
+    const plain = { ...(cur.plain ?? {}) };
+    const sealed = { ...(cur.sealed ?? {}) };
+    for (const k of f.plain) if (input.values?.[k] !== undefined) plain[k] = String(input.values[k]).trim();
+    for (const k of f.secret) {
+      const v = input.values?.[k]?.trim();
+      if (v) sealed[k] = this.box.seal(v);
+    }
+    const next: StoredPayment = { plain, sealed, mode: input.mode ?? cur.mode ?? 'sandbox', enabled: input.enabled ?? cur.enabled ?? false };
+    if (next.enabled && [...f.plain.filter((k) => !plain[k]), ...f.secret.filter((k) => !sealed[k])].length) {
+      throw new Error('Fill in every field before enabling this provider');
+    }
+    await this.prisma.$transaction([
+      this.prisma.platformSetting.upsert({
+        where: { key: `payment.${key}` },
+        create: { key: `payment.${key}`, value: next as object, updatedById: actorId },
+        update: { value: next as object, updatedById: actorId },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          actorId,
+          action: `settings.payment.${key}.update`,
+          entityType: 'platform_setting',
+          entityId: `payment.${key}`,
+          data: { changed: Object.keys(input.values ?? {}).filter((k) => input.values?.[k]), mode: next.mode, enabled: next.enabled },
+        },
+      }),
+    ]);
+    return this.view(key);
+  }
+
+  /** Decrypted config, or null when not fully configured. */
+  async config(key: PaymentProviderKey): Promise<PaymentProviderConfig | null> {
+    const s = await this.stored(key);
+    const f = PAYMENT_PROVIDER_FIELDS[key];
+    const values: Record<string, string> = {};
+    for (const k of f.plain) {
+      if (!s.plain?.[k]) return null;
+      values[k] = s.plain[k];
+    }
+    for (const k of f.secret) {
+      const v = s.sealed?.[k] ? this.open(s.sealed[k]) : null;
+      if (!v) return null;
+      values[k] = v;
+    }
+    return { key, mode: s.mode ?? 'sandbox', enabled: !!s.enabled, values };
+  }
+}

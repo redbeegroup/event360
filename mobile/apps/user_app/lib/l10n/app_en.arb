@@ -167,5 +167,50 @@
   "notLiveNow": "This stream is not live right now.",
   "otherDevice": "You started watching on another device, so playback here stopped.",
   "videoError": "The video could not be played. Check your connection and try again.",
-  "liveEnded": "The live stream has ended. A recording may be available soon."
+  "liveEnded": "The live stream has ended. A recording may be available soon.",
+  "getTickets": "Get tickets",
+  "checkout": "Checkout",
+  "total": "Total",
+  "payWith": "Pay with",
+  "payNow": "Pay {amount}",
+  "@payNow": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "holdExpiresIn": "Tickets held for {time}",
+  "@holdExpiresIn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingForPayment": "Waiting for your payment…",
+  "waitingHint": "Finish paying in your wallet app, then come back here. This page updates by itself.",
+  "openWalletAgain": "Open payment page again",
+  "scanToPay": "Scan this QR with your wallet app",
+  "paymentReceived": "Payment received. Your tickets are ready.",
+  "holdExpired": "The hold expired before payment arrived. If you paid, you will be refunded or get your tickets shortly.",
+  "startAgain": "Start again",
+  "cancelOrder": "Cancel order",
+  "orderCancelled": "Order cancelled.",
+  "paymentNotAvailable": "No payment method is available right now.",
+  "continuePayment": "Continue payment",
+  "pendingPayments": "Awaiting payment",
+  "ticketRefunded": "This ticket was refunded.",
+  "choosePayment": "Choose how to pay",
+  "orderSummary": "{qty} × {name}",
+  "@orderSummary": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

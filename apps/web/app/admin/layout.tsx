@@ -15,6 +15,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <nav className="row" style={{ marginBottom: 20 }}>
         <Link href="/admin/organizations" className="btn secondary">{tr.organizations}</Link>
         <Link href="/admin/events" className="btn secondary">{tr.moderation}</Link>
+        <Link href="/admin/finance" className="btn secondary">{tr.finance}</Link>
         <Link href="/admin/settings" className="btn secondary">{tr.settings}</Link>
       </nav>
       {children}

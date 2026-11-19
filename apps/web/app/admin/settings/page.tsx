@@ -1,7 +1,7 @@
 import { ActionForm } from '../../components/ActionForm';
 import { api } from '../../lib/api';
 import { fmtDate, t } from '../../lib/i18n';
-import { saveSmsSettingsAction, sendTestSmsAction } from '../actions';
+import { savePaymentSettingsAction, saveSmsSettingsAction, sendTestSmsAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +30,24 @@ interface SmsLogRow {
   createdAt: string;
 }
 
+interface PaymentView {
+  provider: 'kbzpay' | 'wavepay';
+  plain: Record<string, string>;
+  secrets: Record<string, { set: boolean; hint: string | null }>;
+  mode: 'sandbox' | 'production';
+  enabled: boolean;
+  canStoreSecrets: boolean;
+  callbackUrl: string;
+}
+
 export default async function SettingsPage() {
-  const [tr, sms, log] = await Promise.all([t(), api<SmsView>('/admin/settings/sms'), api<SmsLogRow[]>('/admin/sms-log?limit=20')]);
+  const [tr, sms, log, pays] = await Promise.all([
+    t(),
+    api<SmsView>('/admin/settings/sms'),
+    api<SmsLogRow[]>('/admin/sms-log?limit=20'),
+    api<PaymentView[]>('/admin/settings/payments'),
+  ]);
+  const label = (k: string) => (tr as unknown as Record<string, string>)[`f_${k}`] ?? k;
   const configured = !!sms.apiKey && sms.apiSecretSet && !!sms.senderId;
   const preview = sms.otpTemplate.replaceAll('{code}', '482913').replaceAll('{minutes}', '5');
   return (
@@ -95,6 +111,51 @@ export default async function SettingsPage() {
           </div>
         </>
       )}
+
+      <h2>{tr.paymentsTitle}</h2>
+      <p className="muted">{tr.paymentsHint}</p>
+      {pays.map((p) => {
+        const configured = Object.values(p.plain).every(Boolean) && Object.values(p.secrets).every((s) => s.set);
+        return (
+          <div className="card" key={p.provider} id={`pay-${p.provider}`}>
+            <h3 style={{ marginTop: 0 }}>
+              {p.provider === 'kbzpay' ? 'KBZPay' : 'WavePay'}{' '}
+              <span className={`badge ${p.enabled && configured ? 'PUBLISHED' : 'SUBMITTED'}`}>
+                {p.enabled && configured ? tr.providerOn : configured ? tr.providerOff : tr.providerNotConfigured}
+              </span>{' '}
+              {p.mode === 'sandbox' && <span className="badge SUBMITTED">{tr.sandbox}</span>}
+            </h3>
+            <p className="muted">{p.provider === 'kbzpay' ? tr.kbzNote : tr.waveNote}</p>
+            <p>{tr.callbackUrl}: <code>{p.callbackUrl}</code></p>
+            <ActionForm action={savePaymentSettingsAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
+              <input type="hidden" name="provider" value={p.provider} />
+              <div className="grid">
+                {Object.entries(p.plain).map(([k, v]) => (
+                  <div className="field" key={k}>
+                    <label>{label(k)}</label>
+                    <input name={`v_${k}`} defaultValue={v} autoComplete="off" />
+                  </div>
+                ))}
+                {Object.entries(p.secrets).map(([k, s]) => (
+                  <div className="field" key={k}>
+                    <label>{label(k)}</label>
+                    <input name={`v_${k}`} type="password" autoComplete="new-password" placeholder={s.hint ?? ''} />
+                    {s.set && <small className="muted">{tr.keepSecretHint}</small>}
+                  </div>
+                ))}
+                <div className="field">
+                  <label>{tr.mode}</label>
+                  <select name="mode" defaultValue={p.mode}>
+                    <option value="sandbox">{tr.sandbox}</option>
+                    <option value="production">{tr.production}</option>
+                  </select>
+                </div>
+              </div>
+              <label className="check"><input type="checkbox" name="enabled" defaultChecked={p.enabled} /> {tr.enableProvider}</label>
+            </ActionForm>
+          </div>
+        );
+      })}
 
       <h2>{tr.smsLog}</h2>
       <div className="card table-wrap">

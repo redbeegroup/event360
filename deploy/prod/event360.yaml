@@ -157,6 +157,8 @@ spec:
               value: '300'
             - name: OTP_DEV_ECHO
               value: 'false'
+            - name: PAYMENTS_MOCK
+              value: 'false'
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
@@ -269,6 +271,8 @@ spec:
               value: '300'
             - name: OTP_DEV_ECHO
               value: 'false'
+            - name: PAYMENTS_MOCK
+              value: 'false'
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
@@ -364,6 +368,8 @@ spec:
             - name: OTP_TTL_SECONDS
               value: '300'
             - name: OTP_DEV_ECHO
+              value: 'false'
+            - name: PAYMENTS_MOCK
               value: 'false'
             - name: JWT_ACCESS_TTL
               value: 15m

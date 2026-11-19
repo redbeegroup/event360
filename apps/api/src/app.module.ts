@@ -11,6 +11,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { CheckinModule } from './modules/checkin/checkin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
@@ -30,6 +31,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     TicketsModule,
     CheckinModule,
     StreamingModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}

@@ -325,4 +325,75 @@ class L10nEn extends L10n {
   @override
   String get liveEnded =>
       'The live stream has ended. A recording may be available soon.';
+
+  @override
+  String get getTickets => 'Get tickets';
+
+  @override
+  String get checkout => 'Checkout';
+
+  @override
+  String get total => 'Total';
+
+  @override
+  String get payWith => 'Pay with';
+
+  @override
+  String payNow(String amount) {
+    return 'Pay $amount';
+  }
+
+  @override
+  String holdExpiresIn(String time) {
+    return 'Tickets held for $time';
+  }
+
+  @override
+  String get waitingForPayment => 'Waiting for your payment…';
+
+  @override
+  String get waitingHint =>
+      'Finish paying in your wallet app, then come back here. This page updates by itself.';
+
+  @override
+  String get openWalletAgain => 'Open payment page again';
+
+  @override
+  String get scanToPay => 'Scan this QR with your wallet app';
+
+  @override
+  String get paymentReceived => 'Payment received. Your tickets are ready.';
+
+  @override
+  String get holdExpired =>
+      'The hold expired before payment arrived. If you paid, you will be refunded or get your tickets shortly.';
+
+  @override
+  String get startAgain => 'Start again';
+
+  @override
+  String get cancelOrder => 'Cancel order';
+
+  @override
+  String get orderCancelled => 'Order cancelled.';
+
+  @override
+  String get paymentNotAvailable => 'No payment method is available right now.';
+
+  @override
+  String get continuePayment => 'Continue payment';
+
+  @override
+  String get pendingPayments => 'Awaiting payment';
+
+  @override
+  String get ticketRefunded => 'This ticket was refunded.';
+
+  @override
+  String get choosePayment => 'Choose how to pay';
+
+  @override
+  String orderSummary(String qty, String name) {
+    return '$qty × $name';
+  }
 }

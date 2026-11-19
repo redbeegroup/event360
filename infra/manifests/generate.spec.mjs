@@ -76,4 +76,12 @@ for (const envName of Object.keys(config.environments)) {
     const srsConf = byKind('ConfigMap').find((x) => x.metadata.name === 'srs-config').data['srs.conf'];
     assert.match(srsConf, /secret=__HOOK_SECRET__/); // real secret only injected at runtime
   });
+
+  test(`${envName}: the test wallet (Mock pay) is only on dev`, () => {
+    for (const name of ['api', 'worker', 'realtime']) {
+      const d = byKind('Deployment').find((x) => x.metadata.name === name);
+      const e = Object.fromEntries(d.spec.template.spec.containers[0].env.map((x) => [x.name, x.value]));
+      assert.equal(e.PAYMENTS_MOCK, envName === 'dev' ? 'true' : 'false');
+    }
+  });
 }

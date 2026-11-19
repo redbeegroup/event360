@@ -684,6 +684,132 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'The live stream has ended. A recording may be available soon.'**
   String get liveEnded;
+
+  /// No description provided for @getTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'Get tickets'**
+  String get getTickets;
+
+  /// No description provided for @checkout.
+  ///
+  /// In en, this message translates to:
+  /// **'Checkout'**
+  String get checkout;
+
+  /// No description provided for @total.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get total;
+
+  /// No description provided for @payWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay with'**
+  String get payWith;
+
+  /// No description provided for @payNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay {amount}'**
+  String payNow(String amount);
+
+  /// No description provided for @holdExpiresIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Tickets held for {time}'**
+  String holdExpiresIn(String time);
+
+  /// No description provided for @waitingForPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for your payment…'**
+  String get waitingForPayment;
+
+  /// No description provided for @waitingHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish paying in your wallet app, then come back here. This page updates by itself.'**
+  String get waitingHint;
+
+  /// No description provided for @openWalletAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Open payment page again'**
+  String get openWalletAgain;
+
+  /// No description provided for @scanToPay.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this QR with your wallet app'**
+  String get scanToPay;
+
+  /// No description provided for @paymentReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment received. Your tickets are ready.'**
+  String get paymentReceived;
+
+  /// No description provided for @holdExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'The hold expired before payment arrived. If you paid, you will be refunded or get your tickets shortly.'**
+  String get holdExpired;
+
+  /// No description provided for @startAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Start again'**
+  String get startAgain;
+
+  /// No description provided for @cancelOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel order'**
+  String get cancelOrder;
+
+  /// No description provided for @orderCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Order cancelled.'**
+  String get orderCancelled;
+
+  /// No description provided for @paymentNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No payment method is available right now.'**
+  String get paymentNotAvailable;
+
+  /// No description provided for @continuePayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue payment'**
+  String get continuePayment;
+
+  /// No description provided for @pendingPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting payment'**
+  String get pendingPayments;
+
+  /// No description provided for @ticketRefunded.
+  ///
+  /// In en, this message translates to:
+  /// **'This ticket was refunded.'**
+  String get ticketRefunded;
+
+  /// No description provided for @choosePayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how to pay'**
+  String get choosePayment;
+
+  /// No description provided for @orderSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{qty} × {name}'**
+  String orderSummary(String qty, String name);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {
