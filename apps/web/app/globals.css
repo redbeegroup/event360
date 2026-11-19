@@ -71,3 +71,6 @@ th { font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: u
 .crew-code-row img { background: #fff; border-radius: 8px; padding: 6px; }
 .big-code { font-size: 1.8rem; letter-spacing: 0.12em; text-align: center; font-weight: 700; }
 a.button { display: inline-block; padding: 8px 14px; border-radius: 8px; text-decoration: none; border: 1px solid var(--border); }
+label.check { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-weight: normal; }
+label.check input { width: auto; }
+.error-text { color: var(--danger); }

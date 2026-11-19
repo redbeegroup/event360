@@ -69,3 +69,34 @@ export async function rejectEventAction(_: FormState, fd: FormData): Promise<For
     return err(e);
   }
 }
+
+export async function saveSmsSettingsAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    const s = (k: string) => String(fd.get(k) ?? '').trim();
+    await api('/admin/settings/sms', {
+      method: 'PUT',
+      json: {
+        ...(s('apiKey') ? { apiKey: s('apiKey') } : {}),
+        ...(s('apiSecret') ? { apiSecret: s('apiSecret') } : {}),
+        senderId: s('senderId'),
+        otpTemplate: s('otpTemplate'),
+        enabled: fd.get('enabled') === 'on',
+        testMode: fd.get('testMode') === 'on',
+      },
+    });
+    revalidatePath('/admin/settings');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function sendTestSmsAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    const r = await api<{ messageId?: string; network?: string }>('/admin/settings/sms/test', { method: 'POST', json: { phone: fd.get('phone') } });
+    revalidatePath('/admin/settings');
+    return { ok: 'testSent', data: { messageId: r.messageId ?? '', network: r.network ?? '' } };
+  } catch (e) {
+    return err(e);
+  }
+}

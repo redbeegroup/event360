@@ -718,3 +718,31 @@ model AuditLog {
   @@index([entityType, entityId])
   @@map("audit_logs")
 }
+
+// ───────────────────────────── Platform settings & notifications ─────────────────────────────
+
+/// Admin-editable platform configuration (e.g. "sms"). Secret fields inside `value` are AES-GCM encrypted with SETTINGS_KEY.
+model PlatformSetting {
+  key         String   @id
+  value       Json
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+/// One outgoing SMS. The message text is not stored (it may contain a login code).
+model SmsLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  provider          String
+  to                String // masked, e.g. 959•••••1234
+  purpose           String // otp | test
+  status            String // accepted | failed
+  providerMessageId String?  @map("provider_message_id")
+  error             String?
+  testMode          Boolean  @default(false) @map("test_mode")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("sms_logs")
+}

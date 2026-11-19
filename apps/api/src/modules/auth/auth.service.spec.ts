@@ -30,6 +30,10 @@ function makePrisma() {
         otps.push(row);
         return row;
       },
+      delete: async ({ where }: any) => {
+        const i = otps.findIndex((o) => o.id === where.id);
+        return otps.splice(i, 1)[0];
+      },
       update: async ({ where, data }: any) => {
         const row = otps.find((o) => o.id === where.id);
         if (data.attempts?.increment) row.attempts += data.attempts.increment;
@@ -74,7 +78,7 @@ describe('AuthService (phone OTP)', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new AuthService(prisma as any, jwt, config);
+    svc = new AuthService(prisma as any, jwt, config, { sendOtp: jest.fn() } as any);
   });
 
   it('issues tokens for a correct code and consumes it', async () => {
@@ -106,5 +110,30 @@ describe('AuthService (phone OTP)', () => {
     expect(second.refreshToken).not.toBe(first.refreshToken);
     await expect(svc.refresh(first.refreshToken)).rejects.toThrow('reused');
     await expect(svc.refresh(second.refreshToken)).rejects.toThrow('reused');
+  });
+});
+
+describe('AuthService (production: code sent by SMS)', () => {
+  const config = new ConfigService({ OTP_DEV_ECHO: 'false', OTP_TTL_SECONDS: '300' });
+  const jwt = new JwtService({ secret: 'test' });
+
+  it('sends the code by SMS and never returns it', async () => {
+    const prisma = makePrisma();
+    const sms = { sendOtp: jest.fn().mockResolvedValue({ messageId: 'm1' }) };
+    const svc = new AuthService(prisma as any, jwt, config, sms as any);
+    const r = await svc.requestOtp('09123456789');
+    expect(r).toEqual({ expiresInSeconds: 300 });
+    expect(sms.sendOtp).toHaveBeenCalledWith('+959123456789', expect.stringMatching(/^\d{6}$/), 5);
+    const code = sms.sendOtp.mock.calls[0][1];
+    await expect(svc.verifyOtp('09123456789', code)).resolves.toMatchObject({ user: { phone: '+959123456789' } });
+  });
+
+  it('a failed send returns 503 and does not use up the cooldown/limit', async () => {
+    const prisma = makePrisma();
+    const sms = { sendOtp: jest.fn().mockRejectedValueOnce(new Error('timeout')).mockResolvedValue({}) };
+    const svc = new AuthService(prisma as any, jwt, config, sms as any);
+    await expect(svc.requestOtp('09123456789')).rejects.toMatchObject({ status: 503 });
+    expect(prisma.otps).toHaveLength(0);
+    await expect(svc.requestOtp('09123456789')).resolves.toEqual({ expiresInSeconds: 300 }); // no "please wait"
   });
 });

@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { OrgRole, PlatformRole } from '@prisma/client';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import { hashPassword, verifyPassword } from '../../common/util';
+import { SmsService } from '../notifications/sms.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeMyanmarPhone } from './phone';
 
@@ -38,6 +39,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly sms: SmsService,
   ) {}
 
   private phoneOrThrow(raw: string): string {
@@ -64,14 +66,24 @@ export class AuthService {
 
     const ttl = Number(this.config.get('OTP_TTL_SECONDS') ?? 300);
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    await this.prisma.otpChallenge.create({
+    const challenge = await this.prisma.otpChallenge.create({
       data: { phone, codeHash: sha256(`${phone}:${code}`), expiresAt: new Date(Date.now() + ttl * 1000) },
     });
 
-    // TODO(Phase 1): dispatch via notifications module → local SMS aggregator.
-    const devEcho = this.config.get('OTP_DEV_ECHO') === 'true';
-    if (devEcho) this.logger.warn(`DEV OTP for ${phone}: ${code}`);
-    return { expiresInSeconds: ttl, ...(devEcho ? { devCode: code } : {}) };
+    // Dev shows the code on screen and never sends SMS (saves credit).
+    if (this.config.get('OTP_DEV_ECHO') === 'true') {
+      this.logger.warn(`DEV OTP for ${phone}: ${code}`);
+      return { expiresInSeconds: ttl, devCode: code };
+    }
+    try {
+      await this.sms.sendOtp(phone, code, Math.round(ttl / 60));
+    } catch (e) {
+      // Don't count a code the user never received against their per-number limit.
+      await this.prisma.otpChallenge.delete({ where: { id: challenge.id } }).catch(() => undefined);
+      if (e instanceof HttpException) throw e;
+      throw new HttpException('Could not send the code. Please try again.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return { expiresInSeconds: ttl };
   }
 
   async verifyOtp(rawPhone: string, code: string): Promise<TokenPair> {
