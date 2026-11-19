@@ -118,7 +118,7 @@ spec:
         fsGroup: 10001
       initContainers:
         - name: migrate
-          image: ghcr.io/redbeegroup/event360-api:70d470c8812719acf52679e30b53ed0db22d63ea
+          image: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
           imagePullPolicy: IfNotPresent
           command:
             - sh
@@ -140,7 +140,7 @@ spec:
               memory: 768Mi
       containers:
         - name: api
-          image: ghcr.io/redbeegroup/event360-api:70d470c8812719acf52679e30b53ed0db22d63ea
+          image: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -159,7 +159,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.event360.app
+              value: https://portal.event360.app,https://app.event360.app
             - name: PUBLIC_API_URL
               value: https://api.event360.app
             - name: PORTAL_URL
@@ -236,7 +236,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: realtime
-          image: ghcr.io/redbeegroup/event360-api:70d470c8812719acf52679e30b53ed0db22d63ea
+          image: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -255,7 +255,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.event360.app
+              value: https://portal.event360.app,https://app.event360.app
             - name: PUBLIC_API_URL
               value: https://api.event360.app
             - name: PORTAL_URL
@@ -316,7 +316,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: worker
-          image: ghcr.io/redbeegroup/event360-api:70d470c8812719acf52679e30b53ed0db22d63ea
+          image: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -335,7 +335,7 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.event360.app
+              value: https://portal.event360.app,https://app.event360.app
             - name: PUBLIC_API_URL
               value: https://api.event360.app
             - name: PORTAL_URL
@@ -414,7 +414,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: web
-          image: ghcr.io/redbeegroup/event360-web:70d470c8812719acf52679e30b53ed0db22d63ea
+          image: ghcr.io/redbeegroup/event360-web:118dc7994a2a18d351d12e13102891d8b02745ae
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -423,7 +423,7 @@ spec:
             - name: API_URL
               value: http://api:3000
             - name: CREW_APP_URL
-              value: ''
+              value: https://app.event360.app/crew/
           readinessProbe:
             httpGet:
               path: /
@@ -455,6 +455,72 @@ spec:
   ports:
     - name: http
       port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-web
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: user-web
+    app.kubernetes.io/part-of: event360
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-web
+        app.kubernetes.io/part-of: event360
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+        - name: user-web
+          image: ghcr.io/redbeegroup/event360-user-web:118dc7994a2a18d351d12e13102891d8b02745ae-prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env: []
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-web
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: user-web
+    app.kubernetes.io/part-of: event360
+spec:
+  selector:
+    app.kubernetes.io/name: user-web
+  ports:
+    - name: http
+      port: 80
       targetPort: http
 ---
 apiVersion: networking.k8s.io/v1
@@ -496,6 +562,16 @@ spec:
             backend:
               service:
                 name: web
+                port:
+                  name: http
+    - host: app.event360.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: user-web
                 port:
                   name: http
 ---
