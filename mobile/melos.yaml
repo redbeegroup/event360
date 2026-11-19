@@ -7,7 +7,9 @@ scripts:
     run: melos exec -- flutter analyze --no-fatal-infos
   test:
     # Flutter packages use `flutter test`; pure Dart packages (ticketing) use `dart test`.
-    run: melos exec --dir-exists=test -- "if grep -q 'sdk: flutter' pubspec.yaml; then flutter test; else dart test; fi"
+    run: >-
+      melos exec --dir-exists=test --
+      "if grep -q 'sdk: flutter' pubspec.yaml; then flutter test; else dart test; fi"
   gen:api:
     description: Regenerate the Dart API client from the NestJS OpenAPI spec
     run: >
