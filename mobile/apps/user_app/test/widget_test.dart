@@ -447,4 +447,18 @@ void main() {
     expect(api.paid, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('sign-in opened from a link returns to the page that asked for it', (tester) async {
+    await pumpApp(tester);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).go('/login?from=%2Fevent%2Fe1');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '09790000001');
+    await tester.tap(find.text('Send code'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '123456');
+    await tester.tap(find.text('Verify'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Yangon Food Fair e1'), findsWidgets);
+  });
 }

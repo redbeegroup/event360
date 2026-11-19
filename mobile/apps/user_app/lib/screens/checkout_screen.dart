@@ -94,7 +94,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
       _error = null;
     });
     try {
-      final o = await ref.read(apiProvider).payOrder(widget.orderId, p, returnUrl: kIsWeb ? Uri.base.toString() : null);
+      // Web: the wallet page sends the buyer back to this checkout (the hash route), which then shows the result
+      final back = kIsWeb ? Uri.base.replace(fragment: '/checkout/${widget.orderId}').toString() : null;
+      final o = await ref.read(apiProvider).payOrder(widget.orderId, p, returnUrl: back);
       if (!mounted) return;
       setState(() => _order = o);
       final url = o.paymentAction?.openUrl;
@@ -156,6 +158,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
       );
     } else {
       final methods = ref.watch(paymentMethodsProvider).value ?? const <PaymentMethod>[];
+      final selected = _provider ?? (methods.length == 1 ? methods.single.code : null);
       final action = o.paymentAction;
       final started = action != null;
       body = ListView(padding: const EdgeInsets.all(20), children: [
@@ -211,7 +214,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
           RadioListTile<String>(
             key: Key('method-${m.code}'),
             value: m.code,
-            groupValue: _provider,
+            groupValue: selected,
             onChanged: _busy ? null : (v) => setState(() => _provider = v),
             title: Text(m.label),
           ),
@@ -219,7 +222,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
         const SizedBox(height: 12),
         FilledButton(
           key: const Key('pay'),
-          onPressed: _busy || _provider == null || (started && _provider == o.paymentProvider && action.type == 'QR') ? null : _pay,
+          onPressed: _busy || selected == null || (started && selected == o.paymentProvider && action.type == 'QR')
+              ? null
+              : () {
+                  _provider = selected;
+                  _pay();
+                },
           child: _busy
               ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
               : Text(t.payNow(t.mmk(formatAmount(o.totalMmk, lang)))),

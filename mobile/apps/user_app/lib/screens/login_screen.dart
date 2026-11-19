@@ -62,7 +62,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ref.invalidate(myTicketsProvider);
       if (!mounted) return;
       if (widget.returnTo != null) {
-        context.pop();
+        // Opened from a link (nothing underneath): go to the page that asked for sign-in
+        context.canPop() ? context.pop() : context.go(widget.returnTo!);
       } else {
         context.go('/tickets');
       }
