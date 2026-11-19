@@ -1,12 +1,14 @@
 name: crew_app
-description: Event 360 Crew
+description: Event 360 Crew — door check-in
 publish_to: none
 version: 0.1.0+1
 environment:
-  sdk: ^3.6.0
+  sdk: ^3.8.0
   flutter: ">=3.27.0"
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   event360_core:
     path: ../../packages/core
@@ -14,5 +16,16 @@ dependencies:
     path: ../../packages/ui
   event360_ticketing:
     path: ../../packages/ticketing
+  flutter_riverpod: ^3.5.0
+  go_router: ^18.1.4
+  intl: ^0.20.3
+  shared_preferences: ^2.5.6
+  mobile_scanner: ^7.1.4
 flutter:
   uses-material-design: true
+  generate: true
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  cryptography: ^2.7.0

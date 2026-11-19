@@ -236,7 +236,11 @@ export function buildManifests(envName, config) {
       pullPolicy,
       config,
       replicas: env.replicas.web,
-      env: [{ name: 'API_URL', value: 'http://api:3000' }],
+      env: [
+        { name: 'API_URL', value: 'http://api:3000' },
+        // Crew web preview link shown on the event page (dev only, served by user-web under /crew/)
+        { name: 'CREW_APP_URL', value: env.userWeb ? `https://app.${env.domain}/crew/` : '' },
+      ],
       runAsUser: 1000,
       probes: { readinessProbe: { httpGet: { path: '/', port: 'http' }, periodSeconds: 10 } },
       resources: small,

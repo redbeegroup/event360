@@ -232,3 +232,60 @@ export async function saveProfileAction(_: FormState, fd: FormData): Promise<For
     return err(e);
   }
 }
+
+// ───────────── Check-in (crew) ─────────────
+
+export interface AttendanceStats {
+  registered: number;
+  checkedIn: number;
+  byTicketType: { id: string; name: string; nameMy: string | null; registered: number; checkedIn: number }[];
+  byGate: { gate: string | null; checkedIn: number }[];
+  recent: {
+    id: string;
+    at: string;
+    gate: string | null;
+    method: 'QR' | 'MANUAL';
+    offline: boolean;
+    duplicate: boolean;
+    undone: boolean;
+    by: string | null;
+    ticket: { code: string; holderName: string; ticketType: { name: string; nameMy: string | null } };
+  }[];
+}
+
+/** Polled by the live attendance panel. */
+export async function attendanceAction(orgId: string, eventId: string): Promise<AttendanceStats | null> {
+  try {
+    return await api<AttendanceStats>(`/organizations/${orgId}/events/${eventId}/attendance`);
+  } catch {
+    return null;
+  }
+}
+
+export async function createCrewCodeAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  try {
+    const gate = String(fd.get('gate') ?? '').trim();
+    const r = await api<{ code: string; label: string; gate: string | null; expiresAt: string; redeemUri: string }>(
+      `/organizations/${orgId}/events/${id}/crew-codes`,
+      { method: 'POST', json: { label: String(fd.get('label') ?? '').trim(), ...(gate ? { gate } : {}) } },
+    );
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { data: { code: r.code, label: r.label, gate: r.gate ?? '', expiresAt: r.expiresAt, redeemUri: r.redeemUri } };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function revokeCrewCodeAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  try {
+    await api(`/organizations/${orgId}/events/${id}/crew-codes/${fd.get('codeId')}`, { method: 'DELETE' });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'revoked' };
+  } catch (e) {
+    return err(e);
+  }
+}

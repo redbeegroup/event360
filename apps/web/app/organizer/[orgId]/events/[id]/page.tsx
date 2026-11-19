@@ -2,9 +2,14 @@ import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
 import { api } from '../../../../lib/api';
 import { ListEditor } from '../../../../components/ListEditor';
+import { AttendanceLive, CrewCodeForm, type CrewLabels } from '../../../../components/CrewCheckin';
 import { fmtDate, fmtMmk, pick, t, toLocalInput } from '../../../../lib/i18n';
 import type { CategoryDto, EventDto } from '../../../../lib/types';
 import {
+  attendanceAction,
+  createCrewCodeAction,
+  revokeCrewCodeAction,
+  type AttendanceStats,
   addTicketTypeAction,
   cancelEventAction,
   deleteTicketTypeAction,
@@ -16,6 +21,15 @@ import { EventFields } from '../../../EventFields';
 
 export const dynamic = 'force-dynamic';
 
+interface CrewCode {
+  id: string;
+  label: string;
+  gate: string | null;
+  expiresAt: string;
+  devices: number;
+  active: boolean;
+}
+
 interface Attendee {
   id: string;
   status: string;
@@ -26,12 +40,22 @@ interface Attendee {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
     api<Attendee[]>(`/organizations/${orgId}/events/${id}/attendees`),
+    api<AttendanceStats>(`/organizations/${orgId}/events/${id}/attendance`).catch(() => null),
+    api<CrewCode[]>(`/organizations/${orgId}/events/${id}/crew-codes`).catch(() => null), // null = not an editor
   ]);
+  const crewAppUrl = process.env.CREW_APP_URL ?? '';
+  const crewLabels: CrewLabels = {
+    label: tr.crewCodeLabel, labelHint: tr.crewCodeLabelHint, gate: tr.crewGate, create: tr.crewCreate,
+    codeTitle: tr.crewCodeTitle, codeHint: tr.crewCodeHint, openCrewApp: tr.openCrewApp, copy: tr.copy, expires: tr.expires,
+    registered: tr.registeredLabel, checkedIn: tr.checkedIn, byGate: tr.byGate, noGate: tr.noGate, recent: tr.recentScans,
+    noScans: tr.noScans, duplicate: tr.duplicateScan, undone: tr.undone, manual: tr.manualCheckin, offline: tr.offlineScan, updated: tr.updatedAt,
+  };
+  const loadAttendance = attendanceAction.bind(null, orgId, id);
   const hidden = (
     <>
       <input type="hidden" name="orgId" value={orgId} />
@@ -180,6 +204,56 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
             </ActionForm>
           </div>
         </>
+      )}
+
+      {e.status === 'PUBLISHED' && (
+        <section>
+          <h2>{tr.checkin}</h2>
+          <div className="card">
+            <p className="muted">{tr.checkinHint}</p>
+            {crewAppUrl && (
+              <p>{tr.crewAppHint} <a href={crewAppUrl} target="_blank" rel="noreferrer">{crewAppUrl}</a></p>
+            )}
+            <h3>{tr.liveAttendance}</h3>
+            <AttendanceLive initial={attendance} load={loadAttendance} labels={crewLabels} lang={tr.lang} />
+          </div>
+          {codes && (
+            <>
+              <h3>{tr.crewCodes}</h3>
+              <div className="card">
+                {codes.length === 0 ? (
+                  <p className="muted">{tr.noCodes}</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>{tr.crewCodeLabel}</th><th>{tr.crewGate}</th><th>{tr.devices}</th><th>{tr.expires}</th><th>{tr.status}</th><th /></tr></thead>
+                      <tbody>
+                        {codes.map((c) => (
+                          <tr key={c.id}>
+                            <td>{c.label}</td>
+                            <td>{c.gate ?? '—'}</td>
+                            <td>{c.devices}</td>
+                            <td>{fmtDate(c.expiresAt, tr.lang)}</td>
+                            <td><span className={`badge ${c.active ? 'PUBLISHED' : 'CANCELLED'}`}>{c.active ? tr.active : tr.inactive}</span></td>
+                            <td>
+                              {c.active && (
+                                <ActionForm action={revokeCrewCodeAction} submitLabel={tr.revoke} variant="danger" confirm={tr.revokeConfirm} okText={{ revoked: tr.saved }}>
+                                  {hidden}
+                                  <input type="hidden" name="codeId" value={c.id} />
+                                </ActionForm>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <CrewCodeForm action={createCrewCodeAction} hidden={{ orgId, eventId: id }} labels={crewLabels} crewAppUrl={crewAppUrl} lang={tr.lang} />
+              </div>
+            </>
+          )}
+        </section>
       )}
 
       <h2>{tr.attendees} ({attendees.length})</h2>

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'app_config.dart';
+import 'crew.dart';
 import 'models.dart';
 import 'token_store.dart';
 
@@ -158,4 +159,69 @@ class Event360Api {
         () => _dio.get('/meta/ticket-public-key', options: Options(extra: {'auth': false})),
         (d) => (d as Map<String, dynamic>)['publicKey'] as String,
       );
+
+  // ───── Crew (door check-in) ─────
+
+  /// Portal-staff sign-in (invited crew, organizers).
+  Future<void> passwordLogin(String email, String password) async {
+    final d = await _call(
+      () => _dio.post('/auth/password/login', data: {'email': email, 'password': password}, options: Options(extra: {'auth': false})),
+      (d) => d as Map<String, dynamic>,
+    );
+    await tokens.save(d['accessToken'] as String, d['refreshToken'] as String);
+  }
+
+  /// Volunteer device: event code → a session scoped to one event (no refresh token).
+  Future<CrewRedeem> crewRedeem(String code, String deviceName) async {
+    final r = await _call(
+      () => _dio.post('/crew/redeem', data: {'code': code, 'deviceName': deviceName}, options: Options(extra: {'auth': false})),
+      (d) => CrewRedeem.fromJson(d as Map<String, dynamic>),
+    );
+    await tokens.save(r.accessToken, '');
+    return r;
+  }
+
+  Future<List<CrewEvent>> crewEvents() =>
+      _call(() => _dio.get('/crew/events'), (d) => (d as List).map((e) => CrewEvent.fromJson(e as Map<String, dynamic>)).toList());
+
+  Future<CrewManifest> crewManifest(String eventId) =>
+      _call(() => _dio.get('/crew/events/$eventId/manifest'), (d) => CrewManifest.fromJson(d as Map<String, dynamic>));
+
+  Future<ScanOutcome> crewScan(String eventId, String qr, {String? gate, String? deviceId, DateTime? scannedAt}) => _call(
+        () => _dio.post('/crew/events/$eventId/scan', data: {
+          'qr': qr,
+          if (gate != null && gate.isNotEmpty) 'gate': gate,
+          if (deviceId != null) 'deviceId': deviceId,
+          'scannedAt': (scannedAt ?? DateTime.now()).toUtc().toIso8601String(),
+        }),
+        (d) => ScanOutcome.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// Uploads scans recorded offline. Each map: clientId, qr|ticketId, method, gate, deviceId, scannedAt.
+  Future<List<ScanOutcome>> crewSync(String eventId, List<Map<String, dynamic>> scans) => _call(
+        () => _dio.post('/crew/events/$eventId/sync', data: {'scans': scans}),
+        (d) => ((d as Map<String, dynamic>)['results'] as List).map((r) => ScanOutcome.fromJson(r as Map<String, dynamic>)).toList(),
+      );
+
+  Future<List<CrewTicket>> crewSearch(String eventId, String q) => _call(
+        () => _dio.get('/crew/events/$eventId/search', queryParameters: {'q': q}),
+        (d) => (d as List).map((t) => CrewTicket.fromJson(t as Map<String, dynamic>)).toList(),
+      );
+
+  Future<ScanOutcome> crewManualCheckin(String eventId, String ticketId, {String? gate, String? deviceId}) => _call(
+        () => _dio.post('/crew/events/$eventId/tickets/$ticketId/checkin', data: {
+          if (gate != null && gate.isNotEmpty) 'gate': gate,
+          if (deviceId != null) 'deviceId': deviceId,
+          'scannedAt': DateTime.now().toUtc().toIso8601String(),
+        }),
+        (d) => ScanOutcome.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<CrewTicket> crewUndo(String eventId, String ticketId) => _call(
+        () => _dio.post('/crew/events/$eventId/tickets/$ticketId/undo'),
+        (d) => CrewTicket.fromJson((d as Map<String, dynamic>)['ticket'] as Map<String, dynamic>),
+      );
+
+  Future<CrewStats> crewStats(String eventId) =>
+      _call(() => _dio.get('/crew/events/$eventId/stats'), (d) => CrewStats.fromJson(d as Map<String, dynamic>));
 }

@@ -78,7 +78,7 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
               <div className="field">
                 <label>{tr.role}</label>
                 <select name="role" defaultValue="ORG_MANAGER">
-                  {['ORG_MANAGER', 'ORG_FINANCE', 'ORG_OWNER'].map((r) => <option key={r} value={r}>{tr.roles[r]}</option>)}
+                  {['ORG_MANAGER', 'CREW', 'ORG_FINANCE', 'ORG_OWNER'].map((r) => <option key={r} value={r}>{tr.roles[r]}</option>)}
                 </select>
               </div>
             </div>

@@ -9,10 +9,11 @@ abstract class TokenStore {
 }
 
 class SecureTokenStore implements TokenStore {
-  SecureTokenStore([FlutterSecureStorage? storage]) : _s = storage ?? const FlutterSecureStorage();
+  /// [prefix] keeps apps apart when they share storage (e.g. the user and crew web previews on one origin).
+  SecureTokenStore([FlutterSecureStorage? storage, String prefix = 'e360']) : _s = storage ?? const FlutterSecureStorage(), _a = '${prefix}_access', _r = '${prefix}_refresh';
   final FlutterSecureStorage _s;
-  static const _a = 'e360_access';
-  static const _r = 'e360_refresh';
+  final String _a;
+  final String _r;
 
   @override
   Future<String?> accessToken() => _s.read(key: _a);

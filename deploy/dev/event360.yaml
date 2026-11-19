@@ -422,6 +422,8 @@ spec:
           env:
             - name: API_URL
               value: http://api:3000
+            - name: CREW_APP_URL
+              value: https://app.dev.event360.app/crew/
           readinessProbe:
             httpGet:
               path: /

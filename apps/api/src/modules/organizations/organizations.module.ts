@@ -8,7 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-const INVITABLE_ROLES: OrgRole[] = ['ORG_OWNER', 'ORG_MANAGER', 'ORG_FINANCE'];
+const INVITABLE_ROLES: OrgRole[] = ['ORG_OWNER', 'ORG_MANAGER', 'ORG_FINANCE', 'CREW'];
 
 class CreateOrganizationDto {
   @ApiProperty() @IsString() @Length(2, 120) name: string;

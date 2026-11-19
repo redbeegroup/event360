@@ -8,6 +8,7 @@ import { MediaModule } from './modules/media/media.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { CheckinModule } from './modules/checkin/checkin.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
@@ -24,6 +25,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     OrganizationsModule,
     EventsModule,
     TicketsModule,
+    CheckinModule,
   ],
 })
 export class AppModule {}

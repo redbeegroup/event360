@@ -1,0 +1,136 @@
+{
+ "@@locale": "en",
+ "appTitle": "Event 360 Crew",
+ "signInTitle": "Door check-in",
+ "tabAccount": "Crew account",
+ "tabCode": "Event code",
+ "email": "Email",
+ "password": "Password",
+ "signIn": "Sign in",
+ "eventCode": "Event code",
+ "eventCodeHint": "From the organizer, e.g. K7QM-4XRT",
+ "deviceName": "Device name",
+ "deviceNameHint": "e.g. Gate A phone",
+ "useCode": "Start with this code",
+ "scanCodeQr": "Scan the organizer's QR",
+ "chooseEvent": "Choose event",
+ "noEvents": "No events to check in right now. Ask the organizer to add you as crew.",
+ "setupTitle": "Gate setup",
+ "gate": "Gate",
+ "gateHint": "e.g. Main gate, VIP entrance",
+ "startScanning": "Start scanning",
+ "pointCamera": "Point the camera at the ticket QR",
+ "typeOrScan": "Ticket QR text or code (handheld scanners work here too)",
+ "submit": "Check",
+ "resultAccepted": "Checked in",
+ "resultDuplicate": "Already checked in",
+ "resultWrongEvent": "Ticket for another event",
+ "resultInvalid": "Not a valid ticket",
+ "resultVoid": "Ticket cancelled",
+ "resultRefunded": "Ticket refunded",
+ "resultTransferred": "Ticket was transferred — ask for the new QR",
+ "outdatedQr": "This QR is out of date — ask the guest to reopen their ticket",
+ "otherEvent": "For: {title}",
+ "@otherEvent": {
+  "placeholders": {
+   "title": {
+    "type": "String"
+   }
+  }
+ },
+ "checkedInAt": "Checked in at {time}",
+ "@checkedInAt": {
+  "placeholders": {
+   "time": {
+    "type": "String"
+   }
+  }
+ },
+ "atGate": "at {gate}",
+ "@atGate": {
+  "placeholders": {
+   "gate": {
+    "type": "String"
+   }
+  }
+ },
+ "byWho": "by {name}",
+ "@byWho": {
+  "placeholders": {
+   "name": {
+    "type": "String"
+   }
+  }
+ },
+ "offline": "Offline",
+ "offlineBanner": "No connection — checking tickets on this device. {n} scan(s) waiting to sync.",
+ "@offlineBanner": {
+  "placeholders": {
+   "n": {
+    "type": "int"
+   }
+  }
+ },
+ "pendingSync": "{n} waiting to sync",
+ "@pendingSync": {
+  "placeholders": {
+   "n": {
+    "type": "int"
+   }
+  }
+ },
+ "offlineChecked": "Checked offline",
+ "notInList": "Not in the downloaded list yet — signature is valid",
+ "syncConflict": "Synced: was already checked in at another gate",
+ "lookup": "Find guest",
+ "searchHint": "Name, phone digits or ticket code",
+ "noResults": "No matching tickets",
+ "checkIn": "Check in",
+ "confirmCheckIn": "Check in {name}?",
+ "@confirmCheckIn": {
+  "placeholders": {
+   "name": {
+    "type": "String"
+   }
+  }
+ },
+ "activity": "Activity",
+ "undo": "Undo",
+ "undoConfirm": "Undo the check-in for {name}? The ticket can be scanned again.",
+ "@undoConfirm": {
+  "placeholders": {
+   "name": {
+    "type": "String"
+   }
+  }
+ },
+ "undone": "Undone",
+ "undoOffline": "Undo needs a connection",
+ "duplicate": "Duplicate",
+ "manual": "Manual",
+ "attendance": "{checked} / {total} checked in",
+ "@attendance": {
+  "placeholders": {
+   "checked": {
+    "type": "int"
+   },
+   "total": {
+    "type": "int"
+   }
+  }
+ },
+ "byGate": "By gate",
+ "byTicketType": "By ticket type",
+ "noGate": "(no gate)",
+ "recentScans": "Recent scans",
+ "noScans": "No scans yet",
+ "signOut": "Sign out",
+ "switchEvent": "Change event or gate",
+ "cameraUnavailable": "Camera not available — type the code or use a handheld scanner.",
+ "retry": "Retry",
+ "loadError": "Could not load. Check the connection.",
+ "sessionEnded": "Your session ended. Sign in again.",
+ "cancel": "Cancel",
+ "ok": "OK",
+ "language": "မြန်မာ / English"
+}
