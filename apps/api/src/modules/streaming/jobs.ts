@@ -1,12 +1,14 @@
 /**
  * Kubernetes Job specs for the video pipeline (pure functions, unit-tested). No shared volumes: each Job works in
- * its own scratch space and copies HLS to SeaweedFS (S3) with rclone; the API serves viewers from S3.
+ * its own scratch space and copies HLS to SeaweedFS (S3) with dist/streaming-uploader.js (API image, same AWS SDK
+ * as the API); the API serves viewers from S3.
  *
- * Live:   ffmpeg pulls rtmp://srs/live/<ingestKey> and writes a 5-rung HLS ladder (2 s segments) to /work; an
- *         rclone sidecar copies new files to <prefix> every 2 s. When the stream ends ffmpeg exits, rclone does a final
- *         full copy (the recording is then complete in place), or — with recording off — removes the live files.
- * Upload: ffmpeg reads the uploaded file (presigned URL) into the same ladder as VOD; rclone copies it to S3 and
- *         deletes the source.
+ * Live:   ffmpeg pulls rtmp://srs/live/<ingestKey> and writes a 5-rung HLS ladder (2 s segments) to /work; the
+ *         uploader sidecar copies new segments + playlists to <prefix> every second. When the stream ends ffmpeg exits,
+ *         the uploader does a final pass (the recording is then complete in place), or — with recording off — removes
+ *         the live files after 5 minutes.
+ * Upload: ffmpeg reads the uploaded file (presigned URL) into the same ladder as VOD; the uploader copies it to S3
+ *         and deletes the source.
  */
 
 export interface Rung {
@@ -27,8 +29,8 @@ export const LADDER: Rung[] = [
 
 export interface PipelineConfig {
   ffmpegImage: string;
-  rcloneImage: string;
-  secretName: string; // event360-secrets (S3 credentials)
+  apiImage: string; // runs dist/streaming-uploader.js
+  secretName: string; // event360-secrets (S3 credentials, via envFrom)
   avoidNodes?: string[];
 }
 
@@ -59,18 +61,6 @@ export function ladderArgs(input: string, out: string, mode: 'live' | 'vod'): st
     .filter(Boolean)
     .join(' ');
 }
-
-/** rclone remote "s3:" configured from the app secret (credentials never in the spec). */
-const rcloneEnv = (secret: string) => [
-  { name: 'RCLONE_CONFIG_S3_TYPE', value: 's3' },
-  { name: 'RCLONE_CONFIG_S3_PROVIDER', value: 'Other' },
-  { name: 'RCLONE_CONFIG_S3_FORCE_PATH_STYLE', value: 'true' },
-  { name: 'RCLONE_CONFIG_S3_REGION', value: 'us-east-1' },
-  { name: 'RCLONE_CONFIG_S3_ENDPOINT', valueFrom: { secretKeyRef: { name: secret, key: 'S3_ENDPOINT' } } },
-  { name: 'RCLONE_CONFIG_S3_ACCESS_KEY_ID', valueFrom: { secretKeyRef: { name: secret, key: 'S3_ACCESS_KEY_ID' } } },
-  { name: 'RCLONE_CONFIG_S3_SECRET_ACCESS_KEY', valueFrom: { secretKeyRef: { name: secret, key: 'S3_SECRET_ACCESS_KEY' } } },
-  { name: 'S3_BUCKET', valueFrom: { secretKeyRef: { name: secret, key: 'S3_BUCKET' } } },
-];
 
 function affinity(avoid?: string[]) {
   return avoid?.length
@@ -106,7 +96,7 @@ function job(name: string, labels: Record<string, string>, deadline: number, spe
 }
 
 const ffmpegResources = { requests: { cpu: '3', memory: '1Gi' }, limits: { cpu: '6', memory: '3Gi' } };
-const rcloneResources = { requests: { cpu: '100m', memory: '64Mi' }, limits: { memory: '256Mi' } };
+const uploaderResources = { requests: { cpu: '100m', memory: '128Mi' }, limits: { memory: '512Mi' } };
 const scratch = (gi: number) => [{ name: 'work', emptyDir: { sizeLimit: `${gi}Gi` } }];
 const workMount = [{ name: 'work', mountPath: '/work' }];
 const noPriv = { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } };
@@ -131,19 +121,20 @@ export function liveTranscoderJob(
     '  sleep 2',
     'done',
   ].join('\n');
-  const dest = `"s3:$S3_BUCKET/${p.prefix}"`;
-  const upload = [
-    'set -u',
-    `while [ ! -f /work/.done ]; do rclone copy /work ${dest} --max-age 30s --no-traverse --exclude .done -q || true; sleep 2; done`,
-    `rclone copy /work ${dest} --exclude .done -q`, // final, complete copy (playlists now end with ENDLIST)
-    p.record ? 'echo recorded' : `sleep 300 && rclone purge ${dest} -q`, // recording off: let viewers finish, then remove
-  ].join('\n');
   return job(p.name, { 'event360/role': 'live-transcoder', 'event360/ingest': p.ingestKey }, 12 * 3600, {
     affinity: affinity(cfg.avoidNodes),
     volumes: scratch(20),
     containers: [
       { name: 'transcode', image: cfg.ffmpegImage, command: ['sh', '-c', transcode], volumeMounts: workMount, resources: ffmpegResources, securityContext: noPriv },
-      { name: 'upload', image: cfg.rcloneImage, command: ['sh', '-c', upload], env: rcloneEnv(cfg.secretName), volumeMounts: workMount, resources: rcloneResources, securityContext: noPriv },
+      {
+        name: 'upload',
+        image: cfg.apiImage,
+        command: ['node', 'dist/streaming-uploader.js', 'live', '/work', p.prefix, p.record ? '1' : '0'],
+        envFrom: [{ secretRef: { name: cfg.secretName } }],
+        volumeMounts: workMount,
+        resources: uploaderResources,
+        securityContext: noPriv,
+      },
     ],
   });
 }
@@ -151,11 +142,6 @@ export function liveTranscoderJob(
 /** Transcoder for an uploaded video file (presigned GET URL) into the same ladder, stored as VOD. */
 export function uploadTranscoderJob(cfg: PipelineConfig, p: { name: string; assetId: string; sourceUrl: string; sourceKey: string; vodPrefix: string }) {
   const transcode = ['set -eu', `mkdir -p ${LADDER.map((r) => `/work/${r.name}`).join(' ')}`, ladderArgs('$SRC', '/work', 'vod')].join('\n');
-  const store = [
-    'set -eu',
-    `rclone copy /work "s3:$S3_BUCKET/${p.vodPrefix}" -q`,
-    `rclone deletefile "s3:$S3_BUCKET/${p.sourceKey}" -q || true`,
-  ].join('\n');
   return job(p.name, { 'event360/role': 'vod-transcoder', 'event360/asset': p.assetId }, 6 * 3600, {
     affinity: affinity(cfg.avoidNodes),
     volumes: scratch(30),
@@ -171,7 +157,15 @@ export function uploadTranscoderJob(cfg: PipelineConfig, p: { name: string; asse
       },
     ],
     containers: [
-      { name: 'store', image: cfg.rcloneImage, command: ['sh', '-c', store], env: rcloneEnv(cfg.secretName), volumeMounts: workMount, resources: rcloneResources, securityContext: noPriv },
+      {
+        name: 'store',
+        image: cfg.apiImage,
+        command: ['node', 'dist/streaming-uploader.js', 'once', '/work', p.vodPrefix, p.sourceKey],
+        envFrom: [{ secretRef: { name: cfg.secretName } }],
+        volumeMounts: workMount,
+        resources: uploaderResources,
+        securityContext: noPriv,
+      },
     ],
   });
 }

@@ -47,7 +47,6 @@
     "ingestIp": "172.16.16.190",
     "ingestHost": "live.event360.app",
     "srsImage": "ossrs/srs:v6.0-r3",
-    "ffmpegImage": "jrottenberg/ffmpeg:7.1-ubuntu",
-    "rcloneImage": "rclone/rclone:1.69.1"
+    "ffmpegImage": "jrottenberg/ffmpeg:7.1-ubuntu"
   }
 }

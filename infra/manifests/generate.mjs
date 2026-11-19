@@ -60,7 +60,8 @@ function backendEnv(env, config) {
     { name: 'SRS_API_URL', value: 'http://srs:1985' },
     { name: 'MAX_LIVE_CHANNELS', value: String(st.maxLiveChannels ?? 1) },
     { name: 'FFMPEG_IMAGE', value: st.ffmpegImage },
-    { name: 'RCLONE_IMAGE', value: st.rcloneImage },
+    // Transcoder Jobs run the uploader from the same API image
+    { name: 'API_IMAGE', value: `${config.registry}/event360-api:${env.imageTag}` },
     { name: 'MEDIA_AVOID_NODES', value: (config.avoidNodes ?? []).join(',') },
   ];
 }

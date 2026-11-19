@@ -88,7 +88,7 @@ export class StreamingService implements OnModuleInit, OnModuleDestroy {
   private get pipeline(): PipelineConfig {
     return {
       ffmpegImage: this.config.get('FFMPEG_IMAGE') ?? 'jrottenberg/ffmpeg:7.1-ubuntu',
-      rcloneImage: this.config.get('RCLONE_IMAGE') ?? 'rclone/rclone:1.69.1',
+      apiImage: this.config.get('API_IMAGE') ?? 'ghcr.io/redbeegroup/event360-api:latest',
       secretName: this.config.get('APP_SECRET_NAME') ?? 'event360-secrets',
       avoidNodes: (this.config.get<string>('MEDIA_AVOID_NODES') ?? '').split(',').filter(Boolean),
     };

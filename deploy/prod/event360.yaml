@@ -177,8 +177,8 @@ spec:
               value: '2'
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
-            - name: RCLONE_IMAGE
-              value: rclone/rclone:1.69.1
+            - name: API_IMAGE
+              value: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
@@ -289,8 +289,8 @@ spec:
               value: '2'
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
-            - name: RCLONE_IMAGE
-              value: rclone/rclone:1.69.1
+            - name: API_IMAGE
+              value: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
@@ -385,8 +385,8 @@ spec:
               value: '2'
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
-            - name: RCLONE_IMAGE
-              value: rclone/rclone:1.69.1
+            - name: API_IMAGE
+              value: ghcr.io/redbeegroup/event360-api:118dc7994a2a18d351d12e13102891d8b02745ae
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
