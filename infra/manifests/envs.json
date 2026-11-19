@@ -5,7 +5,7 @@
     "dev": {
       "namespace": "event360-dev",
       "domain": "dev.event360.app",
-      "imageTag": "83975ffd8be77e529662f1d55accb532800fee61",
+      "imageTag": "1a55341b88876301ff1467ee1b2da9cfd594cea3",
       "otpDevEcho": true,
       "replicas": {
         "api": 1,
