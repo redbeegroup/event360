@@ -248,13 +248,14 @@ export function buildManifests(envName, config) {
     service('web', ns, 3000),
   );
 
-  // ── User app web preview (dev only): Flutter web build behind unprivileged nginx ──
+  // ── User + Crew web apps: Flutter web builds behind unprivileged nginx ──
   if (env.userWeb) {
     objects.push(
       deployment({
         name: 'user-web',
         ns,
-        image: `${config.registry}/event360-user-web:${env.imageTag}`,
+        // Each environment has its own build (API URL is baked into the Flutter web app)
+        image: `${config.registry}/event360-user-web:${env.imageTag}${env.userWebTagSuffix ?? ''}`,
         pullPolicy,
         config,
         replicas: 1,

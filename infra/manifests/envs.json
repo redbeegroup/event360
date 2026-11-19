@@ -13,7 +13,8 @@
         "worker": 1,
         "web": 1
       },
-      "userWeb": true
+      "userWeb": true,
+      "userWebTagSuffix": ""
     },
     "prod": {
       "namespace": "event360-prod",
@@ -26,7 +27,8 @@
         "worker": 2,
         "web": 2
       },
-      "userWeb": false
+      "userWeb": false,
+      "userWebTagSuffix": "-prod"
     }
   },
   "avoidNodes": [],

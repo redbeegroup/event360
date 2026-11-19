@@ -2,7 +2,7 @@
     <!-- Needed in release builds too (debug/profile manifests add it automatically) -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Event 360"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -27,6 +27,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // CI builds dev and prod side by side: dev gets ".dev" and a "(dev)" label so both can be installed.
+        applicationIdSuffix = System.getenv("E360_APP_ID_SUFFIX") ?: ""
+        manifestPlaceholders["appLabel"] = System.getenv("E360_APP_LABEL") ?: "Event 360"
     }
 
     buildTypes {

@@ -60,14 +60,17 @@ jobs:
       - run: melos run test
 
   user-app-apk:
-    # Debug-signed Android builds pointing at dev — download from the run's Artifacts and install on a phone.
+    # Debug-signed Android builds — download from the run's Artifacts and install on a phone.
+    # Dev builds get a ".dev" app id and "(dev)" name so they install next to the prod ones.
     needs: [flutter]
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - { app: user_app, artifact: event360-user-app-dev }
-          - { app: crew_app, artifact: event360-crew-app-dev }
+          - { app: user_app, env: dev, api: 'https://api.dev.event360.app', web: 'https://app.dev.event360.app', suffix: '.dev', label: 'Event 360 (dev)' }
+          - { app: crew_app, env: dev, api: 'https://api.dev.event360.app', web: 'https://app.dev.event360.app', suffix: '.dev', label: 'Event 360 Crew (dev)' }
+          - { app: user_app, env: prod, api: 'https://api.event360.app', web: 'https://app.event360.app', suffix: '', label: 'Event 360' }
+          - { app: crew_app, env: prod, api: 'https://api.event360.app', web: 'https://app.event360.app', suffix: '', label: 'Event 360 Crew' }
     defaults:
       run:
         working-directory: mobile/apps/${{ matrix.app }}
@@ -78,19 +81,32 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - run: flutter pub get
-      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://api.dev.event360.app
+      - run: flutter build apk --debug --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
+        env:
+          E360_APP_ID_SUFFIX: ${{ matrix.suffix }}
+          E360_APP_LABEL: ${{ matrix.label }}
+      - name: Artifact name
+        run: echo "ARTIFACT=event360-${APP//_/-}-${{ matrix.env }}" >> "$GITHUB_ENV"
+        env:
+          APP: ${{ matrix.app }}
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-${{ github.sha }}
+          name: ${{ env.ARTIFACT }}-${{ github.sha }}
           path: mobile/apps/${{ matrix.app }}/build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 14
 
   user-web-image:
-    # Flutter web previews for app.dev.event360.app (dev only): the User app at /, the Crew app at /crew/.
+    # Flutter web apps behind nginx: the User app at /, the Crew app at /crew/.
+    # dev → app.dev.event360.app (tag <sha>), prod → app.event360.app (tag <sha>-prod); the API URL is baked in at build time.
     if: github.event_name == 'push'
     needs: [flutter]
     runs-on: ubuntu-latest
     permissions: { contents: read, packages: write }
+    strategy:
+      matrix:
+        include:
+          - { env: dev, api: 'https://api.dev.event360.app', web: 'https://app.dev.event360.app', suffix: '' }
+          - { env: prod, api: 'https://api.event360.app', web: 'https://app.event360.app', suffix: '-prod' }
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -99,12 +115,12 @@ jobs:
         working-directory: mobile/apps/user_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=https://api.dev.event360.app
+          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
       - name: Build Crew web (served by the same image under /crew/)
         working-directory: mobile/apps/crew_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --base-href /crew/ --dart-define=API_BASE_URL=https://api.dev.event360.app
+          flutter build web --release --no-web-resources-cdn --base-href /crew/ --dart-define=API_BASE_URL=${{ matrix.api }}
           mkdir -p ../user_app/build/web/crew
           cp -r build/web/. ../user_app/build/web/crew/
       - uses: docker/setup-buildx-action@v3
@@ -121,8 +137,8 @@ jobs:
           file: mobile/apps/user_app/Dockerfile.web
           push: true
           tags: |
-            ghcr.io/redbeegroup/event360-user-web:${{ github.sha }}
-            ghcr.io/redbeegroup/event360-user-web:${{ env.BRANCH_TAG }}
+            ghcr.io/redbeegroup/event360-user-web:${{ github.sha }}${{ matrix.suffix }}
+            ghcr.io/redbeegroup/event360-user-web:${{ env.BRANCH_TAG }}${{ matrix.suffix }}
 
   images:
     # Every push builds images so a branch can be deployed to dev before merging.
