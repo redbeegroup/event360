@@ -4,7 +4,7 @@
   "environments": {
     "dev": {
       "namespace": "event360-dev",
-      "domain": "dev.event360.corexlab.net",
+      "domain": "dev.event360.app",
       "imageTag": "def815f392a2d3d1167a4a75506b43df134b1a1e",
       "otpDevEcho": true,
       "replicas": {
@@ -17,7 +17,7 @@
     },
     "prod": {
       "namespace": "event360-prod",
-      "domain": "event360.corexlab.net",
+      "domain": "event360.app",
       "imageTag": "21c6483cfd45c8b116640b4562ed234c31845458",
       "otpDevEcho": false,
       "replicas": {

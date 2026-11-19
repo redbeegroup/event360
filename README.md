@@ -56,7 +56,7 @@ CI fails if `deploy/` is stale.
 
 | Environment | API | WebSocket | Portal |
 |---|---|---|---|
-| prod | api.event360.corexlab.net | ws.event360.corexlab.net | portal.event360.corexlab.net |
-| dev | api.dev.event360.corexlab.net | ws.dev.event360.corexlab.net | portal.dev.event360.corexlab.net |
+| prod | api.event360.app | ws.event360.app | portal.event360.app |
+| dev | api.dev.event360.app | ws.dev.event360.app | portal.dev.event360.app |
 
-Streaming (Phase 5b): `ingest.event360.corexlab.net` (RTMP/SRT), `media.event360.corexlab.net` (HLS playback), `watch.event360.corexlab.net` (web player).
+Streaming (Phase 5b): `ingest.event360.app` (RTMP/SRT), `media.event360.app` (HLS playback), `watch.event360.app` (web player).

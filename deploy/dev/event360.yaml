@@ -159,11 +159,11 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app,https://app.dev.event360.app
             - name: PUBLIC_API_URL
-              value: https://api.dev.event360.corexlab.net
+              value: https://api.dev.event360.app
             - name: PORTAL_URL
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app
             - name: APP_ROLE
               value: api
           envFrom:
@@ -255,11 +255,11 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app,https://app.dev.event360.app
             - name: PUBLIC_API_URL
-              value: https://api.dev.event360.corexlab.net
+              value: https://api.dev.event360.app
             - name: PORTAL_URL
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app
             - name: APP_ROLE
               value: realtime
           envFrom:
@@ -335,11 +335,11 @@ spec:
             - name: JWT_ACCESS_TTL
               value: 15m
             - name: CORS_ORIGINS
-              value: https://portal.dev.event360.corexlab.net,https://app.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app,https://app.dev.event360.app
             - name: PUBLIC_API_URL
-              value: https://api.dev.event360.corexlab.net
+              value: https://api.dev.event360.app
             - name: PORTAL_URL
-              value: https://portal.dev.event360.corexlab.net
+              value: https://portal.dev.event360.app
             - name: APP_ROLE
               value: worker
           envFrom:
@@ -532,7 +532,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: api.dev.event360.corexlab.net
+    - host: api.dev.event360.app
       http:
         paths:
           - path: /
@@ -542,7 +542,7 @@ spec:
                 name: api
                 port:
                   name: http
-    - host: ws.dev.event360.corexlab.net
+    - host: ws.dev.event360.app
       http:
         paths:
           - path: /
@@ -552,7 +552,7 @@ spec:
                 name: realtime
                 port:
                   name: http
-    - host: portal.dev.event360.corexlab.net
+    - host: portal.dev.event360.app
       http:
         paths:
           - path: /
@@ -562,7 +562,7 @@ spec:
                 name: web
                 port:
                   name: http
-    - host: app.dev.event360.corexlab.net
+    - host: app.dev.event360.app
       http:
         paths:
           - path: /

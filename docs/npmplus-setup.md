@@ -12,20 +12,20 @@ The ingress routes by `Host` header, so NPMPlus must pass the original host thro
 
 | Host | Websockets | Notes |
 |---|---|---|
-| `api.event360.corexlab.net` | off | Payment provider webhooks arrive here |
-| `ws.event360.corexlab.net` | **on** | Socket.IO: live counts, chat, Q&A |
-| `portal.event360.corexlab.net` | off | Next.js admin / organizer portal |
-| `media.event360.corexlab.net` | off | HLS playback (Phase 5b). Disable buffering for low latency |
-| `watch.event360.corexlab.net` | off | Web player (Phase 5b) |
+| `api.event360.app` | off | Payment provider webhooks arrive here |
+| `ws.event360.app` | **on** | Socket.IO: live counts, chat, Q&A |
+| `portal.event360.app` | off | Next.js admin / organizer portal |
+| `media.event360.app` | off | HLS playback (Phase 5b). Disable buffering for low latency |
+| `watch.event360.app` | off | Web player (Phase 5b) |
 
-Repeat for the `.dev.` hostnames (`api.dev.`, `ws.dev.`, `portal.dev.event360.corexlab.net`). See certificates below.
+Repeat for the `.dev.` hostnames (`api.dev.`, `ws.dev.`, `portal.dev.event360.app`). See certificates below.
 
 ## 2. Certificates
 
 Use a DNS-challenge wildcard certificate in NPMPlus. A wildcard covers **one** label only:
 
-- `*.event360.corexlab.net` → prod hosts
-- `*.dev.event360.corexlab.net` → needs its own wildcard cert
+- `*.event360.app` → prod hosts
+- `*.dev.event360.app` → needs its own wildcard cert
 
 ## 3. Real client IP (required)
 
@@ -68,7 +68,7 @@ Use NPMPlus **Streams** for:
 - TCP 1935 → srs-ingest (RTMP)
 - UDP 10080 → srs-ingest (SRT)
 
-Alternatively expose srs-ingest's LoadBalancer IP directly on `ingest.event360.corexlab.net`.
+Alternatively expose srs-ingest's LoadBalancer IP directly on `ingest.event360.app`.
 
 ## 6. Things NPMPlus does not change
 

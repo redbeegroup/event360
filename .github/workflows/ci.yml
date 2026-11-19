@@ -72,7 +72,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - run: flutter pub get
-      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://api.dev.event360.corexlab.net
+      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://api.dev.event360.app
       - uses: actions/upload-artifact@v4
         with:
           name: event360-user-app-dev-${{ github.sha }}
@@ -80,7 +80,7 @@ jobs:
           retention-days: 14
 
   user-web-image:
-    # Flutter web preview of the User app for app.dev.event360.corexlab.net (dev only).
+    # Flutter web preview of the User app for app.dev.event360.app (dev only).
     if: github.event_name == 'push'
     needs: [flutter]
     runs-on: ubuntu-latest
@@ -93,7 +93,7 @@ jobs:
         working-directory: mobile/apps/user_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=https://api.dev.event360.corexlab.net
+          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=https://api.dev.event360.app
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:

@@ -243,7 +243,7 @@ The schema is managed by Prisma migrations. Main tables:
 
 **Video stack.** Everything below runs in Kubernetes (the `event360-media` namespace) and stores video on your SeaweedFS:
 - **Ingest:** SRS (Simple Realtime Server).
-  - The organizer streams with OBS or vMix, or a hardware encoder, over RTMP or SRT to `ingest.event360.corexlab.net/live/<channel>?key=<streamKey>`.
+  - The organizer streams with OBS or vMix, or a hardware encoder, over RTMP or SRT to `ingest.event360.app/live/<channel>?key=<streamKey>`.
   - The SRS `on_publish` hook calls the API to validate the stream key and session time window.
   - A TCP/UDP LoadBalancer Service exposes ports 1935 (RTMP) and 10080/udp (SRT).
 - **Transcode:** an FFmpeg transcoder pod per live channel, launched by the `streaming` module as a Kubernetes Job.
@@ -280,7 +280,7 @@ All of these go through the same order, ledger and commission flow as normal tic
 - The player is `better_player_plus` or `media_kit` in Flutter, and hls.js on the web.
 - Viewers can pick quality, use picture-in-picture, keep audio playing in the background, see live chat, ask questions in Q&A with upvotes, and answer polls.
 - Recordings show chapters and remember where the viewer stopped.
-- Online events can also be watched on the web portal (`watch.event360.corexlab.net`) so viewers on desktop are covered.
+- Online events can also be watched on the web portal (`watch.event360.app`) so viewers on desktop are covered.
 
 **Organizer tools:**
 - In the web portal: the stream key and ingest URL, a test-stream preview, live health (bitrate, frames dropped, viewers), moderation of chat and Q&A, start/stop recording, and VOD editing.
@@ -339,7 +339,7 @@ All of these go through the same order, ledger and commission flow as normal tic
   - Talos Kubernetes 1.36 (3 control-plane nodes, 4 workers with 8 vCPU / 8 GB each), managed through Portainer EE.
   - MetalLB; storage classes `synology-iscsi` (block) and `synology-nfs`.
 - **Edge:**
-  - NPMPlus terminates TLS for `*.event360.corexlab.net` and `*.dev.event360.corexlab.net`.
+  - NPMPlus terminates TLS for `*.event360.app` and `*.dev.event360.app`.
   - It forwards to Traefik at `172.16.16.180:80` (ingress class `traefik`). See `docs/npmplus-setup.md`.
 - **Environments:**
   - `event360-dev` and `event360-prod` share PostgreSQL database `event360` on the external cluster (`172.16.16.39:5433`), one schema each (`dev`, `prod`).
