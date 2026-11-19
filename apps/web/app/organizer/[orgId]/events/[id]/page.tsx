@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
 import { api } from '../../../../lib/api';
-import { fmtDate, fmtMmk, pick, t } from '../../../../lib/i18n';
+import { ListEditor } from '../../../../components/ListEditor';
+import { fmtDate, fmtMmk, pick, t, toLocalInput } from '../../../../lib/i18n';
 import type { CategoryDto, EventDto } from '../../../../lib/types';
 import {
   addTicketTypeAction,
   cancelEventAction,
   deleteTicketTypeAction,
+  saveListAction,
   submitEventAction,
   updateEventAction,
 } from '../../../actions';
@@ -97,6 +99,79 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
 
       {!closed && (
         <>
+          {(
+            [
+              {
+                kind: 'sessions',
+                title: tr.schedule,
+                fields: [
+                  { name: 'title', label: `${tr.sessionTitle} (${tr.en})`, required: true },
+                  { name: 'titleMy', label: `${tr.sessionTitle} (${tr.myLabel})`, lang: 'my' as const },
+                  { name: 'startsAt', label: tr.startsAt, type: 'datetime' as const, required: true },
+                  { name: 'endsAt', label: tr.endsAt, type: 'datetime' as const, required: true },
+                  { name: 'location', label: tr.location },
+                ],
+                initial: (e.sessions ?? []).map((x) => ({
+                  title: x.title, titleMy: x.titleMy ?? '', location: x.location ?? '',
+                  startsAt: toLocalInput(x.startsAt), endsAt: toLocalInput(x.endsAt),
+                })),
+              },
+              {
+                kind: 'performers',
+                title: tr.lineup,
+                fields: [
+                  { name: 'name', label: `${tr.name} (${tr.en})`, required: true },
+                  { name: 'nameMy', label: `${tr.name} (${tr.myLabel})`, lang: 'my' as const },
+                  { name: 'role', label: `${tr.performerRole} (${tr.en})` },
+                  { name: 'roleMy', label: `${tr.performerRole} (${tr.myLabel})`, lang: 'my' as const },
+                  { name: 'photoKey', label: tr.photo, type: 'image' as const },
+                  { name: 'bio', label: `${tr.bio} (${tr.en})`, type: 'textarea' as const },
+                  { name: 'bioMy', label: `${tr.bio} (${tr.myLabel})`, type: 'textarea' as const, lang: 'my' as const },
+                ],
+                initial: (e.performers ?? []).map((x) => ({
+                  name: x.name, nameMy: x.nameMy ?? '', role: x.role ?? '', roleMy: x.roleMy ?? '',
+                  bio: x.bio ?? '', bioMy: x.bioMy ?? '', photoKey: x.photoKey ?? '', _url: x.photoUrl ?? '',
+                })),
+              },
+              {
+                kind: 'media',
+                title: tr.gallery,
+                fields: [
+                  { name: 'key', label: tr.image, type: 'image' as const },
+                  { name: 'caption', label: `${tr.caption} (${tr.en})` },
+                  { name: 'captionMy', label: `${tr.caption} (${tr.myLabel})`, lang: 'my' as const },
+                ],
+                initial: (e.media ?? []).map((x) => ({ key: x.key, caption: x.caption ?? '', captionMy: x.captionMy ?? '', _url: x.url })),
+              },
+              {
+                kind: 'faqs',
+                title: tr.faq,
+                fields: [
+                  { name: 'question', label: `${tr.question} (${tr.en})`, required: true },
+                  { name: 'questionMy', label: `${tr.question} (${tr.myLabel})`, lang: 'my' as const },
+                  { name: 'answer', label: `${tr.answer} (${tr.en})`, type: 'textarea' as const },
+                  { name: 'answerMy', label: `${tr.answer} (${tr.myLabel})`, type: 'textarea' as const, lang: 'my' as const },
+                ],
+                initial: (e.faqs ?? []).map((x) => ({ question: x.question, questionMy: x.questionMy ?? '', answer: x.answer, answerMy: x.answerMy ?? '' })),
+              },
+            ] as const
+          ).map((sec) => (
+            <section key={sec.kind}>
+              <h2>{sec.title}</h2>
+              <div className="card">
+                <ActionForm action={saveListAction} submitLabel={tr.saveList} okText={okText}>
+                  {hidden}
+                  <input type="hidden" name="kind" value={sec.kind} />
+                  <ListEditor
+                    fields={[...sec.fields]}
+                    initial={sec.initial.map((r) => ({ ...r }))}
+                    labels={{ add: tr.add, remove: tr.remove, up: tr.moveUp, empty: tr.nothingYet }}
+                  />
+                </ActionForm>
+              </div>
+            </section>
+          ))}
+
           <h2>{tr.save}</h2>
           <div className="card">
             <ActionForm action={updateEventAction} submitLabel={tr.save} okText={okText}>

@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app/format.dart';
 import '../app/providers.dart';
@@ -49,13 +51,36 @@ class _Detail extends ConsumerWidget {
     final description = pickLang(lang, e.description, e.descriptionMy);
     final summary = pickLang(lang, e.summary, e.summaryMy);
     final canRegister = !ended && !cancelled && e.ticketTypes.any((tt) => tt.isFree && !tt.soldOut);
+    final bold = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
+    void open(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
-    Widget infoRow(IconData icon, String title, [String? sub]) => ListTile(
+    Widget infoRow(IconData icon, String title, [String? sub, VoidCallback? onTap]) => ListTile(
           contentPadding: EdgeInsets.zero,
+          onTap: onTap,
           leading: CircleAvatar(backgroundColor: theme.colorScheme.primaryContainer, child: Icon(icon, color: theme.colorScheme.onPrimaryContainer)),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: sub == null ? null : Text(sub),
+          subtitle: sub == null || sub.isEmpty ? null : Text(sub),
+          trailing: onTap == null ? null : const Icon(Icons.chevron_right),
         );
+    Widget section(String title, List<Widget> children) => Padding(
+          padding: const EdgeInsets.only(top: 24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: bold), const SizedBox(height: 8), ...children]),
+        );
+
+    final practical = <(IconData, String, String)>[
+      if (e.ageMin != null) (Icons.badge_outlined, t.ageLimit(e.ageMin!), ''),
+      if (!e.dressCode.isEmpty) (Icons.checkroom, t.dressCode, e.dressCode.of(lang)),
+      if (!e.languages.isEmpty) (Icons.translate, t.languages, e.languages.of(lang)),
+      if (!e.parking.isEmpty) (Icons.local_parking, t.parking, e.parking.of(lang)),
+      if (!e.accessibility.isEmpty) (Icons.accessible, t.accessibility, e.accessibility.of(lang)),
+      if (!e.whatToBring.isEmpty) (Icons.backpack_outlined, t.whatToBring, e.whatToBring.of(lang)),
+    ];
+
+    // Schedule grouped by (Myanmar-time) day
+    final days = <String, List<ScheduleItem>>{};
+    for (final s in e.schedule) {
+      days.putIfAbsent(formatDay(s.startsAt, lang), () => []).add(s);
+    }
 
     return Scaffold(
       body: CustomScrollView(slivers: [
@@ -63,10 +88,11 @@ class _Detail extends ConsumerWidget {
           pinned: true,
           expandedHeight: 240,
           actions: [
+            IconButton(tooltip: t.addToCalendar, icon: const Icon(Icons.event_available), onPressed: () => open(ref.read(apiProvider).calendarUri(e.id))),
             IconButton(
               tooltip: t.share,
               icon: const Icon(Icons.ios_share),
-              onPressed: () => SharePlus.instance.share(ShareParams(text: '${pickLang(lang, e.title, e.titleMy)}\n${formatEventDate(e.startsAt, lang)}')),
+              onPressed: () => SharePlus.instance.share(ShareParams(text: shareText(e, lang))),
             ),
           ],
           flexibleSpace: FlexibleSpaceBar(background: EventCover(url: e.coverImageUrl, aspectRatio: 16 / 10)),
@@ -76,39 +102,179 @@ class _Detail extends ConsumerWidget {
           sliver: SliverList.list(children: [
             if (cancelled) _Banner(text: t.eventCancelled, color: theme.colorScheme.error),
             if (!cancelled && ended) _Banner(text: t.eventEnded, color: theme.colorScheme.outline),
-            Wrap(spacing: 6, children: [
+            Wrap(spacing: 6, runSpacing: 6, children: [
               Pill(pickLang(lang, e.categoryName, e.categoryNameMy), color: theme.colorScheme.secondary),
               Pill(formatLabel(t, e.format), color: theme.colorScheme.tertiary),
+              if (e.ageMin != null) Pill(t.ageLimit(e.ageMin!), color: theme.colorScheme.error),
             ]),
             const SizedBox(height: 10),
             Text(pickLang(lang, e.title, e.titleMy), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
             if (summary.isNotEmpty) ...[const SizedBox(height: 6), Text(summary, style: theme.textTheme.bodyLarge)],
             const SizedBox(height: 12),
-            infoRow(Icons.event, formatEventDate(e.startsAt, lang), formatTimeRange(e.startsAt, e.endsAt, lang)),
+            infoRow(Icons.event, formatEventDate(e.startsAt, lang), formatTimeRange(e.startsAt, e.endsAt, lang),
+                () => open(ref.read(apiProvider).calendarUri(e.id))),
             if (e.venue != null)
-              infoRow(Icons.place_outlined, pickLang(lang, e.venue!.name, e.venue!.nameMy), [e.venue!.address, e.venue!.city].whereType<String>().join(', ')),
+              infoRow(Icons.place_outlined, pickLang(lang, e.venue!.name, e.venue!.nameMy),
+                  [e.venue!.address, e.venue!.city].whereType<String>().join(', '), () => open(e.venue!.mapsUri)),
             if (e.format == 'ONLINE') infoRow(Icons.live_tv_outlined, t.formatOnline),
-            infoRow(e.organizerVerified ? Icons.verified : Icons.groups_outlined, e.organizerName, e.organizerVerified ? t.verified : t.organizer),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(t.about, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Text(description),
-            ],
-            const SizedBox(height: 20),
-            Text(t.tickets, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            for (final tt in e.ticketTypes)
-              Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  title: Text(pickLang(lang, tt.name, tt.nameMy)),
-                  subtitle: Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
-                  trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            infoRow(
+              e.organizerVerified ? Icons.verified : Icons.groups_outlined,
+              e.organizerName,
+              e.organizerVerified ? t.verified : t.organizer,
+              e.organizerSlug == null ? null : () => context.push('/organizer/${e.organizerSlug}'),
+            ),
+            if (e.gallery.isNotEmpty)
+              section(t.gallery, [
+                SizedBox(
+                  height: 150,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: e.gallery.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) => ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: GestureDetector(
+                        onTap: () => _openGallery(context, e.gallery, i, lang),
+                        child: AspectRatio(aspectRatio: 4 / 3, child: CachedNetworkImage(imageUrl: e.gallery[i].url, fit: BoxFit.cover)),
+                      ),
+                    ),
+                  ),
                 ),
+              ]),
+            if (description.isNotEmpty) section(t.about, [Text(description)]),
+            if (days.isNotEmpty)
+              section(t.schedule, [
+                for (final day in days.entries) ...[
+                  Padding(padding: const EdgeInsets.only(top: 4, bottom: 4), child: Text(day.key, style: theme.textTheme.labelLarge)),
+                  for (final s in day.value)
+                    IntrinsicHeight(
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        SizedBox(
+                          width: 78,
+                          child: Padding(padding: const EdgeInsets.only(top: 10), child: Text(formatTime(s.startsAt, lang), style: theme.textTheme.labelLarge)),
+                        ),
+                        Container(width: 2, color: theme.colorScheme.primaryContainer),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(pickLang(lang, s.title, s.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+                              Text([formatTimeRange(s.startsAt, s.endsAt, lang), if (s.location != null) s.location!].join(' · '),
+                                  style: theme.textTheme.bodySmall),
+                              if (pickLang(lang, s.description, s.descriptionMy).isNotEmpty) Text(pickLang(lang, s.description, s.descriptionMy)),
+                            ]),
+                          ),
+                        ),
+                      ]),
+                    ),
+                ],
+              ]),
+            if (e.performers.isNotEmpty)
+              section(t.lineup, [
+                SizedBox(
+                  height: 132,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: e.performers.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    itemBuilder: (_, i) {
+                      final p = e.performers[i];
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _showPerformer(context, p, lang),
+                        child: SizedBox(
+                          width: 88,
+                          child: Column(children: [
+                            CircleAvatar(
+                              radius: 36,
+                              backgroundColor: theme.colorScheme.secondaryContainer,
+                              backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
+                              child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.titleLarge) : null,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(pickLang(lang, p.name, p.nameMy),
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            if (pickLang(lang, p.role, p.roleMy).isNotEmpty)
+                              Text(pickLang(lang, p.role, p.roleMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ]),
+            section(t.tickets, [
+              for (final tt in e.ticketTypes)
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    title: Text(pickLang(lang, tt.name, tt.nameMy)),
+                    subtitle: Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
+                    trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              if (e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
+            ]),
+            if (practical.isNotEmpty)
+              section(t.practicalInfo, [
+                for (final (icon, title, value) in practical)
+                  ListTile(contentPadding: EdgeInsets.zero, dense: true, leading: Icon(icon), title: Text(title), subtitle: value.isEmpty ? null : Text(value)),
+              ]),
+            if (e.venue != null)
+              section(t.directions, [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(pickLang(lang, e.venue!.name, e.venue!.nameMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text([e.venue!.address, e.venue!.city].whereType<String>().join(', ')),
+                      if (pickLang(lang, e.venue!.directions, e.venue!.directionsMy).isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(pickLang(lang, e.venue!.directions, e.venue!.directionsMy)),
+                      ],
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(onPressed: () => open(e.venue!.mapsUri), icon: const Icon(Icons.map_outlined), label: Text(t.openInMaps)),
+                    ]),
+                  ),
+                ),
+              ]),
+            if (e.faqs.isNotEmpty)
+              section(t.faq, [
+                for (final f in e.faqs)
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text(pickLang(lang, f.question, f.questionMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                    childrenPadding: const EdgeInsets.only(bottom: 12),
+                    children: [Text(pickLang(lang, f.answer, f.answerMy))],
+                  ),
+              ]),
+            if (!e.refundPolicy.isEmpty || !e.terms.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Column(children: [
+                  if (!e.refundPolicy.isEmpty)
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.undo),
+                      title: Text(t.refundPolicy),
+                      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                      childrenPadding: const EdgeInsets.only(bottom: 12),
+                      children: [Text(e.refundPolicy.of(lang))],
+                    ),
+                  if (!e.terms.isEmpty)
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.gavel_outlined),
+                      title: Text(t.terms),
+                      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                      childrenPadding: const EdgeInsets.only(bottom: 12),
+                      children: [Text(e.terms.of(lang))],
+                    ),
+                ]),
               ),
-            if (e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
           ]),
         ),
       ]),
@@ -121,6 +287,50 @@ class _Detail extends ConsumerWidget {
             )
           : null,
     );
+  }
+
+  void _showPerformer(BuildContext context, Performer p, String lang) {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircleAvatar(
+            radius: 48,
+            backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
+            child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.headlineMedium) : null,
+          ),
+          const SizedBox(height: 12),
+          Text(pickLang(lang, p.name, p.nameMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+          if (pickLang(lang, p.role, p.roleMy).isNotEmpty) Text(pickLang(lang, p.role, p.roleMy), style: theme.textTheme.bodyMedium),
+          if (pickLang(lang, p.bio, p.bioMy).isNotEmpty) ...[const SizedBox(height: 12), Text(pickLang(lang, p.bio, p.bioMy))],
+        ]),
+      ),
+    );
+  }
+
+  void _openGallery(BuildContext context, List<GalleryImage> images, int start, String lang) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
+        body: PageView.builder(
+          controller: PageController(initialPage: start),
+          itemCount: images.length,
+          itemBuilder: (_, i) => Column(children: [
+            Expanded(child: InteractiveViewer(child: Center(child: CachedNetworkImage(imageUrl: images[i].url, fit: BoxFit.contain)))),
+            if (pickLang(lang, images[i].caption, images[i].captionMy).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(pickLang(lang, images[i].caption, images[i].captionMy), style: const TextStyle(color: Colors.white)),
+              ),
+          ]),
+        ),
+      ),
+    ));
   }
 
   Future<void> _startRegister(BuildContext context, WidgetRef ref) async {

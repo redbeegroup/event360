@@ -3,21 +3,51 @@ import type { Event, EventStatus, Prisma } from '@prisma/client';
 import { makeSlug, mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateEventDto, ListEventsQuery, TicketTypeDto, UpdateEventDto, UpdateTicketTypeDto } from './events.dto';
+import {
+  CreateEventDto,
+  FaqItemDto,
+  ListEventsQuery,
+  MediaItemDto,
+  OrgProfileDto,
+  PerformerItemDto,
+  SessionItemDto,
+  TicketTypeDto,
+  UpdateEventDto,
+  UpdateTicketTypeDto,
+} from './events.dto';
 
 /** Fields whose change on a published event needs re-review when the organizer is not verified. */
 const REVIEWED_FIELDS: (keyof UpdateEventDto)[] = [
   'title', 'titleMy', 'summary', 'summaryMy', 'description', 'descriptionMy', 'coverImageKey', 'startsAt', 'endsAt', 'venue', 'categoryId',
+  'dressCode', 'dressCodeMy', 'languages', 'languagesMy', 'parking', 'parkingMy', 'accessibility', 'accessibilityMy',
+  'whatToBring', 'whatToBringMy', 'terms', 'termsMy', 'refundPolicy', 'refundPolicyMy', 'ageMin',
 ];
 const EDITABLE: EventStatus[] = ['DRAFT', 'SUBMITTED', 'REJECTED', 'PUBLISHED'];
 
 const cardInclude = {
   category: { select: { id: true, slug: true, nameEn: true, nameMy: true, parent: { select: { slug: true, nameEn: true, nameMy: true } } } },
   venue: true,
-  organization: { select: { id: true, name: true, slug: true, kycStatus: true } },
+  organization: { select: { id: true, name: true, slug: true, kycStatus: true, logoUrl: true } },
   ticketTypes: { orderBy: { priceMmk: 'asc' as const } },
 } satisfies Prisma.EventInclude;
 type EventWithRelations = Prisma.EventGetPayload<{ include: typeof cardInclude }>;
+
+/** Single-event views also load schedule, lineup, gallery and FAQ. */
+const fullInclude = {
+  ...cardInclude,
+  sessions: { orderBy: { startsAt: 'asc' as const } },
+  performers: { orderBy: { sortOrder: 'asc' as const } },
+  media: { orderBy: { sortOrder: 'asc' as const } },
+  faqs: { orderBy: { sortOrder: 'asc' as const } },
+} satisfies Prisma.EventInclude;
+type EventFull = Prisma.EventGetPayload<{ include: typeof fullInclude }>;
+
+const pick = <T extends object, K extends keyof T>(o: T, keys: readonly K[]) =>
+  Object.fromEntries(keys.map((k) => [k, o[k]])) as Pick<T, K>;
+const PRACTICAL = [
+  'ageMin', 'dressCode', 'dressCodeMy', 'languages', 'languagesMy', 'parking', 'parkingMy',
+  'accessibility', 'accessibilityMy', 'whatToBring', 'whatToBringMy', 'terms', 'termsMy', 'refundPolicy', 'refundPolicyMy',
+] as const;
 
 @Injectable()
 export class EventsService {
@@ -28,7 +58,7 @@ export class EventsService {
 
   // ───────────── Serialization ─────────────
 
-  toDto(e: EventWithRelations, opts: { full?: boolean } = {}) {
+  toDto(e: EventWithRelations | EventFull, opts: { full?: boolean } = {}) {
     const tickets = e.ticketTypes.map((t) => ({
       id: t.id,
       name: t.name,
@@ -62,9 +92,27 @@ export class EventsService {
       publishedAt: e.publishedAt,
       category: e.category,
       venue: e.venue,
-      organization: e.organization,
+      organization: { ...e.organization, logoUrl: this.media.url(e.organization.logoUrl) },
+      ...(opts.full ? this.details(e) : {}),
       ticketTypes: tickets,
       soldOut: tickets.length > 0 && tickets.every((t) => t.remaining === 0),
+    };
+  }
+
+  /** Practical info, terms and (when loaded) schedule, lineup, gallery, FAQ. */
+  private details(e: EventWithRelations | EventFull) {
+    const full = 'sessions' in e ? e : null;
+    return {
+      ...pick(e, PRACTICAL),
+      sessions: full?.sessions.map((x) => pick(x, ['id', 'title', 'titleMy', 'description', 'descriptionMy', 'location', 'startsAt', 'endsAt'] as const)) ?? [],
+      performers:
+        full?.performers.map((x) => ({
+          ...pick(x, ['id', 'name', 'nameMy', 'role', 'roleMy', 'bio', 'bioMy'] as const),
+          photoKey: x.photoKey,
+          photoUrl: this.media.url(x.photoKey),
+        })) ?? [],
+      media: full?.media.map((x) => ({ id: x.id, key: x.key, url: this.media.url(x.key), caption: x.caption, captionMy: x.captionMy })) ?? [],
+      faqs: full?.faqs.map((x) => pick(x, ['id', 'question', 'questionMy', 'answer', 'answerMy'] as const)) ?? [],
     };
   }
 
@@ -103,7 +151,7 @@ export class EventsService {
     const isUuid = /^[0-9a-f-]{36}$/i.test(idOrSlug);
     const e = await this.prisma.event.findFirst({
       where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: { in: ['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'] } },
-      include: cardInclude,
+      include: fullInclude,
     });
     if (!e) throw new NotFoundException('Event not found');
     return this.toDto(e, { full: true });
@@ -118,7 +166,7 @@ export class EventsService {
   }
 
   async getForOrg(organizationId: string, id: string) {
-    const e = await this.prisma.event.findFirst({ where: { id, organizationId }, include: cardInclude });
+    const e = await this.prisma.event.findFirst({ where: { id, organizationId }, include: fullInclude });
     if (!e) throw new NotFoundException('Event not found');
     return this.toDto(e, { full: true });
   }
@@ -154,9 +202,10 @@ export class EventsService {
         visibility: dto.visibility ?? 'PUBLIC',
         startsAt,
         endsAt,
+        ...pick(dto, PRACTICAL),
         ...(dto.venue ? { venue: { create: dto.venue } } : {}),
       },
-      include: cardInclude,
+      include: fullInclude,
     });
     return this.toDto(e, { full: true });
   }
@@ -185,7 +234,7 @@ export class EventsService {
     if (venue) {
       data.venue = current.venueId ? { update: venue } : { create: venue };
     }
-    const e = await this.prisma.event.update({ where: { id }, data, include: cardInclude });
+    const e = await this.prisma.event.update({ where: { id }, data, include: fullInclude });
     return { ...this.toDto(e, { full: true }), reReviewRequired: needsReview };
   }
 
@@ -269,7 +318,7 @@ export class EventsService {
       data: orgVerified
         ? { status: 'PUBLISHED', publishedAt: now, submittedAt: now, rejectionReason: null }
         : { status: 'SUBMITTED', submittedAt: now, rejectionReason: null },
-      include: cardInclude,
+      include: fullInclude,
     });
     return this.toDto(updated, { full: true });
   }
@@ -279,7 +328,7 @@ export class EventsService {
     if (!e) throw new NotFoundException('Event not found');
     if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException(`Event is already ${e.status}`);
     // Ticket holders are notified in a later phase (notifications module).
-    const updated = await this.prisma.event.update({ where: { id }, data: { status: 'CANCELLED' }, include: cardInclude });
+    const updated = await this.prisma.event.update({ where: { id }, data: { status: 'CANCELLED' }, include: fullInclude });
     return this.toDto(updated, { full: true });
   }
 
@@ -297,11 +346,162 @@ export class EventsService {
     });
   }
 
+  // ───────────── Schedule, lineup, gallery, FAQ (replace-all lists) ─────────────
+
+  /** Editing details of a published event from an unverified organizer sends it back to review. */
+  private async editableForLists(organizationId: string, id: string, orgVerified: boolean) {
+    const e = await this.prisma.event.findFirst({ where: { id, organizationId } });
+    if (!e) throw new NotFoundException('Event not found');
+    if (!EDITABLE.includes(e.status)) throw new ConflictException(`Cannot edit an event that is ${e.status}`);
+    const needsReview = e.status === 'PUBLISHED' && !orgVerified;
+    return { needsReview };
+  }
+
+  private async afterListEdit(id: string, needsReview: boolean) {
+    if (needsReview) await this.prisma.event.update({ where: { id }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
+    const e = await this.prisma.event.findUniqueOrThrow({ where: { id }, include: fullInclude });
+    return { ...this.toDto(e, { full: true }), reReviewRequired: needsReview };
+  }
+
+  private assertKeys(keys: (string | undefined)[]) {
+    for (const k of keys) if (k && !this.media.isOwnKey(k)) throw new BadRequestException(`Invalid media key: ${k}`);
+  }
+
+  async replaceSessions(organizationId: string, id: string, items: SessionItemDto[], orgVerified: boolean) {
+    const { needsReview } = await this.editableForLists(organizationId, id, orgVerified);
+    for (const x of items) if (new Date(x.endsAt) <= new Date(x.startsAt)) throw new BadRequestException(`"${x.title}": end must be after start`);
+    await this.prisma.$transaction([
+      this.prisma.eventSession.deleteMany({ where: { eventId: id } }),
+      this.prisma.eventSession.createMany({
+        data: items.map((x) => ({ ...x, eventId: id, startsAt: new Date(x.startsAt), endsAt: new Date(x.endsAt) })),
+      }),
+    ]);
+    return this.afterListEdit(id, needsReview);
+  }
+
+  async replacePerformers(organizationId: string, id: string, items: PerformerItemDto[], orgVerified: boolean) {
+    const { needsReview } = await this.editableForLists(organizationId, id, orgVerified);
+    this.assertKeys(items.map((x) => x.photoKey));
+    await this.prisma.$transaction([
+      this.prisma.eventPerformer.deleteMany({ where: { eventId: id } }),
+      this.prisma.eventPerformer.createMany({ data: items.map((x, i) => ({ ...x, eventId: id, sortOrder: i })) }),
+    ]);
+    return this.afterListEdit(id, needsReview);
+  }
+
+  async replaceMedia(organizationId: string, id: string, items: MediaItemDto[], orgVerified: boolean) {
+    const { needsReview } = await this.editableForLists(organizationId, id, orgVerified);
+    this.assertKeys(items.map((x) => x.key));
+    await this.prisma.$transaction([
+      this.prisma.eventMedia.deleteMany({ where: { eventId: id } }),
+      this.prisma.eventMedia.createMany({ data: items.map((x, i) => ({ ...x, eventId: id, sortOrder: i })) }),
+    ]);
+    return this.afterListEdit(id, needsReview);
+  }
+
+  async replaceFaqs(organizationId: string, id: string, items: FaqItemDto[], orgVerified: boolean) {
+    const { needsReview } = await this.editableForLists(organizationId, id, orgVerified);
+    await this.prisma.$transaction([
+      this.prisma.eventFaq.deleteMany({ where: { eventId: id } }),
+      this.prisma.eventFaq.createMany({ data: items.map((x, i) => ({ ...x, eventId: id, sortOrder: i })) }),
+    ]);
+    return this.afterListEdit(id, needsReview);
+  }
+
+  // ───────────── Organizer public profile ─────────────
+
+  async updateOrgProfile(organizationId: string, dto: OrgProfileDto) {
+    const { logoKey, ...rest } = dto;
+    this.assertKeys([logoKey]);
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { ...rest, ...(logoKey !== undefined ? { logoUrl: logoKey } : {}) },
+    });
+    return this.orgProfileFor(organizationId);
+  }
+
+  private async orgProfileFor(id: string) {
+    const o = await this.prisma.organization.findUniqueOrThrow({ where: { id } });
+    return {
+      ...pick(o, ['id', 'name', 'slug', 'description', 'descriptionMy', 'website', 'facebookUrl', 'contactEmail', 'contactPhone', 'showContact', 'kycStatus'] as const),
+      logoKey: o.logoUrl,
+      logoUrl: this.media.url(o.logoUrl),
+    };
+  }
+
+  getOrgProfile(organizationId: string) {
+    return this.orgProfileFor(organizationId);
+  }
+
+  /** Public organizer page: profile plus upcoming public events. Contact details only if the organizer allows it. */
+  async publicOrganizer(slug: string) {
+    const o = await this.prisma.organization.findUnique({ where: { slug } });
+    if (!o) throw new NotFoundException('Organizer not found');
+    const events = await this.prisma.event.findMany({
+      where: { organizationId: o.id, status: 'PUBLISHED', visibility: 'PUBLIC', endsAt: { gte: new Date() } },
+      include: cardInclude,
+      orderBy: { startsAt: 'asc' },
+      take: 50,
+    });
+    return {
+      ...pick(o, ['id', 'name', 'slug', 'description', 'descriptionMy', 'website', 'facebookUrl'] as const),
+      logoUrl: this.media.url(o.logoUrl),
+      verified: o.kycStatus === 'APPROVED',
+      contactEmail: o.showContact ? o.contactEmail : null,
+      contactPhone: o.showContact ? o.contactPhone : null,
+      events: events.map((e) => this.toDto(e)),
+    };
+  }
+
+  // ───────────── Calendar (.ics) ─────────────
+
+  async calendar(idOrSlug: string): Promise<{ filename: string; body: string }> {
+    const e = await this.getPublic(idOrSlug);
+    const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+    const ts = (d: Date | string) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    // RFC 5545: lines are at most 75 octets; Myanmar characters are 3 bytes in UTF-8, so fold by bytes.
+    const fold = (line: string) => {
+      const parts: string[] = [];
+      let cur = '';
+      for (const ch of line) {
+        if (Buffer.byteLength(cur + ch) > (parts.length ? 74 : 75)) {
+          parts.push(cur);
+          cur = '';
+        }
+        cur += ch;
+      }
+      parts.push(cur);
+      return parts.join('\r\n ');
+    };
+    const location = e.venue ? [e.venue.name, e.venue.address, e.venue.city].filter(Boolean).join(', ') : 'Online';
+    const desc = [e.summary, e.titleMy, e.summaryMy].filter(Boolean).join('\n');
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Event 360//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${e.id}@event360.app`,
+      `DTSTAMP:${ts(new Date())}`,
+      `DTSTART:${ts(e.startsAt)}`,
+      `DTEND:${ts(e.endsAt)}`,
+      `SUMMARY:${esc(e.title)}`,
+      `LOCATION:${esc(location)}`,
+      `DESCRIPTION:${esc(desc)}`,
+      `ORGANIZER;CN=${esc(e.organization.name)}:mailto:noreply@event360.app`,
+      ...(e.status === 'CANCELLED' ? ['STATUS:CANCELLED'] : ['STATUS:CONFIRMED']),
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].map(fold);
+    return { filename: `${e.slug}.ics`, body: lines.join('\r\n') + '\r\n' };
+  }
+
   // ───────────── Admin moderation ─────────────
 
   listForAdmin(status: EventStatus) {
     return this.prisma.event
-      .findMany({ where: { status }, include: cardInclude, orderBy: { submittedAt: 'asc' } })
+      .findMany({ where: { status }, include: fullInclude, orderBy: { submittedAt: 'asc' } })
       .then((rows) => rows.map((e) => this.toDto(e, { full: true })));
   }
 
@@ -312,7 +512,7 @@ export class EventsService {
     const updated = await this.prisma.event.update({
       where: { id },
       data: { status: 'PUBLISHED', publishedAt: e.publishedAt ?? new Date(), rejectionReason: null },
-      include: cardInclude,
+      include: fullInclude,
     });
     return this.toDto(updated, { full: true });
   }
@@ -322,7 +522,7 @@ export class EventsService {
     const e = await this.prisma.event.findUnique({ where: { id } });
     if (!e) throw new NotFoundException('Event not found');
     if (!['SUBMITTED', 'PUBLISHED'].includes(e.status)) throw new ConflictException(`Cannot reject an event that is ${e.status}`);
-    const updated = await this.prisma.event.update({ where: { id }, data: { status: 'REJECTED', rejectionReason: reason }, include: cardInclude });
+    const updated = await this.prisma.event.update({ where: { id }, data: { status: 'REJECTED', rejectionReason: reason }, include: fullInclude });
     return this.toDto(updated, { full: true });
   }
 }

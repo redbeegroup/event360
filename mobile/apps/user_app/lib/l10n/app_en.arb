@@ -113,5 +113,34 @@
   "eventEnded": "This event has ended",
   "chooseLanguage": "Choose your language",
   "continueLabel": "Continue",
-  "@@locale": "en"
+  "@@locale": "en",
+  "addToCalendar": "Add to calendar",
+  "openInMaps": "Open in Maps",
+  "schedule": "Schedule",
+  "lineup": "Lineup",
+  "gallery": "Photos",
+  "practicalInfo": "Good to know",
+  "ageLimit": "Ages {n}+",
+  "@ageLimit": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "dressCode": "Dress code",
+  "languages": "Language",
+  "parking": "Parking",
+  "accessibility": "Accessibility",
+  "whatToBring": "What to bring",
+  "faq": "FAQ",
+  "terms": "Terms & conditions",
+  "refundPolicy": "Refund policy",
+  "directions": "Getting there",
+  "viewOrganizer": "View organizer",
+  "organizerEvents": "Upcoming events",
+  "website": "Website",
+  "facebook": "Facebook",
+  "contact": "Contact",
+  "noUpcomingEvents": "No upcoming events right now."
 }

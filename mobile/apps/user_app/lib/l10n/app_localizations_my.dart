@@ -217,4 +217,72 @@ class L10nMy extends L10n {
 
   @override
   String get continueLabel => 'ဆက်လက်မည်';
+
+  @override
+  String get addToCalendar => 'ပြက္ခဒိန်တွင် ထည့်မည်';
+
+  @override
+  String get openInMaps => 'မြေပုံတွင် ဖွင့်မည်';
+
+  @override
+  String get schedule => 'အစီအစဉ်';
+
+  @override
+  String get lineup => 'တင်ဆက်သူများ';
+
+  @override
+  String get gallery => 'ဓာတ်ပုံများ';
+
+  @override
+  String get practicalInfo => 'သိထားသင့်သည်များ';
+
+  @override
+  String ageLimit(int n) {
+    return 'အသက် $n နှစ်နှင့်အထက်';
+  }
+
+  @override
+  String get dressCode => 'ဝတ်စားဆင်ယင်မှု';
+
+  @override
+  String get languages => 'ဘာသာစကား';
+
+  @override
+  String get parking => 'ကားရပ်နားရန်';
+
+  @override
+  String get accessibility => 'အဆင်ပြေမှု';
+
+  @override
+  String get whatToBring => 'ယူဆောင်လာရန်';
+
+  @override
+  String get faq => 'မေးလေ့ရှိသော မေးခွန်းများ';
+
+  @override
+  String get terms => 'စည်းကမ်းချက်များ';
+
+  @override
+  String get refundPolicy => 'ငွေပြန်အမ်းမူဝါဒ';
+
+  @override
+  String get directions => 'သွားရောက်ပုံ';
+
+  @override
+  String get viewOrganizer => 'စီစဉ်သူကို ကြည့်မည်';
+
+  @override
+  String get organizerEvents => 'လာမည့်ပွဲများ';
+
+  @override
+  String get website => 'ဝက်ဘ်ဆိုက်';
+
+  @override
+  String get facebook => 'Facebook';
+
+  @override
+  String get contact => 'ဆက်သွယ်ရန်';
+
+  @override
+  String get noUpcomingEvents => 'လောလောဆယ် လာမည့်ပွဲ မရှိသေးပါ။';
 }

@@ -486,6 +486,138 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Continue'**
   String get continueLabel;
+
+  /// No description provided for @addToCalendar.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to calendar'**
+  String get addToCalendar;
+
+  /// No description provided for @openInMaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get openInMaps;
+
+  /// No description provided for @schedule.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule'**
+  String get schedule;
+
+  /// No description provided for @lineup.
+  ///
+  /// In en, this message translates to:
+  /// **'Lineup'**
+  String get lineup;
+
+  /// No description provided for @gallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get gallery;
+
+  /// No description provided for @practicalInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Good to know'**
+  String get practicalInfo;
+
+  /// No description provided for @ageLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Ages {n}+'**
+  String ageLimit(int n);
+
+  /// No description provided for @dressCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Dress code'**
+  String get dressCode;
+
+  /// No description provided for @languages.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get languages;
+
+  /// No description provided for @parking.
+  ///
+  /// In en, this message translates to:
+  /// **'Parking'**
+  String get parking;
+
+  /// No description provided for @accessibility.
+  ///
+  /// In en, this message translates to:
+  /// **'Accessibility'**
+  String get accessibility;
+
+  /// No description provided for @whatToBring.
+  ///
+  /// In en, this message translates to:
+  /// **'What to bring'**
+  String get whatToBring;
+
+  /// No description provided for @faq.
+  ///
+  /// In en, this message translates to:
+  /// **'FAQ'**
+  String get faq;
+
+  /// No description provided for @terms.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms & conditions'**
+  String get terms;
+
+  /// No description provided for @refundPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Refund policy'**
+  String get refundPolicy;
+
+  /// No description provided for @directions.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting there'**
+  String get directions;
+
+  /// No description provided for @viewOrganizer.
+  ///
+  /// In en, this message translates to:
+  /// **'View organizer'**
+  String get viewOrganizer;
+
+  /// No description provided for @organizerEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'Upcoming events'**
+  String get organizerEvents;
+
+  /// No description provided for @website.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get website;
+
+  /// No description provided for @facebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Facebook'**
+  String get facebook;
+
+  /// No description provided for @contact.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact'**
+  String get contact;
+
+  /// No description provided for @noUpcomingEvents.
+  ///
+  /// In en, this message translates to:
+  /// **'No upcoming events right now.'**
+  String get noUpcomingEvents;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

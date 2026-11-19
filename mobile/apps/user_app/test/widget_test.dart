@@ -4,6 +4,7 @@ import 'package:event360_core/event360_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
@@ -47,8 +48,37 @@ class FakeApi extends Event360Api {
   Future<EventPage> events({String? q, String? category, String? city, bool? free, DateTime? from, DateTime? to, int page = 1, int limit = 20}) async =>
       EventPage.fromJson({'items': [eventJson('e1'), eventJson('e2', free: false)], 'page': 1, 'limit': 20, 'total': 2});
 
+  static Map<String, dynamic> richEventJson(String id) => {
+        ...eventJson(id),
+        'organization': {'name': 'Yangon Live', 'slug': 'yangon-live', 'kycStatus': 'APPROVED'},
+        'venue': {'name': 'Kandawgyi Park', 'city': 'Yangon', 'directions': 'Enter from Natmauk Rd', 'lat': 16.79, 'lng': 96.17},
+        'ageMin': 18,
+        'dressCode': 'Smart casual',
+        'refundPolicy': 'No refunds',
+        'sessions': [
+          {'title': 'Doors open', 'startsAt': '2027-01-15T10:30:00.000Z', 'endsAt': '2027-01-15T11:00:00.000Z', 'location': 'Main gate'},
+        ],
+        'performers': [
+          {'name': 'Chef Aung', 'role': 'Host', 'bio': 'Award-winning chef'},
+        ],
+        'faqs': [
+          {'question': 'Can I bring kids?', 'answer': 'Yes, under 12 free'},
+        ],
+      };
+
   @override
-  Future<EventSummary> event(String idOrSlug) async => EventSummary.fromJson(eventJson(idOrSlug));
+  Future<EventSummary> event(String idOrSlug) async =>
+      EventSummary.fromJson(idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug));
+
+  @override
+  Future<OrganizerProfile> organizer(String slug) async => OrganizerProfile.fromJson({
+        'name': 'Yangon Live',
+        'slug': slug,
+        'verified': true,
+        'description': 'We run food festivals',
+        'website': 'https://example.com',
+        'events': [eventJson('e1')],
+      });
 
   @override
   Future<Me> me() async => Me(id: 'u1', phone: '+959790000001');
@@ -203,5 +233,35 @@ void main() {
   test('event times are shown in Myanmar time regardless of device zone', () {
     // intl uses a narrow no-break space before AM/PM; normalize it for the comparison.
     expect(formatEventDate(DateTime.utc(2027, 1, 15, 10, 30), 'en').replaceAll('\u202f', ' '), 'Fri, 15 Jan 2027 · 5:00 PM');
+  });
+
+  testWidgets('event detail shows schedule, lineup, practical info, FAQ and organizer page', (tester) async {
+    await pumpApp(tester);
+    final router = tester.element(find.byType(Scaffold).first);
+    GoRouter.of(router).push('/event/rich');
+    await tester.pumpAndSettle();
+    Future<void> see(Finder f) async {
+      await tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
+      expect(f, findsWidgets);
+    }
+
+    await see(find.text('Doors open'));
+    await see(find.text('Chef Aung'));
+    await see(find.text('Smart casual'));
+    await see(find.text('Enter from Natmauk Rd'));
+    await see(find.text('Can I bring kids?'));
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // clear the bottom button
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Can I bring kids?'));
+    await tester.pumpAndSettle();
+    expect(find.text('Yes, under 12 free'), findsOneWidget);
+    await see(find.text('Refund policy'));
+
+    await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 3000); // back to the top
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yangon Live'));
+    await tester.pumpAndSettle();
+    expect(find.text('We run food festivals'), findsOneWidget);
+    expect(find.text('Yangon Food Fair e1'), findsWidgets);
   });
 }

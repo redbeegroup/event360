@@ -51,6 +51,44 @@ export function EventFields({ tr, categories, event }: { tr: Tr; categories: Cat
         <div className="field"><label>{tr.venueNameMy}</label><input name="venueNameMy" lang="my" defaultValue={e?.venue?.nameMy ?? ''} /></div>
         <div className="field"><label>{tr.address}</label><input name="address" defaultValue={e?.venue?.address ?? ''} /></div>
         <div className="field"><label>{tr.city}</label><input name="city" defaultValue={e?.venue?.city ?? 'Yangon'} /></div>
+        <div className="field"><label>{tr.mapUrl}</label><input name="mapUrl" type="url" placeholder="https://maps.app.goo.gl/…" defaultValue={e?.venue?.mapUrl ?? ''} /></div>
+        <div className="field"><label>{tr.latitude}</label><input name="latitude" inputMode="decimal" defaultValue={e?.venue?.latitude ?? ''} /></div>
+        <div className="field"><label>{tr.longitude}</label><input name="longitude" inputMode="decimal" defaultValue={e?.venue?.longitude ?? ''} /></div>
+      </div>
+      <div className="grid">
+        <div className="field"><label>{tr.directions} ({tr.en})</label><textarea name="directions" defaultValue={e?.venue?.directions ?? ''} style={{ minHeight: 70 }} /></div>
+        <div className="field"><label>{tr.directions} ({tr.myLabel})</label><textarea name="directionsMy" lang="my" defaultValue={e?.venue?.directionsMy ?? ''} style={{ minHeight: 70 }} /></div>
+      </div>
+      <h2>{tr.practicalInfo}</h2>
+      <div className="grid">
+        <div className="field"><label>{tr.ageMin}</label><input name="ageMin" type="number" min={0} max={99} defaultValue={e?.ageMin ?? ''} /></div>
+        {(
+          [
+            ['dressCode', tr.dressCode],
+            ['languages', tr.languagesField],
+            ['parking', tr.parking],
+            ['accessibility', tr.accessibility],
+            ['whatToBring', tr.whatToBring],
+          ] as const
+        ).map(([k, label]) => (
+          <div key={k} style={{ display: 'contents' }}>
+            <div className="field"><label>{label} ({tr.en})</label><input name={k} defaultValue={(e?.[k] as string | null) ?? ''} /></div>
+            <div className="field"><label>{label} ({tr.myLabel})</label><input name={`${k}My`} lang="my" defaultValue={(e?.[`${k}My`] as string | null) ?? ''} /></div>
+          </div>
+        ))}
+      </div>
+      <div className="grid">
+        {(
+          [
+            ['terms', tr.termsField],
+            ['refundPolicy', tr.refundPolicy],
+          ] as const
+        ).map(([k, label]) => (
+          <div key={k} style={{ display: 'contents' }}>
+            <div className="field"><label>{label} ({tr.en})</label><textarea name={k} defaultValue={(e?.[k] as string | null) ?? ''} /></div>
+            <div className="field"><label>{label} ({tr.myLabel})</label><textarea name={`${k}My`} lang="my" defaultValue={(e?.[`${k}My`] as string | null) ?? ''} /></div>
+          </div>
+        ))}
       </div>
       <div className="field">
         <label>{tr.coverImage}</label>

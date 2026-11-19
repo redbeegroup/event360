@@ -8,6 +8,7 @@ import '../screens/explore_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/language_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/organizer_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/ticket_screen.dart';
 import '../screens/tickets_screen.dart';
@@ -30,6 +31,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/event/:id', builder: (_, s) => EventDetailScreen(idOrSlug: s.pathParameters['id']!)),
       GoRoute(path: '/ticket/:id', builder: (_, s) => TicketScreen(ticketId: s.pathParameters['id']!)),
+      GoRoute(path: '/organizer/:slug', builder: (_, s) => OrganizerScreen(slug: s.pathParameters['slug']!)),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => _Shell(shell: shell),
         branches: [

@@ -30,14 +30,107 @@ class Category {
 }
 
 class Venue {
-  Venue({required this.name, this.nameMy, this.address, required this.city});
+  Venue({required this.name, this.nameMy, this.address, required this.city, this.mapUrl, this.directions, this.directionsMy, this.latitude, this.longitude});
   final String name;
   final String? nameMy;
   final String? address;
   final String city;
+  final String? mapUrl;
+  final String? directions;
+  final String? directionsMy;
+  final double? latitude;
+  final double? longitude;
 
-  factory Venue.fromJson(Map<String, dynamic> j) =>
-      Venue(name: j['name'] as String, nameMy: j['nameMy'] as String?, address: j['address'] as String?, city: j['city'] as String);
+  /// Link that opens the venue in a maps app: the organizer's link, else coordinates, else a text search.
+  Uri get mapsUri {
+    if (mapUrl != null && mapUrl!.isNotEmpty) return Uri.parse(mapUrl!);
+    if (latitude != null && longitude != null) {
+      return Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    }
+    return Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent([name, address, city].whereType<String>().join(', '))}');
+  }
+
+  factory Venue.fromJson(Map<String, dynamic> j) => Venue(
+        name: j['name'] as String,
+        nameMy: j['nameMy'] as String?,
+        address: j['address'] as String?,
+        city: j['city'] as String,
+        mapUrl: j['mapUrl'] as String?,
+        directions: j['directions'] as String?,
+        directionsMy: j['directionsMy'] as String?,
+        latitude: (j['latitude'] as num?)?.toDouble(),
+        longitude: (j['longitude'] as num?)?.toDouble(),
+      );
+}
+
+class ScheduleItem {
+  ScheduleItem({required this.title, this.titleMy, this.description, this.descriptionMy, this.location, required this.startsAt, required this.endsAt});
+  final String title;
+  final String? titleMy;
+  final String? description;
+  final String? descriptionMy;
+  final String? location;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  factory ScheduleItem.fromJson(Map<String, dynamic> j) => ScheduleItem(
+        title: j['title'] as String,
+        titleMy: j['titleMy'] as String?,
+        description: j['description'] as String?,
+        descriptionMy: j['descriptionMy'] as String?,
+        location: j['location'] as String?,
+        startsAt: _dt(j['startsAt']),
+        endsAt: _dt(j['endsAt']),
+      );
+}
+
+class Performer {
+  Performer({required this.name, this.nameMy, this.role, this.roleMy, this.bio, this.bioMy, this.photoUrl});
+  final String name;
+  final String? nameMy;
+  final String? role;
+  final String? roleMy;
+  final String? bio;
+  final String? bioMy;
+  final String? photoUrl;
+
+  factory Performer.fromJson(Map<String, dynamic> j) => Performer(
+        name: j['name'] as String,
+        nameMy: j['nameMy'] as String?,
+        role: j['role'] as String?,
+        roleMy: j['roleMy'] as String?,
+        bio: j['bio'] as String?,
+        bioMy: j['bioMy'] as String?,
+        photoUrl: j['photoUrl'] as String?,
+      );
+}
+
+class GalleryImage {
+  GalleryImage({required this.url, this.caption, this.captionMy});
+  final String url;
+  final String? caption;
+  final String? captionMy;
+  factory GalleryImage.fromJson(Map<String, dynamic> j) =>
+      GalleryImage(url: j['url'] as String, caption: j['caption'] as String?, captionMy: j['captionMy'] as String?);
+}
+
+class Faq {
+  Faq({required this.question, this.questionMy, required this.answer, this.answerMy});
+  final String question;
+  final String? questionMy;
+  final String answer;
+  final String? answerMy;
+  factory Faq.fromJson(Map<String, dynamic> j) =>
+      Faq(question: j['question'] as String, questionMy: j['questionMy'] as String?, answer: j['answer'] as String, answerMy: j['answerMy'] as String?);
+}
+
+/// Bilingual practical-info text pair; empty strings count as missing.
+class LocalizedText {
+  const LocalizedText(this.en, this.my);
+  final String? en;
+  final String? my;
+  bool get isEmpty => (en == null || en!.isEmpty) && (my == null || my!.isEmpty);
+  String of(String lang) => pickLang(lang, (en?.isEmpty ?? true) ? null : en, (my?.isEmpty ?? true) ? null : my);
 }
 
 class TicketType {
@@ -94,8 +187,22 @@ class EventSummary {
     this.venue,
     required this.organizerName,
     required this.organizerVerified,
+    this.organizerSlug,
+    this.organizerLogoUrl,
     required this.ticketTypes,
     required this.soldOut,
+    this.ageMin,
+    this.dressCode = const LocalizedText(null, null),
+    this.languages = const LocalizedText(null, null),
+    this.parking = const LocalizedText(null, null),
+    this.accessibility = const LocalizedText(null, null),
+    this.whatToBring = const LocalizedText(null, null),
+    this.terms = const LocalizedText(null, null),
+    this.refundPolicy = const LocalizedText(null, null),
+    this.schedule = const [],
+    this.performers = const [],
+    this.gallery = const [],
+    this.faqs = const [],
   });
 
   final String id;
@@ -118,8 +225,25 @@ class EventSummary {
   final Venue? venue;
   final String organizerName;
   final bool organizerVerified;
+  final String? organizerSlug;
+  final String? organizerLogoUrl;
   final List<TicketType> ticketTypes;
   final bool soldOut;
+  final int? ageMin;
+  final LocalizedText dressCode;
+  final LocalizedText languages;
+  final LocalizedText parking;
+  final LocalizedText accessibility;
+  final LocalizedText whatToBring;
+  final LocalizedText terms;
+  final LocalizedText refundPolicy;
+  final List<ScheduleItem> schedule;
+  final List<Performer> performers;
+  final List<GalleryImage> gallery;
+  final List<Faq> faqs;
+
+  bool get hasPracticalInfo =>
+      ageMin != null || !dressCode.isEmpty || !languages.isEmpty || !parking.isEmpty || !accessibility.isEmpty || !whatToBring.isEmpty;
 
   factory EventSummary.fromJson(Map<String, dynamic> j) {
     final cat = j['category'] as Map<String, dynamic>;
@@ -145,6 +269,20 @@ class EventSummary {
       venue: j['venue'] == null ? null : Venue.fromJson(j['venue'] as Map<String, dynamic>),
       organizerName: org['name'] as String,
       organizerVerified: org['kycStatus'] == 'APPROVED',
+      organizerSlug: org['slug'] as String?,
+      organizerLogoUrl: org['logoUrl'] as String?,
+      ageMin: (j['ageMin'] as num?)?.toInt(),
+      dressCode: LocalizedText(j['dressCode'] as String?, j['dressCodeMy'] as String?),
+      languages: LocalizedText(j['languages'] as String?, j['languagesMy'] as String?),
+      parking: LocalizedText(j['parking'] as String?, j['parkingMy'] as String?),
+      accessibility: LocalizedText(j['accessibility'] as String?, j['accessibilityMy'] as String?),
+      whatToBring: LocalizedText(j['whatToBring'] as String?, j['whatToBringMy'] as String?),
+      terms: LocalizedText(j['terms'] as String?, j['termsMy'] as String?),
+      refundPolicy: LocalizedText(j['refundPolicy'] as String?, j['refundPolicyMy'] as String?),
+      schedule: ((j['sessions'] as List?) ?? const []).map((x) => ScheduleItem.fromJson(x as Map<String, dynamic>)).toList(),
+      performers: ((j['performers'] as List?) ?? const []).map((x) => Performer.fromJson(x as Map<String, dynamic>)).toList(),
+      gallery: ((j['media'] as List?) ?? const []).map((x) => GalleryImage.fromJson(x as Map<String, dynamic>)).toList(),
+      faqs: ((j['faqs'] as List?) ?? const []).map((x) => Faq.fromJson(x as Map<String, dynamic>)).toList(),
       ticketTypes: ((j['ticketTypes'] as List?) ?? const []).map((t) => TicketType.fromJson(t as Map<String, dynamic>)).toList(),
       soldOut: (j['soldOut'] as bool?) ?? false,
     );
@@ -271,3 +409,45 @@ class Me {
 
 /// Unused but kept for symmetry with the API's nullable dates.
 DateTime? parseNullableDate(Object? v) => _dtn(v);
+
+/// Public organizer page.
+class OrganizerProfile {
+  OrganizerProfile({
+    required this.name,
+    required this.slug,
+    this.description,
+    this.descriptionMy,
+    this.logoUrl,
+    this.website,
+    this.facebookUrl,
+    this.contactEmail,
+    this.contactPhone,
+    required this.verified,
+    required this.events,
+  });
+  final String name;
+  final String slug;
+  final String? description;
+  final String? descriptionMy;
+  final String? logoUrl;
+  final String? website;
+  final String? facebookUrl;
+  final String? contactEmail;
+  final String? contactPhone;
+  final bool verified;
+  final List<EventSummary> events;
+
+  factory OrganizerProfile.fromJson(Map<String, dynamic> j) => OrganizerProfile(
+        name: j['name'] as String,
+        slug: j['slug'] as String,
+        description: j['description'] as String?,
+        descriptionMy: j['descriptionMy'] as String?,
+        logoUrl: j['logoUrl'] as String?,
+        website: j['website'] as String?,
+        facebookUrl: j['facebookUrl'] as String?,
+        contactEmail: j['contactEmail'] as String?,
+        contactPhone: j['contactPhone'] as String?,
+        verified: j['verified'] as bool,
+        events: (j['events'] as List).map((e) => EventSummary.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+}

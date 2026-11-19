@@ -100,3 +100,16 @@ class EventCard extends ConsumerWidget {
     );
   }
 }
+
+/// Text shared via the share sheet: title, date, place, and a link to the web app.
+String shareText(EventSummary e, String lang) {
+  final place = e.venue == null ? null : [pickLang(lang, e.venue!.name, e.venue!.nameMy), e.venue!.city].join(', ');
+  const webBase = String.fromEnvironment('WEB_APP_URL', defaultValue: 'https://app.dev.event360.app');
+  return [
+    pickLang(lang, e.title, e.titleMy),
+    '📅 ${formatEventDate(e.startsAt, lang)}',
+    if (place != null) '📍 $place',
+    if (pickLang(lang, e.summary, e.summaryMy).isNotEmpty) pickLang(lang, e.summary, e.summaryMy),
+    '$webBase/#/event/${e.slug}',
+  ].join('\n');
+}

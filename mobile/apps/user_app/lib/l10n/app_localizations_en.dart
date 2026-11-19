@@ -217,4 +217,72 @@ class L10nEn extends L10n {
 
   @override
   String get continueLabel => 'Continue';
+
+  @override
+  String get addToCalendar => 'Add to calendar';
+
+  @override
+  String get openInMaps => 'Open in Maps';
+
+  @override
+  String get schedule => 'Schedule';
+
+  @override
+  String get lineup => 'Lineup';
+
+  @override
+  String get gallery => 'Photos';
+
+  @override
+  String get practicalInfo => 'Good to know';
+
+  @override
+  String ageLimit(int n) {
+    return 'Ages $n+';
+  }
+
+  @override
+  String get dressCode => 'Dress code';
+
+  @override
+  String get languages => 'Language';
+
+  @override
+  String get parking => 'Parking';
+
+  @override
+  String get accessibility => 'Accessibility';
+
+  @override
+  String get whatToBring => 'What to bring';
+
+  @override
+  String get faq => 'FAQ';
+
+  @override
+  String get terms => 'Terms & conditions';
+
+  @override
+  String get refundPolicy => 'Refund policy';
+
+  @override
+  String get directions => 'Getting there';
+
+  @override
+  String get viewOrganizer => 'View organizer';
+
+  @override
+  String get organizerEvents => 'Upcoming events';
+
+  @override
+  String get website => 'Website';
+
+  @override
+  String get facebook => 'Facebook';
+
+  @override
+  String get contact => 'Contact';
+
+  @override
+  String get noUpcomingEvents => 'No upcoming events right now.';
 }

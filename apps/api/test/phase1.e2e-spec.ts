@@ -179,6 +179,73 @@ run('Phase 1: organizers, events, moderation, free registration, QR', () => {
     await http.post(`/v1/events/${ev2.body.id}/registrations`).set(C).send({ ticketTypeId: paid.body.id, quantity: 1 }).expect(400);
   });
 
+  it('event details: schedule, lineup, gallery, FAQ, practical info, organizer page, calendar', async () => {
+    const adminInvite = await app.get(AuthService).createInvitation({ email: `admin2-${tag}@e2e.test`, platformRole: 'PLATFORM_ADMIN' });
+    const A = { Authorization: `Bearer ${await acceptInvite(adminInvite.url, 'admin-password-123')}` };
+    const created = await http.post('/v1/admin/organizations').set(A)
+      .send({ name: `Details Org ${tag}`, slug: `details-${tag}`, ownerEmail: `downer-${tag}@e2e.test`, contactPhone: '09111222333' }).expect(201);
+    const orgId = created.body.organization.id;
+    const O = { Authorization: `Bearer ${await acceptInvite(created.body.inviteUrl, 'owner-password-123')}` };
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + 10 * 864e5);
+    const at = (h: number) => new Date(start.getTime() + h * 36e5).toISOString();
+
+    const ev = await http.post(`/v1/organizations/${orgId}/events`).set(O).send({
+      categoryId: cats.body[1].children[0].id,
+      title: `Details Concert ${tag}`,
+      titleMy: 'ဂီတပွဲ',
+      format: 'IN_PERSON',
+      startsAt: at(0),
+      endsAt: at(5),
+      venue: { name: 'Lakeside', city: 'Yangon', mapUrl: 'https://maps.google.com/?q=16.8,96.15', directions: 'Gate 2 by the pagoda', latitude: 16.8, longitude: 96.15 },
+      ageMin: 18, dressCode: 'Smart casual', languages: 'Myanmar, English', parking: 'Free parking at gate 3',
+      terms: 'No outside food.', refundPolicy: 'Free tickets can be cancelled any time.',
+    }).expect(201);
+    const id = ev.body.id;
+    expect(ev.body).toMatchObject({ ageMin: 18, dressCode: 'Smart casual', venue: { mapUrl: 'https://maps.google.com/?q=16.8,96.15', directions: 'Gate 2 by the pagoda' } });
+
+    const base = `/v1/organizations/${orgId}/events/${id}`;
+    await http.put(`${base}/sessions`).set(O).send({ items: [{ title: 'Bad', startsAt: at(2), endsAt: at(1) }] }).expect(400);
+    await http.put(`${base}/sessions`).set(O).send({ items: [
+      { title: 'Doors open', startsAt: at(0), endsAt: at(1) },
+      { title: 'Headline set', titleMy: 'အဓိကတင်ဆက်မှု', location: 'Main stage', startsAt: at(2), endsAt: at(4) },
+    ] }).expect(200);
+    await http.put(`${base}/performers`).set(O).send({ items: [{ name: 'The Band', role: 'Headliner', photoKey: 'dev/images/x/band.png' }, { name: 'Opener' }] }).expect(200);
+    await http.put(`${base}/performers`).set(O).send({ items: [{ name: 'Evil', photoKey: 'prod/images/other.png' }] }).expect(400); // other env's key
+    await http.put(`${base}/media`).set(O).send({ items: [{ key: 'dev/images/x/1.png', caption: 'Stage' }, { key: 'dev/images/x/2.png' }] }).expect(200);
+    await http.put(`${base}/faqs`).set(O).send({ items: [{ question: 'Is there food?', answer: 'Yes, food trucks.' }] }).expect(200);
+    await http.post(`${base}/ticket-types`).set(O).send({ name: 'Free', priceMmk: 0, quota: 50 }).expect(201);
+    await http.post(`${base}/submit`).set(O).expect(200);
+    await http.post(`/v1/admin/events/${id}/approve`).set(A).expect(200);
+
+    const pub = await http.get(`/v1/events/${ev.body.slug}`).expect(200);
+    expect(pub.body.sessions.map((x: any) => x.title)).toEqual(['Doors open', 'Headline set']);
+    expect(pub.body.performers.map((x: any) => [x.name, x.sortOrder ?? null])).toEqual([['The Band', null], ['Opener', null]]);
+    expect(pub.body.performers[0].photoUrl).toMatch(/\/v1\/media\/dev\/images\/x\/band\.png$/);
+    expect(pub.body.media).toHaveLength(2);
+    expect(pub.body.faqs[0]).toMatchObject({ question: 'Is there food?' });
+    expect(pub.body).toMatchObject({ ageMin: 18, languages: 'Myanmar, English', refundPolicy: expect.stringContaining('cancelled') });
+
+    // Unverified organizer editing the lineup of a published event → back to review
+    const edited = await http.put(`${base}/faqs`).set(O).send({ items: [] }).expect(200);
+    expect(edited.body).toMatchObject({ status: 'SUBMITTED', reReviewRequired: true });
+    await http.post(`/v1/admin/events/${id}/approve`).set(A).expect(200);
+
+    // Calendar file
+    const ics = await http.get(`/v1/events/${id}/calendar.ics`).expect(200);
+    expect(ics.headers['content-type']).toMatch(/text\/calendar/);
+    expect(ics.text).toMatch(/BEGIN:VEVENT[\s\S]*SUMMARY:Details Concert[\s\S]*END:VCALENDAR/);
+    for (const line of ics.text.split('\r\n')) expect(Buffer.byteLength(line)).toBeLessThanOrEqual(75);
+
+    // Organizer profile + public page (contact hidden when showContact=false)
+    await http.patch(`/v1/organizations/${orgId}/profile`).set(O).send({ description: 'We run concerts', website: 'https://example.org', showContact: false }).expect(200);
+    const page = await http.get(`/v1/organizers/details-${tag}`).expect(200);
+    expect(page.body).toMatchObject({ name: `Details Org ${tag}`, description: 'We run concerts', website: 'https://example.org', contactPhone: null });
+    expect(page.body.events.map((e: any) => e.id)).toContain(id);
+    await http.patch(`/v1/organizations/${orgId}/profile`).set(O).send({ showContact: true }).expect(200);
+    expect((await http.get(`/v1/organizers/details-${tag}`)).body.contactPhone).toBe('09111222333');
+  });
+
   it('limits login codes per phone number, not just per IP', async () => {
     const p = phone();
     const svc = app.get(AuthService) as any;

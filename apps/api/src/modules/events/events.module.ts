@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import type { EventStatus } from '@prisma/client';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
@@ -7,6 +8,11 @@ import { TicketsModule, TicketsService } from '../tickets/tickets.module';
 import {
   AdminEventsQuery,
   CreateEventDto,
+  FaqsDto,
+  MediaListDto,
+  OrgProfileDto,
+  PerformersDto,
+  SessionsDto,
   ListEventsQuery,
   ReasonDto,
   RegisterDto,
@@ -32,6 +38,16 @@ export class PublicEventsController {
   @Get(':idOrSlug')
   get(@Param('idOrSlug') idOrSlug: string) {
     return this.events.getPublic(idOrSlug);
+  }
+
+  /** "Add to calendar": an iCalendar file for the event. */
+  @Get(':idOrSlug/calendar.ics')
+  @Header('Cache-Control', 'public, max-age=300')
+  async calendar(@Param('idOrSlug') idOrSlug: string, @Res() res: Response) {
+    const { filename, body } = await this.events.calendar(idOrSlug);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(body);
   }
 
   @Post(':id/registrations')
@@ -99,6 +115,30 @@ export class OrganizerEventsController {
     return this.events.attendees(orgId, id);
   }
 
+  @Put(':id/sessions')
+  async sessions(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SessionsDto, @CurrentUser() u: AuthUser) {
+    const org = await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.replaceSessions(orgId, id, dto.items, org.kycStatus === 'APPROVED');
+  }
+
+  @Put(':id/performers')
+  async performers(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PerformersDto, @CurrentUser() u: AuthUser) {
+    const org = await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.replacePerformers(orgId, id, dto.items, org.kycStatus === 'APPROVED');
+  }
+
+  @Put(':id/media')
+  async media(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MediaListDto, @CurrentUser() u: AuthUser) {
+    const org = await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.replaceMedia(orgId, id, dto.items, org.kycStatus === 'APPROVED');
+  }
+
+  @Put(':id/faqs')
+  async faqs(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FaqsDto, @CurrentUser() u: AuthUser) {
+    const org = await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.replaceFaqs(orgId, id, dto.items, org.kycStatus === 'APPROVED');
+  }
+
   @Post(':id/ticket-types')
   async addTicketType(
     @Param('orgId', ParseUUIDPipe) orgId: string,
@@ -158,9 +198,43 @@ export class AdminEventsController {
   }
 }
 
+/** Organizer's own public profile (shown on their organizer page in the app). */
+@ApiTags('organizer')
+@Controller('organizations/:orgId/profile')
+@Auth()
+export class OrgProfileController {
+  constructor(
+    private readonly events: EventsService,
+    private readonly access: OrgAccessService,
+  ) {}
+
+  @Get()
+  async get(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_VIEWERS);
+    return this.events.getOrgProfile(orgId);
+  }
+
+  @Patch()
+  async update(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: OrgProfileDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.updateOrgProfile(orgId, dto);
+  }
+}
+
+@ApiTags('events')
+@Controller('organizers')
+export class PublicOrganizersController {
+  constructor(private readonly events: EventsService) {}
+
+  @Get(':slug')
+  get(@Param('slug') slug: string) {
+    return this.events.publicOrganizer(slug);
+  }
+}
+
 @Module({
   imports: [TicketsModule],
-  controllers: [PublicEventsController, OrganizerEventsController, AdminEventsController],
+  controllers: [PublicEventsController, OrganizerEventsController, AdminEventsController, OrgProfileController, PublicOrganizersController],
   providers: [EventsService],
 })
 export class EventsModule {}

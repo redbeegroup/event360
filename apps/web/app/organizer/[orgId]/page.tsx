@@ -34,7 +34,12 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>{tr.events}</h2>
-        {canEdit && <Link className="btn" href={`/organizer/${orgId}/events/new`}>{tr.newEvent}</Link>}
+        {canEdit && (
+          <div className="row">
+            <Link className="btn secondary" href={`/organizer/${orgId}/profile`}>{tr.profile}</Link>
+            <Link className="btn" href={`/organizer/${orgId}/events/new`}>{tr.newEvent}</Link>
+          </div>
+        )}
       </div>
       <div className="card table-wrap">
         {events.length === 0 ? (

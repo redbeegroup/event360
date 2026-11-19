@@ -114,6 +114,14 @@ class Event360Api {
         (d) => EventSummary.fromJson(d as Map<String, dynamic>),
       );
 
+  Future<OrganizerProfile> organizer(String slug) => _call(
+        () => _dio.get('/organizers/${Uri.encodeComponent(slug)}', options: Options(extra: {'auth': false})),
+        (d) => OrganizerProfile.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// URL of the event's iCalendar file ("Add to calendar").
+  Uri calendarUri(String eventId) => Uri.parse('${_dio.options.baseUrl}/events/$eventId/calendar.ics');
+
   // ───── Auth (phone OTP) ─────
 
   /// Returns the dev code when the server echoes it (dev environment only).

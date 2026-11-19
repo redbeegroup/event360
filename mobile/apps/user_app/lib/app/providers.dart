@@ -70,6 +70,8 @@ final freeEventsProvider = FutureProvider<List<EventSummary>>((ref) async => (aw
 
 final eventProvider = FutureProvider.family<EventSummary, String>((ref, id) => ref.watch(apiProvider).event(id));
 
+final organizerProvider = FutureProvider.family<OrganizerProfile, String>((ref, slug) => ref.watch(apiProvider).organizer(slug));
+
 @immutable
 class SearchQuery {
   const SearchQuery({this.q = '', this.category, this.city, this.freeOnly = false});

@@ -36,3 +36,9 @@ bool isValidMyanmarPhone(String input) {
   final m = RegExp(r'^(?:\+?959|09)(\d{7,10})$').firstMatch(digits);
   return m != null;
 }
+
+/// e.g. "Sat, 5 Dec" — a day header for schedules.
+String formatDay(DateTime start, String lang) => DateFormat('EEE, d MMM', _loc(lang)).format(toYangon(start));
+
+/// e.g. "5:00 PM"
+String formatTime(DateTime t, String lang) => DateFormat.jm(_loc(lang)).format(toYangon(t));
