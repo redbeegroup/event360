@@ -119,7 +119,7 @@ spec:
         fsGroup: 10001
       initContainers:
         - name: migrate
-          image: ghcr.io/redbeegroup/event360-api:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-api:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           command:
             - sh
@@ -141,7 +141,7 @@ spec:
               memory: 768Mi
       containers:
         - name: api
-          image: ghcr.io/redbeegroup/event360-api:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-api:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -253,7 +253,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: realtime
-          image: ghcr.io/redbeegroup/event360-api:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-api:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -349,7 +349,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: worker
-          image: ghcr.io/redbeegroup/event360-api:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-api:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -463,7 +463,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: web
-          image: ghcr.io/redbeegroup/event360-web:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-web:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -533,7 +533,7 @@ spec:
         fsGroup: 101
       containers:
         - name: user-web
-          image: ghcr.io/redbeegroup/event360-user-web:42f19d85c60aad2e8f47c73abb21bf9318fe93b7
+          image: ghcr.io/redbeegroup/event360-user-web:79c47fa2076b129b2caf065e291d9ab2e54a7233
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
