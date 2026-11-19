@@ -285,4 +285,44 @@ class L10nEn extends L10n {
 
   @override
   String get noUpcomingEvents => 'No upcoming events right now.';
+
+  @override
+  String get watch => 'Watch';
+
+  @override
+  String get liveNow => 'LIVE';
+
+  @override
+  String get watchLive => 'Watch live';
+
+  @override
+  String get recordingsTitle => 'Recordings';
+
+  @override
+  String startsAtTime(String time) {
+    return 'Starts $time';
+  }
+
+  @override
+  String availableUntil(String date) {
+    return 'Available until $date';
+  }
+
+  @override
+  String get needTicketToWatch => 'Register for this event to watch.';
+
+  @override
+  String get notLiveNow => 'This stream is not live right now.';
+
+  @override
+  String get otherDevice =>
+      'You started watching on another device, so playback here stopped.';
+
+  @override
+  String get videoError =>
+      'The video could not be played. Check your connection and try again.';
+
+  @override
+  String get liveEnded =>
+      'The live stream has ended. A recording may be available soon.';
 }

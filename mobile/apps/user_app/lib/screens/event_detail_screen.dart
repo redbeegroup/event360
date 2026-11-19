@@ -123,6 +123,7 @@ class _Detail extends ConsumerWidget {
               e.organizerVerified ? t.verified : t.organizer,
               e.organizerSlug == null ? null : () => context.push('/organizer/${e.organizerSlug}'),
             ),
+            _WatchSection(eventId: e.id, lang: lang),
             if (e.gallery.isNotEmpty)
               section(t.gallery, [
                 SizedBox(
@@ -441,6 +442,64 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                 child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.register),
               ),
             ]),
+    );
+  }
+}
+
+/// Live streams and recordings for ticket holders. Hidden when the event has none.
+class _WatchSection extends ConsumerWidget {
+  const _WatchSection({required this.eventId, required this.lang});
+  final String eventId;
+  final String lang;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = L10n.of(context);
+    final s = ref.watch(eventStreamsProvider(eventId)).value;
+    if (s == null || s.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    String dur(int? sec) => sec == null ? '' : '${sec ~/ 3600 > 0 ? '${sec ~/ 3600}:' : ''}${((sec % 3600) ~/ 60).toString().padLeft(2, '0')}:${(sec % 60).toString().padLeft(2, '0')}';
+    void open(String kind, String id, String title) => context.push('/watch/$kind/$id?title=${Uri.encodeQueryComponent(title)}');
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(t.watch, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        for (final l in s.live)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              key: Key('live-${l.channelId}'),
+              leading: Icon(Icons.live_tv, color: l.isLive ? const Color(0xFFD32F2F) : null),
+              title: Text(pickLang(lang, l.title, l.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(l.isLive ? t.watchLive : t.startsAtTime(formatEventDate(l.startsAt, lang))),
+              trailing: l.isLive
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(4)),
+                      child: Text(t.liveNow, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                    )
+                  : null,
+              onTap: l.isLive ? () => open('live', l.channelId, pickLang(lang, l.title, l.titleMy)) : null,
+            ),
+          ),
+        for (final r in s.recordings)
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              key: Key('vod-${r.id}'),
+              leading: const Icon(Icons.play_circle_outline),
+              title: Text(pickLang(lang, r.title, r.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text([
+                t.recordingsTitle,
+                if (r.durationSec != null) dur(r.durationSec),
+                if (r.availableUntil != null) t.availableUntil(formatEventDate(r.availableUntil!, lang)),
+              ].join(' · ')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => open('vod', r.id, pickLang(lang, r.title, r.titleMy)),
+            ),
+          ),
+      ]),
     );
   }
 }

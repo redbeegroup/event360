@@ -289,3 +289,97 @@ export async function revokeCrewCodeAction(_: FormState, fd: FormData): Promise<
     return err(e);
   }
 }
+
+// ───────────── Live & recordings ─────────────
+
+export interface StreamingOverview {
+  maxLiveChannels: number;
+  pipelineReady: boolean;
+  sessions: {
+    id: string;
+    title: string;
+    titleMy: string | null;
+    startsAt: string;
+    endsAt: string;
+    channel: null | {
+      id: string;
+      status: 'IDLE' | 'LIVE' | 'ENDED';
+      recordingEnabled: boolean;
+      startedAt: string | null;
+      endedAt: string | null;
+      viewers: number;
+      peakViewers: number;
+      obsServer: string;
+      obsStreamKey: string;
+      srtUrl: string | null;
+    };
+  }[];
+  recordings: {
+    id: string;
+    title: string;
+    titleMy: string | null;
+    sessionId: string | null;
+    source: 'LIVE' | 'UPLOAD';
+    status: 'UPLOADING' | 'PROCESSING' | 'READY' | 'FAILED';
+    error: string | null;
+    durationSec: number | null;
+    published: boolean;
+    availableUntil: string | null;
+    createdAt: string;
+  }[];
+}
+
+export type StreamKeys = { obsServer: string; obsStreamKey: string; srtUrl: string | null };
+type Res<T> = { ok: true; data: T } | { ok: false; error: string };
+const wrap = async <T>(f: () => Promise<T>): Promise<Res<T>> => {
+  try {
+    return { ok: true, data: await f() };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+};
+const base = (orgId: string, eventId: string) => `/organizations/${orgId}/events/${eventId}/streaming`;
+
+export async function streamingOverviewAction(orgId: string, eventId: string) {
+  return wrap(() => api<StreamingOverview>(base(orgId, eventId)));
+}
+export async function createChannelAction(orgId: string, eventId: string, sessionId: string) {
+  return wrap(() => api<StreamKeys>(`${base(orgId, eventId)}/sessions/${sessionId}/channel`, { method: 'POST' }));
+}
+export async function rotateKeyAction(orgId: string, eventId: string, channelId: string) {
+  return wrap(() => api<StreamKeys>(`${base(orgId, eventId)}/channels/${channelId}/rotate-key`, { method: 'POST' }));
+}
+export async function setRecordingAction(orgId: string, eventId: string, channelId: string, recordingEnabled: boolean) {
+  return wrap(() => api(`${base(orgId, eventId)}/channels/${channelId}`, { method: 'PATCH', json: { recordingEnabled } }));
+}
+export async function stopChannelAction(orgId: string, eventId: string, channelId: string) {
+  return wrap(() => api(`${base(orgId, eventId)}/channels/${channelId}/stop`, { method: 'POST' }));
+}
+export async function deleteChannelAction(orgId: string, eventId: string, channelId: string) {
+  return wrap(() => api(`${base(orgId, eventId)}/channels/${channelId}`, { method: 'DELETE' }));
+}
+export async function updateRecordingAction(
+  orgId: string,
+  eventId: string,
+  assetId: string,
+  data: { published?: boolean; availableUntil?: string | null; title?: string; titleMy?: string },
+) {
+  return wrap(() => api(`${base(orgId, eventId)}/recordings/${assetId}`, { method: 'PATCH', json: data }));
+}
+export async function deleteRecordingAction(orgId: string, eventId: string, assetId: string) {
+  return wrap(() => api(`${base(orgId, eventId)}/recordings/${assetId}`, { method: 'DELETE' }));
+}
+export async function createUploadAction(
+  orgId: string,
+  eventId: string,
+  data: { title: string; titleMy?: string; sessionId?: string; fileName: string; size: number; contentType: string },
+) {
+  return wrap(() => api<{ assetId: string; partSize: number; parts: { partNumber: number; url: string }[] }>(`${base(orgId, eventId)}/uploads`, { method: 'POST', json: data }));
+}
+export async function completeUploadAction(orgId: string, eventId: string, assetId: string, parts: { partNumber: number; etag: string }[]) {
+  return wrap(() => api(`${base(orgId, eventId)}/uploads/${assetId}/complete`, { method: 'POST', json: { parts } }));
+}
+/** Organizer preview: staff are entitled to watch their own streams. */
+export async function previewTokenAction(kind: 'live' | 'vod', id: string) {
+  return wrap(() => api<{ url: string; sessionId: string; watermark: string }>(`/watch/${kind}/${id}/token`, { method: 'POST' }));
+}

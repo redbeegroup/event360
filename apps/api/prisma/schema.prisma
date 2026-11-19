@@ -286,6 +286,8 @@ model Event {
   promoBookings PromoBooking[]
   checkins      Checkin[]
   accessCodes   EventAccessCode[]
+  liveChannels  LiveChannel[]
+  vodAssets     VodAsset[]
 
   @@index([status, startsAt])
   @@index([categoryId, startsAt])
@@ -646,30 +648,71 @@ model Subscription {
 
 // ───────────────────────────── Streaming (Phase 5b) ─────────────────────────────
 
+/// One live stream per event session. Organizers push RTMP/SRT to SRS at /live/<ingestKey>?key=<streamKey>.
 model LiveChannel {
-  id            String       @id @default(uuid()) @db.Uuid
-  sessionId     String       @unique @map("session_id") @db.Uuid
-  streamKeyHash String       @map("stream_key_hash")
-  status        String       @default("IDLE") // IDLE | LIVE | ENDED
-  s3Prefix      String       @map("s3_prefix")
-  session       EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  vodAssets     VodAsset[]
+  id               String       @id @default(uuid()) @db.Uuid
+  sessionId        String       @unique @map("session_id") @db.Uuid
+  eventId          String       @map("event_id") @db.Uuid
+  ingestKey        String       @unique @map("ingest_key") // public part of the RTMP path
+  streamKeyHash    String       @map("stream_key_hash")
+  status           String       @default("IDLE") // IDLE | LIVE | ENDED
+  recordingEnabled Boolean      @default(true) @map("recording_enabled")
+  jobName          String?      @map("job_name")
+  srsClientId      String?      @map("srs_client_id") // to disconnect the encoder via the SRS API
+  livePrefix       String?      @map("live_prefix") // S3 prefix of the current live HLS (the recording itself when recording)
+  startedAt        DateTime?    @map("started_at")
+  endedAt          DateTime?    @map("ended_at")
+  peakViewers      Int          @default(0) @map("peak_viewers")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  session          EventSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event            Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  vodAssets        VodAsset[]
 
+  @@index([eventId])
   @@map("live_channels")
 }
 
+/// A recording (from a live stream) or an uploaded video, stored as HLS in SeaweedFS under <prefix>/vod/<id>/.
 model VodAsset {
   id             String       @id @default(uuid()) @db.Uuid
+  eventId        String       @map("event_id") @db.Uuid
+  sessionId      String?      @map("session_id") @db.Uuid
   liveChannelId  String?      @map("live_channel_id") @db.Uuid
   title          String
-  status         String       @default("PROCESSING") // PROCESSING | READY | FAILED | ARCHIVED
+  titleMy        String?      @map("title_my")
+  source         String       @default("LIVE") // LIVE | UPLOAD
+  status         String       @default("PROCESSING") // PROCESSING | READY | FAILED
+  error          String?
   s3Prefix       String       @map("s3_prefix")
+  renditions     Json?
   durationSec    Int?         @map("duration_sec")
+  sizeBytes      BigInt?      @map("size_bytes")
+  jobName        String?      @map("job_name")
+  published      Boolean      @default(false)
   availableFrom  DateTime?    @map("available_from")
   availableUntil DateTime?    @map("available_until")
-  liveChannel    LiveChannel? @relation(fields: [liveChannelId], references: [id])
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  liveChannel    LiveChannel? @relation(fields: [liveChannelId], references: [id], onDelete: SetNull)
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  @@index([eventId])
   @@map("vod_assets")
+}
+
+/// A viewer's active playback (one device at a time per user and stream/recording).
+model PlaybackSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  targetType String    @map("target_type") // LIVE | VOD
+  targetId   String    @map("target_id") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@index([userId, targetId])
+  @@index([targetId, lastSeenAt])
+  @@map("playback_sessions")
 }
 
 // ───────────────────────────── Featured promotions (Phase 5a) ─────────────────────────────

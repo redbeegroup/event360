@@ -10,12 +10,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
 import 'package:user_app/main.dart';
+import 'package:user_app/screens/watch_screen.dart';
 
 /// Fake API: canned events/tickets, no network.
 class FakeApi extends Event360Api {
   FakeApi(this.store) : super(const AppConfig(app: Event360App.user, apiBaseUrl: 'http://fake'), store);
   final MemoryTokenStore store;
   bool offline = false;
+  int? watchError; // e.g. 403
+  bool takenOver = false;
+  final heartbeats = <String>[];
   final registered = <String>[];
 
   static Map<String, dynamic> eventJson(String id, {bool free = true}) => {
@@ -81,6 +85,30 @@ class FakeApi extends Event360Api {
       });
 
   @override
+  Future<EventStreams> eventStreams(String idOrSlug) async => EventStreams.fromJson(idOrSlug == 'rich'
+      ? {
+          'live': [
+            {'channelId': 'c0000000-0000-0000-0000-000000000001', 'sessionId': 's1', 'title': 'Keynote', 'titleMy': null, 'startsAt': '2027-01-15T10:30:00.000Z', 'endsAt': '2027-01-15T11:30:00.000Z', 'isLive': true},
+          ],
+          'recordings': [
+            {'id': 'a0000000-0000-0000-0000-000000000001', 'sessionId': null, 'title': 'Highlights', 'titleMy': null, 'durationSec': 125, 'availableUntil': '2027-02-15T10:30:00.000Z'},
+          ],
+        }
+      : {'live': [], 'recordings': []});
+
+  @override
+  Future<WatchGrant> watchToken(String kind, String id) async {
+    if (watchError != null) throw ApiException(watchError, 'nope');
+    return WatchGrant(url: 'https://api.example/v1/play/t/TOKEN/$kind/$id/index.m3u8', sessionId: 'ps1', watermark: '•••• 0001', heartbeatSeconds: 30);
+  }
+
+  @override
+  Future<void> watchHeartbeat(String sessionId) async {
+    heartbeats.add(sessionId);
+    if (takenOver) throw ApiException(409, 'Playing on another device');
+  }
+
+  @override
   Future<Me> me() async => Me(id: 'u1', phone: '+959790000001');
 
   @override
@@ -133,7 +161,12 @@ Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang =
   final store = MemoryTokenStore();
   if (signedIn) await store.save('a', 'r');
   final api = FakeApi(store);
-  await tester.pumpWidget(ProviderScope(overrides: [prefsProvider.overrideWithValue(sp), apiProvider.overrideWithValue(api)], child: const UserApp()));
+  await tester.pumpWidget(ProviderScope(overrides: [
+    prefsProvider.overrideWithValue(sp),
+    apiProvider.overrideWithValue(api),
+    // No video plugin in tests: show the URL the real player would open
+    playerViewProvider.overrideWithValue(({required url, required live, required resumeKey, required onEnded}) => Text('PLAYER $url')),
+  ], child: const UserApp()));
   await tester.pumpAndSettle();
   return (api, sp);
 }
@@ -263,5 +296,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('We run food festivals'), findsOneWidget);
     expect(find.text('Yangon Food Fair e1'), findsWidgets);
+  });
+
+  testWidgets('event page lists the live stream and recordings; ticket holders watch with a watermark', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/rich');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Keynote'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('LIVE'), findsOneWidget);
+    expect(find.text('Highlights'), findsOneWidget);
+    expect(find.textContaining('02:05'), findsOneWidget);
+    await tester.tap(find.text('Keynote'));
+    await tester.pumpAndSettle();
+    expect(find.text('PLAYER https://api.example/v1/play/t/TOKEN/live/c0000000-0000-0000-0000-000000000001/index.m3u8'), findsOneWidget);
+    expect(find.text('•••• 0001'), findsOneWidget);
+    // Heartbeat every 30 s; another device taking over stops playback here
+    await tester.pump(const Duration(seconds: 31));
+    expect(api.heartbeats, ['ps1']);
+    api.takenOver = true;
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('another device'), findsOneWidget);
+    expect(find.textContaining('PLAYER'), findsNothing);
+  });
+
+  testWidgets('without a ticket the watch screen explains why', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    api.watchError = 403;
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/watch/vod/a0000000-0000-0000-0000-000000000001?title=Highlights');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('watchError')), findsOneWidget);
+    expect(find.text('Register for this event to watch.'), findsOneWidget);
   });
 }

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'app_config.dart';
 import 'crew.dart';
+import 'streams.dart';
 import 'models.dart';
 import 'token_store.dart';
 
@@ -224,4 +225,18 @@ class Event360Api {
 
   Future<CrewStats> crewStats(String eventId) =>
       _call(() => _dio.get('/crew/events/$eventId/stats'), (d) => CrewStats.fromJson(d as Map<String, dynamic>));
+
+  // ───── Live & recordings ─────
+
+  Future<EventStreams> eventStreams(String idOrSlug) => _call(
+        () => _dio.get('/events/${Uri.encodeComponent(idOrSlug)}/streams', options: Options(extra: {'auth': false})),
+        (d) => EventStreams.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// kind: 'live' (channel id) or 'vod' (recording id). 403 = no ticket, 410 = not live now.
+  Future<WatchGrant> watchToken(String kind, String id) =>
+      _call(() => _dio.post('/watch/$kind/$id/token'), (d) => WatchGrant.fromJson(d as Map<String, dynamic>));
+
+  /// 409 = another device took over playback.
+  Future<void> watchHeartbeat(String sessionId) => _call(() => _dio.post('/watch/sessions/$sessionId/heartbeat'), (_) {});
 }

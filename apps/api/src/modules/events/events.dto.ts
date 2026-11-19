@@ -119,6 +119,7 @@ export class AdminEventsQuery {
 const MEDIA_KEY = /^[a-z0-9][a-z0-9/._-]{5,200}$/;
 
 export class SessionItemDto {
+  @ApiPropertyOptional({ description: 'Existing session id (kept, so its live channel survives edits)' }) @IsOptional() @IsUUID() id?: string;
   @ApiProperty() @IsString() @Length(1, 160) title: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(160) titleMy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) description?: string;

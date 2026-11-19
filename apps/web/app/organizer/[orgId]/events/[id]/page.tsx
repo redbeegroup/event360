@@ -3,6 +3,7 @@ import { ActionForm } from '../../../../components/ActionForm';
 import { api } from '../../../../lib/api';
 import { ListEditor } from '../../../../components/ListEditor';
 import { AttendanceLive, CrewCodeForm, type CrewLabels } from '../../../../components/CrewCheckin';
+import { LiveStudio } from '../../../../components/LiveStudio';
 import { fmtDate, fmtMmk, pick, t, toLocalInput } from '../../../../lib/i18n';
 import type { CategoryDto, EventDto } from '../../../../lib/types';
 import {
@@ -10,6 +11,7 @@ import {
   createCrewCodeAction,
   revokeCrewCodeAction,
   type AttendanceStats,
+  type StreamingOverview,
   addTicketTypeAction,
   cancelEventAction,
   deleteTicketTypeAction,
@@ -40,13 +42,14 @@ interface Attendee {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
     api<Attendee[]>(`/organizations/${orgId}/events/${id}/attendees`),
     api<AttendanceStats>(`/organizations/${orgId}/events/${id}/attendance`).catch(() => null),
     api<CrewCode[]>(`/organizations/${orgId}/events/${id}/crew-codes`).catch(() => null), // null = not an editor
+    api<StreamingOverview>(`/organizations/${orgId}/events/${id}/streaming`).catch(() => null),
   ]);
   const crewAppUrl = process.env.CREW_APP_URL ?? '';
   const crewLabels: CrewLabels = {
@@ -136,6 +139,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                   { name: 'location', label: tr.location },
                 ],
                 initial: (e.sessions ?? []).map((x) => ({
+                  id: x.id,
                   title: x.title, titleMy: x.titleMy ?? '', location: x.location ?? '',
                   startsAt: toLocalInput(x.startsAt), endsAt: toLocalInput(x.endsAt),
                 })),
@@ -253,6 +257,13 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
               </div>
             </>
           )}
+        </section>
+      )}
+
+      {streaming && !closed && codes && (
+        <section>
+          <h2>{tr.liveTitle}</h2>
+          <LiveStudio orgId={orgId} eventId={id} initial={streaming} labels={tr.live} lang={tr.lang} />
         </section>
       )}
 

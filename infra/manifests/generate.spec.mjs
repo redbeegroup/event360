@@ -21,7 +21,7 @@ for (const envName of Object.keys(config.environments)) {
   });
 
   test(`${envName}: expected workloads`, () => {
-    const expected = ['api', 'realtime', 'web', 'worker', ...(env.userWeb ? ['user-web'] : [])].sort();
+    const expected = ['api', 'realtime', 'srs', 'web', 'worker', ...(env.userWeb ? ['user-web'] : [])].sort();
     assert.deepEqual(byKind('Deployment').map((d) => d.metadata.name).sort(), expected);
     assert.deepEqual(byKind('StatefulSet').map((d) => d.metadata.name), ['redis']);
   });
@@ -59,5 +59,21 @@ for (const envName of Object.keys(config.environments)) {
       const secret = process.env[v];
       if (secret) assert.ok(!text.includes(secret), `${v} found in manifest`);
     }
+  });
+
+  test(`${envName}: streaming ingest on the media IP with per-env ports; API may start Jobs`, () => {
+    const st = { ...config.streaming, ...env.streaming };
+    const lb = byKind('Service').find((x) => x.metadata.name === 'srs-ingest');
+    assert.equal(lb.spec.type, 'LoadBalancer');
+    assert.equal(lb.metadata.annotations['metallb.universe.tf/loadBalancerIPs'], st.ingestIp);
+    assert.deepEqual(lb.spec.ports.map((p) => [p.port, p.protocol]), [[st.rtmpPort, 'TCP'], [st.srtPort, 'UDP']]);
+    const role = byKind('Role').find((x) => x.metadata.name === 'event360-api-jobs');
+    assert.deepEqual(role.rules[0], { apiGroups: ['batch'], resources: ['jobs'], verbs: ['create', 'get', 'list', 'delete'] });
+    const api = byKind('Deployment').find((d) => d.metadata.name === 'api');
+    assert.equal(api.spec.template.spec.serviceAccountName, 'event360-api');
+    const e = Object.fromEntries(api.spec.template.spec.containers[0].env.map((x) => [x.name, x.value]));
+    assert.equal(e.STREAM_RTMP_URL, `rtmp://${st.ingestHost}:${st.rtmpPort}/live`);
+    const srsConf = byKind('ConfigMap').find((x) => x.metadata.name === 'srs-config').data['srs.conf'];
+    assert.match(srsConf, /secret=__HOOK_SECRET__/); // real secret only injected at runtime
   });
 }

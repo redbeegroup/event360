@@ -370,10 +370,18 @@ export class EventsService {
   async replaceSessions(organizationId: string, id: string, items: SessionItemDto[], orgVerified: boolean) {
     const { needsReview } = await this.editableForLists(organizationId, id, orgVerified);
     for (const x of items) if (new Date(x.endsAt) <= new Date(x.startsAt)) throw new BadRequestException(`"${x.title}": end must be after start`);
+    // Sessions are matched by id so their live channels (and stream keys) survive schedule edits.
+    const existing = await this.prisma.eventSession.findMany({ where: { eventId: id }, include: { liveChannel: true } });
+    const keep = new Set(items.map((x) => x.id).filter((x): x is string => !!x && existing.some((e) => e.id === x)));
+    const removed = existing.filter((e) => !keep.has(e.id));
+    if (removed.some((e) => e.liveChannel?.status === 'LIVE')) throw new ConflictException('A session that is streaming right now cannot be removed');
     await this.prisma.$transaction([
-      this.prisma.eventSession.deleteMany({ where: { eventId: id } }),
-      this.prisma.eventSession.createMany({
-        data: items.map((x) => ({ ...x, eventId: id, startsAt: new Date(x.startsAt), endsAt: new Date(x.endsAt) })),
+      this.prisma.eventSession.deleteMany({ where: { id: { in: removed.map((e) => e.id) } } }),
+      ...items.map(({ id: sid, ...x }) => {
+        const data = { ...x, startsAt: new Date(x.startsAt), endsAt: new Date(x.endsAt) };
+        return sid && keep.has(sid)
+          ? this.prisma.eventSession.update({ where: { id: sid }, data })
+          : this.prisma.eventSession.create({ data: { ...data, eventId: id } });
       }),
     ]);
     return this.afterListEdit(id, needsReview);

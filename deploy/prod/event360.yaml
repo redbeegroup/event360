@@ -111,6 +111,7 @@ spec:
         app.kubernetes.io/name: api
         app.kubernetes.io/part-of: event360
     spec:
+      serviceAccountName: event360-api
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -164,6 +165,22 @@ spec:
               value: https://api.event360.app
             - name: PORTAL_URL
               value: https://portal.event360.app
+            - name: STREAM_RTMP_URL
+              value: rtmp://live.event360.app:1935/live
+            - name: STREAM_SRT_URL
+              value: srt://live.event360.app:8890
+            - name: SRS_INTERNAL_RTMP
+              value: rtmp://srs:1935
+            - name: SRS_API_URL
+              value: http://srs:1985
+            - name: MAX_LIVE_CHANNELS
+              value: '2'
+            - name: FFMPEG_IMAGE
+              value: jrottenberg/ffmpeg:7.1-ubuntu
+            - name: RCLONE_IMAGE
+              value: rclone/rclone:1.69.1
+            - name: MEDIA_AVOID_NODES
+              value: ''
             - name: APP_ROLE
               value: api
           envFrom:
@@ -260,6 +277,22 @@ spec:
               value: https://api.event360.app
             - name: PORTAL_URL
               value: https://portal.event360.app
+            - name: STREAM_RTMP_URL
+              value: rtmp://live.event360.app:1935/live
+            - name: STREAM_SRT_URL
+              value: srt://live.event360.app:8890
+            - name: SRS_INTERNAL_RTMP
+              value: rtmp://srs:1935
+            - name: SRS_API_URL
+              value: http://srs:1985
+            - name: MAX_LIVE_CHANNELS
+              value: '2'
+            - name: FFMPEG_IMAGE
+              value: jrottenberg/ffmpeg:7.1-ubuntu
+            - name: RCLONE_IMAGE
+              value: rclone/rclone:1.69.1
+            - name: MEDIA_AVOID_NODES
+              value: ''
             - name: APP_ROLE
               value: realtime
           envFrom:
@@ -340,6 +373,22 @@ spec:
               value: https://api.event360.app
             - name: PORTAL_URL
               value: https://portal.event360.app
+            - name: STREAM_RTMP_URL
+              value: rtmp://live.event360.app:1935/live
+            - name: STREAM_SRT_URL
+              value: srt://live.event360.app:8890
+            - name: SRS_INTERNAL_RTMP
+              value: rtmp://srs:1935
+            - name: SRS_API_URL
+              value: http://srs:1985
+            - name: MAX_LIVE_CHANNELS
+              value: '2'
+            - name: FFMPEG_IMAGE
+              value: jrottenberg/ffmpeg:7.1-ubuntu
+            - name: RCLONE_IMAGE
+              value: rclone/rclone:1.69.1
+            - name: MEDIA_AVOID_NODES
+              value: ''
             - name: APP_ROLE
               value: worker
           envFrom:
@@ -522,6 +571,246 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event360-api
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: event360-api
+    app.kubernetes.io/part-of: event360
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: event360-api-jobs
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: event360-api-jobs
+    app.kubernetes.io/part-of: event360
+rules:
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - create
+      - get
+      - list
+      - delete
+  - apiGroups:
+      - ''
+    resources:
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: event360-api-jobs
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: event360-api-jobs
+    app.kubernetes.io/part-of: event360
+subjects:
+  - kind: ServiceAccount
+    name: event360-api
+    namespace: event360-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: event360-api-jobs
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: srs-config
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: srs-config
+    app.kubernetes.io/part-of: event360
+data:
+  srs.conf: |
+    listen 1935;
+    max_connections 300;
+    daemon off;
+    srs_log_tank console;
+    pid /tmp/srs.pid;
+    http_api { enabled on; listen 1985; }
+    srt_server { enabled on; listen 8890; }
+    vhost __defaultVhost__ {
+      srt { enabled on; srt_to_rtmp on; }
+      http_hooks {
+        enabled on;
+        on_publish http://api:3000/v1/streaming/hooks/on_publish?secret=__HOOK_SECRET__;
+        on_unpublish http://api:3000/v1/streaming/hooks/on_unpublish?secret=__HOOK_SECRET__;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srs
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: srs
+    app.kubernetes.io/part-of: event360
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: srs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: srs
+        app.kubernetes.io/part-of: event360
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      volumes:
+        - name: tpl
+          configMap:
+            name: srs-config
+        - name: conf
+          emptyDir: {}
+      initContainers:
+        - name: config
+          image: busybox:1.37
+          command:
+            - sh
+            - '-c'
+            - sed "s/__HOOK_SECRET__/$STREAM_HOOK_SECRET/g" /tpl/srs.conf > /conf/srs.conf
+          env:
+            - name: STREAM_HOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: event360-secrets
+                  key: STREAM_HOOK_SECRET
+          volumeMounts:
+            - name: tpl
+              mountPath: /tpl
+            - name: conf
+              mountPath: /conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: srs
+          image: ossrs/srs:v6.0-r3
+          workingDir: /usr/local/srs
+          command:
+            - ./objs/srs
+            - '-c'
+            - /conf/srs.conf
+          ports:
+            - name: rtmp
+              containerPort: 1935
+              protocol: TCP
+            - name: srt
+              containerPort: 8890
+              protocol: UDP
+            - name: api
+              containerPort: 1985
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: rtmp
+            periodSeconds: 10
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srs
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: srs
+    app.kubernetes.io/part-of: event360
+spec:
+  selector:
+    app.kubernetes.io/name: srs
+  ports:
+    - name: rtmp
+      port: 1935
+      targetPort: rtmp
+      protocol: TCP
+    - name: api
+      port: 1985
+      targetPort: api
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srs-ingest
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: srs-ingest
+    app.kubernetes.io/part-of: event360
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 172.16.16.190
+    metallb.universe.tf/allow-shared-ip: event360-ingest
+    metallb.io/loadBalancerIPs: 172.16.16.190
+    metallb.io/allow-shared-ip: event360-ingest
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  selector:
+    app.kubernetes.io/name: srs
+  ports:
+    - name: rtmp
+      port: 1935
+      targetPort: rtmp
+      protocol: TCP
+    - name: srt
+      port: 8890
+      targetPort: srt
+      protocol: UDP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: srs-ingest
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: srs-ingest
+    app.kubernetes.io/part-of: event360
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: srs
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 1935
+        - protocol: UDP
+          port: 8890
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

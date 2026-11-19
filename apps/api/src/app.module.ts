@@ -10,6 +10,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CheckinModule } from './modules/checkin/checkin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { StreamingModule } from './modules/streaming/streaming.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
@@ -28,6 +29,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     EventsModule,
     TicketsModule,
     CheckinModule,
+    StreamingModule,
   ],
 })
 export class AppModule {}

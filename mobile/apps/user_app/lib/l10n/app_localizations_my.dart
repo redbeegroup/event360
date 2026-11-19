@@ -285,4 +285,44 @@ class L10nMy extends L10n {
 
   @override
   String get noUpcomingEvents => 'လောလောဆယ် လာမည့်ပွဲ မရှိသေးပါ။';
+
+  @override
+  String get watch => 'ကြည့်ရှုရန်';
+
+  @override
+  String get liveNow => 'တိုက်ရိုက်';
+
+  @override
+  String get watchLive => 'တိုက်ရိုက် ကြည့်ရန်';
+
+  @override
+  String get recordingsTitle => 'မှတ်တမ်းများ';
+
+  @override
+  String startsAtTime(String time) {
+    return '$time တွင် စမည်';
+  }
+
+  @override
+  String availableUntil(String date) {
+    return '$date အထိ ကြည့်နိုင်';
+  }
+
+  @override
+  String get needTicketToWatch => 'ကြည့်ရှုရန် ဤပွဲအတွက် စာရင်းသွင်းပါ။';
+
+  @override
+  String get notLiveNow => 'ယခု တိုက်ရိုက်ထုတ်လွှင့်မနေပါ။';
+
+  @override
+  String get otherDevice =>
+      'အခြားစက်တွင် ကြည့်ရှုနေသဖြင့် ဤနေရာတွင် ရပ်လိုက်ပါသည်။';
+
+  @override
+  String get videoError =>
+      'ဗီဒီယို ဖွင့်၍ မရပါ။ အင်တာနက် စစ်ပြီး ထပ်ကြိုးစားပါ။';
+
+  @override
+  String get liveEnded =>
+      'တိုက်ရိုက်ထုတ်လွှင့်မှု ပြီးဆုံးပါပြီ။ မှတ်တမ်း မကြာမီ ရနိုင်ပါသည်။';
 }

@@ -142,5 +142,30 @@
   "website": "Website",
   "facebook": "Facebook",
   "contact": "Contact",
-  "noUpcomingEvents": "No upcoming events right now."
+  "noUpcomingEvents": "No upcoming events right now.",
+  "watch": "Watch",
+  "liveNow": "LIVE",
+  "watchLive": "Watch live",
+  "recordingsTitle": "Recordings",
+  "startsAtTime": "Starts {time}",
+  "@startsAtTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "availableUntil": "Available until {date}",
+  "@availableUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "needTicketToWatch": "Register for this event to watch.",
+  "notLiveNow": "This stream is not live right now.",
+  "otherDevice": "You started watching on another device, so playback here stopped.",
+  "videoError": "The video could not be played. Check your connection and try again.",
+  "liveEnded": "The live stream has ended. A recording may be available soon."
 }

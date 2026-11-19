@@ -39,7 +39,8 @@ function service(name, ns, port, annotations) {
   };
 }
 
-function backendEnv(env) {
+function backendEnv(env, config) {
+  const st = { ...(config.streaming ?? {}), ...(env.streaming ?? {}) };
   return [
     { name: 'NODE_ENV', value: 'production' },
     { name: 'PORT', value: '3000' },
@@ -52,6 +53,15 @@ function backendEnv(env) {
     // Used to build media URLs and invite links
     { name: 'PUBLIC_API_URL', value: `https://api.${env.domain}` },
     { name: 'PORTAL_URL', value: `https://portal.${env.domain}` },
+    // Live streaming (SRS ingest + transcoder Jobs)
+    { name: 'STREAM_RTMP_URL', value: `rtmp://${st.ingestHost}:${st.rtmpPort}/live` },
+    { name: 'STREAM_SRT_URL', value: `srt://${st.ingestHost}:${st.srtPort}` },
+    { name: 'SRS_INTERNAL_RTMP', value: 'rtmp://srs:1935' },
+    { name: 'SRS_API_URL', value: 'http://srs:1985' },
+    { name: 'MAX_LIVE_CHANNELS', value: String(st.maxLiveChannels ?? 1) },
+    { name: 'FFMPEG_IMAGE', value: st.ffmpegImage },
+    { name: 'RCLONE_IMAGE', value: st.rcloneImage },
+    { name: 'MEDIA_AVOID_NODES', value: (config.avoidNodes ?? []).join(',') },
   ];
 }
 
@@ -70,7 +80,7 @@ function avoidNodesAffinity(config, extra = []) {
   };
 }
 
-function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources, config, port = 3000 }) {
+function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAsUser, probes, initContainers, resources, config, port = 3000, serviceAccountName }) {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -82,6 +92,7 @@ function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAs
       template: {
         metadata: { labels: labels(name) },
         spec: {
+          ...(serviceAccountName ? { serviceAccountName } : {}),
           securityContext: { runAsNonRoot: true, runAsUser, runAsGroup: runAsUser, fsGroup: runAsUser },
           ...avoidNodesAffinity(config),
           ...(initContainers ? { initContainers } : {}),
@@ -187,8 +198,10 @@ export function buildManifests(envName, config) {
       pullPolicy,
       config,
       replicas: env.replicas.api,
-      env: [...backendEnv(env), { name: 'APP_ROLE', value: 'api' }],
+      env: [...backendEnv(env, config), { name: 'APP_ROLE', value: 'api' }],
       envFrom,
+      // Starts transcoder Jobs through the Kubernetes API (Role below: jobs in this namespace only)
+      serviceAccountName: 'event360-api',
       runAsUser: 10001,
       probes: backendProbes,
       resources: medium,
@@ -217,7 +230,7 @@ export function buildManifests(envName, config) {
         pullPolicy,
         config,
         replicas: env.replicas[role],
-        env: [...backendEnv(env), { name: 'APP_ROLE', value: role }],
+        env: [...backendEnv(env, config), { name: 'APP_ROLE', value: role }],
         envFrom,
         runAsUser: 10001,
         probes: backendProbes,
@@ -268,6 +281,150 @@ export function buildManifests(envName, config) {
       service('user-web', ns, 80),
     );
   }
+
+  // ── Live streaming: SRS ingest (RTMP/SRT) on its own LAN IP; transcoders are Jobs started by the API ──
+  const st = { ...(config.streaming ?? {}), ...(env.streaming ?? {}) };
+  objects.push(
+    { apiVersion: 'v1', kind: 'ServiceAccount', metadata: meta('event360-api', ns) },
+    {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'Role',
+      metadata: meta('event360-api-jobs', ns),
+      rules: [
+        { apiGroups: ['batch'], resources: ['jobs'], verbs: ['create', 'get', 'list', 'delete'] },
+        { apiGroups: [''], resources: ['pods', 'pods/log'], verbs: ['get', 'list'] },
+      ],
+    },
+    {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'RoleBinding',
+      metadata: meta('event360-api-jobs', ns),
+      subjects: [{ kind: 'ServiceAccount', name: 'event360-api', namespace: ns }],
+      roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'Role', name: 'event360-api-jobs' },
+    },
+    {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: meta('srs-config', ns),
+      data: {
+        // __HOOK_SECRET__ is filled in from the Secret by the init container
+        'srs.conf': [
+          'listen 1935;',
+          'max_connections 300;',
+          'daemon off;',
+          'srs_log_tank console;',
+          'pid /tmp/srs.pid;',
+          'http_api { enabled on; listen 1985; }',
+          'srt_server { enabled on; listen 8890; }',
+          'vhost __defaultVhost__ {',
+          '  srt { enabled on; srt_to_rtmp on; }',
+          '  http_hooks {',
+          '    enabled on;',
+          '    on_publish http://api:3000/v1/streaming/hooks/on_publish?secret=__HOOK_SECRET__;',
+          '    on_unpublish http://api:3000/v1/streaming/hooks/on_unpublish?secret=__HOOK_SECRET__;',
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      },
+    },
+    {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: meta('srs', ns),
+      spec: {
+        replicas: 1,
+        strategy: { type: 'Recreate' },
+        selector: { matchLabels: { 'app.kubernetes.io/name': 'srs' } },
+        template: {
+          metadata: { labels: labels('srs') },
+          spec: {
+            securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001 },
+            ...avoidNodesAffinity(config),
+            volumes: [
+              { name: 'tpl', configMap: { name: 'srs-config' } },
+              { name: 'conf', emptyDir: {} },
+            ],
+            initContainers: [
+              {
+                name: 'config',
+                image: 'busybox:1.37',
+                command: ['sh', '-c', 'sed "s/__HOOK_SECRET__/$STREAM_HOOK_SECRET/g" /tpl/srs.conf > /conf/srs.conf'],
+                env: [{ name: 'STREAM_HOOK_SECRET', valueFrom: { secretKeyRef: { name: SECRET, key: 'STREAM_HOOK_SECRET' } } }],
+                volumeMounts: [
+                  { name: 'tpl', mountPath: '/tpl' },
+                  { name: 'conf', mountPath: '/conf' },
+                ],
+                securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
+              },
+            ],
+            containers: [
+              {
+                name: 'srs',
+                image: st.srsImage,
+                workingDir: '/usr/local/srs',
+                command: ['./objs/srs', '-c', '/conf/srs.conf'],
+                ports: [
+                  { name: 'rtmp', containerPort: 1935, protocol: 'TCP' },
+                  { name: 'srt', containerPort: 8890, protocol: 'UDP' },
+                  { name: 'api', containerPort: 1985, protocol: 'TCP' },
+                ],
+                readinessProbe: { tcpSocket: { port: 'rtmp' }, periodSeconds: 10 },
+                volumeMounts: [{ name: 'conf', mountPath: '/conf' }],
+                resources: { requests: { cpu: '200m', memory: '128Mi' }, limits: { memory: '1Gi' } },
+                securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
+              },
+            ],
+          },
+        },
+      },
+    },
+    {
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: meta('srs', ns),
+      spec: {
+        selector: { 'app.kubernetes.io/name': 'srs' },
+        ports: [
+          { name: 'rtmp', port: 1935, targetPort: 'rtmp', protocol: 'TCP' },
+          { name: 'api', port: 1985, targetPort: 'api', protocol: 'TCP' },
+        ],
+      },
+    },
+    {
+      // Public ingest: dev and prod share the media IP on different ports (MetalLB allow-shared-ip)
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: meta('srs-ingest', ns, {
+        annotations: {
+          'metallb.universe.tf/loadBalancerIPs': st.ingestIp,
+          'metallb.universe.tf/allow-shared-ip': 'event360-ingest',
+          'metallb.io/loadBalancerIPs': st.ingestIp,
+          'metallb.io/allow-shared-ip': 'event360-ingest',
+        },
+      }),
+      spec: {
+        type: 'LoadBalancer',
+        externalTrafficPolicy: 'Cluster',
+        selector: { 'app.kubernetes.io/name': 'srs' },
+        ports: [
+          { name: 'rtmp', port: st.rtmpPort, targetPort: 'rtmp', protocol: 'TCP' },
+          { name: 'srt', port: st.srtPort, targetPort: 'srt', protocol: 'UDP' },
+        ],
+      },
+    },
+    {
+      // Encoders connect from anywhere; everything else stays private (see event360-default)
+      apiVersion: 'networking.k8s.io/v1',
+      kind: 'NetworkPolicy',
+      metadata: meta('srs-ingest', ns),
+      spec: {
+        podSelector: { matchLabels: { 'app.kubernetes.io/name': 'srs' } },
+        policyTypes: ['Ingress'],
+        ingress: [{ ports: [{ protocol: 'TCP', port: 1935 }, { protocol: 'UDP', port: 8890 }] }],
+      },
+    },
+  );
 
   // ── Ingress (Traefik; TLS terminated upstream by NPMPlus) ──
   const routes = [

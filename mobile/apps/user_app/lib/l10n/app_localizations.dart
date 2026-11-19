@@ -618,6 +618,72 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'No upcoming events right now.'**
   String get noUpcomingEvents;
+
+  /// No description provided for @watch.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch'**
+  String get watch;
+
+  /// No description provided for @liveNow.
+  ///
+  /// In en, this message translates to:
+  /// **'LIVE'**
+  String get liveNow;
+
+  /// No description provided for @watchLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch live'**
+  String get watchLive;
+
+  /// No description provided for @recordingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recordings'**
+  String get recordingsTitle;
+
+  /// No description provided for @startsAtTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts {time}'**
+  String startsAtTime(String time);
+
+  /// No description provided for @availableUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'Available until {date}'**
+  String availableUntil(String date);
+
+  /// No description provided for @needTicketToWatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Register for this event to watch.'**
+  String get needTicketToWatch;
+
+  /// No description provided for @notLiveNow.
+  ///
+  /// In en, this message translates to:
+  /// **'This stream is not live right now.'**
+  String get notLiveNow;
+
+  /// No description provided for @otherDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'You started watching on another device, so playback here stopped.'**
+  String get otherDevice;
+
+  /// No description provided for @videoError.
+  ///
+  /// In en, this message translates to:
+  /// **'The video could not be played. Check your connection and try again.'**
+  String get videoError;
+
+  /// No description provided for @liveEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'The live stream has ended. A recording may be available soon.'**
+  String get liveEnded;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

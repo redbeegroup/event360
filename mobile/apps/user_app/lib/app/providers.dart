@@ -70,6 +70,8 @@ final freeEventsProvider = FutureProvider<List<EventSummary>>((ref) async => (aw
 
 final eventProvider = FutureProvider.family<EventSummary, String>((ref, id) => ref.watch(apiProvider).event(id));
 
+final eventStreamsProvider = FutureProvider.family<EventStreams, String>((ref, id) => ref.watch(apiProvider).eventStreams(id));
+
 final organizerProvider = FutureProvider.family<OrganizerProfile, String>((ref, slug) => ref.watch(apiProvider).organizer(slug));
 
 @immutable

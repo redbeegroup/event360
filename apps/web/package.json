@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "hls.js": "1.5.17",
     "next": "^15.1.3",
     "qrcode": "1.5.4",
     "react": "^19.0.0",
