@@ -51,8 +51,8 @@ export const SEAT_SPACING = 24;
 const ATTRS: SeatAttr[] = ['RESTRICTED_VIEW', 'WHEELCHAIR'];
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-/** Optional field: absent is fine, present must pass `ok`. */
-const badOpt = (v: unknown, ok: (x: unknown) => boolean) => v !== undefined && !ok(v);
+/** Optional field: absent (undefined or null) is fine, otherwise it must pass `ok`. */
+const badOpt = (v: unknown, ok: (x: unknown) => boolean) => v != null && !ok(v);
 const seatLabelOf = (s: LayoutSeat) => s.label ?? String(s.n);
 
 export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok: false; problems: string[] } {
@@ -62,7 +62,7 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
   }
   const o = l as Record<string, unknown>;
   if (!isNum(o.width) || !isNum(o.height)) problems.push('Layout width and height must be numbers');
-  if (o.stage !== undefined) {
+  if (o.stage != null) {
     const st = o.stage as Record<string, unknown> | null;
     if (!st || typeof st !== 'object' || !isNum(st.x) || !isNum(st.y) || !isNum(st.w) || !isNum(st.h)) {
       problems.push('Stage must have numeric x, y, w, h');
@@ -127,7 +127,7 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
           if (badOpt(seat.dx, isNum) || badOpt(seat.dy, isNum)) {
             problems.push(`${where}, row "${rl}": seat dx and dy must be numbers`);
           }
-          if (seat.label !== undefined && !isStr(seat.label)) {
+          if (badOpt(seat.label, isStr)) {
             problems.push(`${where}, row "${rl}": seat label must be a non-empty string`);
             continue;
           }
@@ -135,10 +135,10 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
           if (lab.includes(':')) problems.push(`${where}, row "${rl}": seat label "${lab}" must not contain ":"`);
           if (labels.has(lab)) problems.push(`${where}, row "${rl}": duplicate seat label "${lab}"`);
           labels.add(lab);
-          if (seat.gapBefore !== undefined && (!isNum(seat.gapBefore) || seat.gapBefore < 0)) {
+          if (badOpt(seat.gapBefore, (x) => isNum(x) && x >= 0)) {
             problems.push(`${where}, row "${rl}", seat "${lab}": gapBefore must be >= 0`);
           }
-          if (seat.attrs !== undefined) {
+          if (seat.attrs != null) {
             if (!Array.isArray(seat.attrs) || seat.attrs.some((a) => !ATTRS.includes(a as SeatAttr))) {
               problems.push(`${where}, row "${rl}", seat "${lab}": invalid attrs`);
             }
@@ -150,7 +150,9 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
     }
   }
   if (problems.length) return { ok: false, problems };
-  return { ok: true, layout: l as Layout };
+  // Null-valued optional fields (e.g. from an editor) are treated as absent: drop them.
+  const layout = JSON.parse(JSON.stringify(l, (_k, v) => (v === null ? undefined : v))) as Layout;
+  return { ok: true, layout };
 }
 
 /** Seated sections only, in layout order. */

@@ -142,14 +142,48 @@ describe('validateLayout', () => {
     expect(problems(base({ rows: undefined })).join('\n')).toMatch(/rows/i);
   });
 
-  it('rejects wrongly typed optional fields', () => {
-    const cases: unknown[] = [
-      base({ curve: '0.5' as unknown as number }),
-      base({ rotation: '90' as unknown as number }),
-      base({ nameMy: 5 as unknown as string }),
-      base({ rows: [{ label: '1', seats: [{ n: 1, dx: 'a' as unknown as number }] }] }),
-      { ...base(), stage: { x: 0, y: 0, w: 1, h: 1, label: 3 } },
+  it('rejects wrongly typed optional fields, one problem per field', () => {
+    const bad = (v: unknown) => v as never;
+    const seatRow = (seat: object) => [{ label: '1', seats: [{ n: 1, ...seat }] }];
+    const cases: [unknown, RegExp][] = [
+      [base({ curve: bad('0.5') }), /curve must be a number/],
+      [base({ rotation: bad('90') }), /rotation must be a number/],
+      [base({ w: bad('1') }), /w must be a number/],
+      [base({ h: bad('1') }), /h must be a number/],
+      [base({ nameMy: bad(5) }), /nameMy must be a string/],
+      [base({ rows: seatRow({ dx: 'a' }) }), /dx and dy must be numbers/],
+      [base({ rows: seatRow({ dy: 'a' }) }), /dx and dy must be numbers/],
+      [{ ...base(), stage: { x: 0, y: 0, w: 1, h: 1, label: 3 } }, /Stage label must be a string/],
     ];
-    for (const c of cases) expect(problems(c).length).toBeGreaterThan(0);
+    for (const [c, re] of cases) {
+      const p = problems(c);
+      expect(p).toHaveLength(1);
+      expect(p[0]).toMatch(re);
+    }
+  });
+
+  it('accepts null-valued optional fields and treats them as absent', () => {
+    const nul = null as never;
+    const l = {
+      ...base({
+        nameMy: nul,
+        rotation: nul,
+        curve: nul,
+        w: nul,
+        h: nul,
+        rows: [{ label: '1', seats: [{ n: 1, label: nul, gapBefore: nul, attrs: nul, dx: nul, dy: nul }, { n: 2 }] }],
+      }),
+      stage: { x: 0, y: 0, w: 1, h: 1, label: nul },
+    };
+    const v = validateLayout(l);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    const out = expandSeats(v.layout);
+    expect(out[0].seatKey).toBe('A:1:1');
+    expect(out[0].labelMy).toBe('Stalls · အတန်း 1 · ခုံ 1');
+    expect(out[0].x).toBe(100);
+    expect(out[1].x - out[0].x).toBe(SEAT_SPACING);
+    expect(out[0].attrs).toEqual([]);
+    expect(JSON.stringify(v.layout)).not.toContain('null');
   });
 });
