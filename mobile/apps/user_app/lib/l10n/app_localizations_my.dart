@@ -407,4 +407,39 @@ class L10nMy extends L10n {
   @override
   String get noNotifications =>
       'အသိပေးချက် မရှိသေးပါ။ လက်မှတ်အခြေအနေ၊ သတိပေးချက်နှင့် စီစဉ်သူ ကြေညာချက်များ ဤနေရာတွင် ပေါ်ပါမည်။';
+
+  @override
+  String get promoCode => 'ပရိုမိုကုဒ်';
+
+  @override
+  String get apply => 'သုံးမည်';
+
+  @override
+  String get promoInvalid => 'ဤကုဒ် မမှန်ကန်ပါ';
+
+  @override
+  String promoApplied(String amount) {
+    return 'ကုဒ်သုံးပြီး — $amount လျှော့';
+  }
+
+  @override
+  String get discount => 'လျှော့စျေး';
+
+  @override
+  String get transferTicket => 'တစ်ယောက်ယောက်ထံ ပို့မည်';
+
+  @override
+  String get transferHint =>
+      'ဤလက်မှတ်ကို အသုံးပြုမည့်သူ၏ မြန်မာဖုန်းနံပါတ်ကို ထည့်ပါ။ သင်၏ QR အသုံးမပြုနိုင်တော့ဘဲ ၎င်းတို့သည် ထိုနံပါတ်ဖြင့် ဝင်ပြီးနောက် App ထဲတွင် လက်မှတ်ကို တွေ့ပါမည်။';
+
+  @override
+  String get send => 'ပို့မည်';
+
+  @override
+  String get cancel => 'မလုပ်တော့ပါ';
+
+  @override
+  String transferDone(String phone) {
+    return 'လက်မှတ်ကို $phone ထံ ပို့ပြီးပါပြီ';
+  }
 }

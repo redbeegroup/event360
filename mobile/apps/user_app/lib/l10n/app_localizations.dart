@@ -828,6 +828,66 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'No notifications yet. Ticket updates, reminders and organizer announcements will appear here.'**
   String get noNotifications;
+
+  /// No description provided for @promoCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Promo code'**
+  String get promoCode;
+
+  /// No description provided for @apply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get apply;
+
+  /// No description provided for @promoInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This code is not valid'**
+  String get promoInvalid;
+
+  /// No description provided for @promoApplied.
+  ///
+  /// In en, this message translates to:
+  /// **'Code applied: {amount} off'**
+  String promoApplied(String amount);
+
+  /// No description provided for @discount.
+  ///
+  /// In en, this message translates to:
+  /// **'Discount'**
+  String get discount;
+
+  /// No description provided for @transferTicket.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to someone'**
+  String get transferTicket;
+
+  /// No description provided for @transferHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the Myanmar phone number of the person who will use this ticket. Your QR stops working and they will find the ticket in the app after signing in with that number.'**
+  String get transferHint;
+
+  /// No description provided for @send.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get send;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @transferDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket sent to {phone}'**
+  String transferDone(String phone);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

@@ -18,6 +18,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { commission, pickRule } from './fee';
+import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
 import { KbzPayProvider } from './providers/kbzpay.provider';
 import { MockProvider } from './providers/mock.provider';
@@ -84,7 +85,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   // ───────────── checkout ─────────────
 
-  async createOrder(userId: string, eventId: string, items: OrderItemInput[], idempotencyKey?: string, channel: 'APP' | 'WEB' = 'APP') {
+  async createOrder(userId: string, eventId: string, items: OrderItemInput[], idempotencyKey?: string, channel: 'APP' | 'WEB' = 'APP', promoCode?: string) {
     if (idempotencyKey) {
       const existing = await this.prisma.order.findUnique({ where: { idempotencyKey } });
       if (existing) {
@@ -115,13 +116,24 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       subtotal += tt.priceMmk * BigInt(quantity);
       return { tt, quantity };
     });
-    const paid = subtotal > 0n;
+    // Promo code: discount on paid lines; a 100% code makes the order free (tickets issued now)
+    let promo: { id: string } | null = null;
+    let discount = 0n;
+    if (promoCode?.trim()) {
+      const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(promoCode) } } });
+      const r = applyPromo(p, lines.map(({ tt, quantity }) => ({ ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity })), now);
+      if (!r.ok) throw new BadRequestException(r.reason);
+      promo = p;
+      discount = r.discountMmk;
+    }
+    const total = subtotal - discount;
+    const paid = total > 0n;
     if (paid && !(await this.methods()).length) throw new ConflictException('Paid tickets are not on sale yet');
 
     const rules = paid ? await this.prisma.feeRule.findMany({ where: { isActive: true } }) : [];
     const fee = commission(
       pickRule(rules, { eventId, organizationId: event.organizationId, categoryId: event.category?.id ?? null, parentCategoryId: event.category?.parentId ?? null }),
-      subtotal,
+      total,
     );
 
     const orderId = await this.prisma.$transaction(async (tx) => {
@@ -142,13 +154,19 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + ${quantity} <= quota`;
         if (n !== 1) throw new ConflictException(`Not enough ${tt.name} tickets left`);
       }
+      if (promo) {
+        const used = await tx.$executeRaw`UPDATE promo_codes SET used = used + 1 WHERE id = ${promo.id}::uuid AND (max_uses IS NULL OR used < max_uses)`;
+        if (used !== 1) throw new ConflictException('This code has been used up');
+      }
       const order = await tx.order.create({
         data: {
           userId,
           eventId,
           status: paid ? 'PENDING_PAYMENT' : 'CONFIRMED',
           subtotalMmk: subtotal,
-          totalMmk: subtotal, // organizer absorbs the commission: buyer pays the ticket price
+          discountMmk: discount,
+          promoCodeId: promo?.id ?? null,
+          totalMmk: total, // organizer absorbs the commission: buyer pays the (discounted) ticket price
           commissionMmk: fee,
           idempotencyKey: idempotencyKey ?? null,
           holdExpiresAt: paid ? new Date(now.getTime() + HOLD_MINUTES * 60e3) : null,
@@ -161,6 +179,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
     if (!paid) void this.notify.ticketConfirmed(orderId);
     return this.orderView(userId, orderId);
+  }
+
+  /** What a code would take off (checkout preview; nothing is reserved). */
+  async previewPromo(eventId: string, code: string, items: OrderItemInput[]) {
+    const types = await this.prisma.ticketType.findMany({ where: { eventId, id: { in: items.map((i) => i.ticketTypeId) } } });
+    const lines = items.map((i) => {
+      const tt = types.find((t) => t.id === i.ticketTypeId);
+      if (!tt) throw new NotFoundException('Ticket type not found');
+      return { ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity: i.quantity };
+    });
+    const subtotal = lines.reduce((s, l) => s + l.unitPriceMmk * BigInt(l.quantity), 0n);
+    const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(code) } } });
+    const r = applyPromo(p, lines);
+    if (!r.ok) return { valid: false, reason: r.reason, subtotalMmk: mmk(subtotal), discountMmk: 0, totalMmk: mmk(subtotal) };
+    return { valid: true, code: p!.code, subtotalMmk: mmk(subtotal), discountMmk: mmk(r.discountMmk), totalMmk: mmk(subtotal - r.discountMmk) };
   }
 
   private async issueTickets(tx: Prisma.TransactionClient, orderId: string, userId: string, items: { ticketTypeId: string; quantity: number }[]) {
@@ -187,6 +220,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       event: o.event,
       items: o.items.map((i) => ({ ticketTypeId: i.ticketTypeId, name: i.ticketType.name, nameMy: i.ticketType.nameMy, quantity: i.quantity, unitPriceMmk: mmk(i.unitPriceMmk) })),
       subtotalMmk: mmk(o.subtotalMmk),
+      discountMmk: mmk(o.discountMmk),
       totalMmk: mmk(o.totalMmk),
       holdExpiresAt: o.holdExpiresAt,
       paidAt: o.paidAt,
@@ -270,6 +304,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.$transaction(async (tx) => {
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
       if (n.count !== 1) return false;
+      const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
+      if (o.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${o.promoCodeId}::uuid`;
       const items = await tx.orderItem.findMany({ where: { orderId } });
       for (const i of items) await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
       return true;

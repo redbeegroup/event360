@@ -47,6 +47,7 @@ class Order {
     this.eventTitleMy,
     required this.items,
     required this.totalMmk,
+    this.discountMmk = 0,
     this.holdExpiresAt,
     this.paymentProvider,
     this.paymentAction,
@@ -59,6 +60,7 @@ class Order {
   final String? eventTitleMy;
   final List<OrderLine> items;
   final int totalMmk;
+  final int discountMmk;
   final DateTime? holdExpiresAt;
   final String? paymentProvider;
   final PaymentAction? paymentAction;
@@ -79,10 +81,26 @@ class Order {
       eventTitleMy: ev['titleMy'] as String?,
       items: (j['items'] as List).map((x) => OrderLine.fromJson(x as Map<String, dynamic>)).toList(),
       totalMmk: (j['totalMmk'] as num).toInt(),
+      discountMmk: (j['discountMmk'] as num?)?.toInt() ?? 0,
       holdExpiresAt: _dtn(j['holdExpiresAt']),
       paymentProvider: pay?['provider'] as String?,
       paymentAction: pay?['action'] == null ? null : PaymentAction.fromJson(pay!['action'] as Map<String, dynamic>),
       ticketIds: ((j['ticketIds'] as List?) ?? const []).cast<String>(),
     );
   }
+}
+
+/// Result of checking a promo code against the chosen tickets (nothing reserved).
+class PromoCheck {
+  PromoCheck({required this.valid, this.reason, required this.discountMmk, required this.totalMmk});
+  final bool valid;
+  final String? reason;
+  final int discountMmk;
+  final int totalMmk;
+  factory PromoCheck.fromJson(Map<String, dynamic> j) => PromoCheck(
+        valid: j['valid'] as bool,
+        reason: j['reason'] as String?,
+        discountMmk: (j['discountMmk'] as num).toInt(),
+        totalMmk: (j['totalMmk'] as num).toInt(),
+      );
 }

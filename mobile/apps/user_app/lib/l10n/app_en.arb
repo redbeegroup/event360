@@ -215,5 +215,29 @@
   },
   "notifications": "Notifications",
   "markAllRead": "Mark all read",
-  "noNotifications": "No notifications yet. Ticket updates, reminders and organizer announcements will appear here."
+  "noNotifications": "No notifications yet. Ticket updates, reminders and organizer announcements will appear here.",
+  "promoCode": "Promo code",
+  "apply": "Apply",
+  "promoInvalid": "This code is not valid",
+  "promoApplied": "Code applied: {amount} off",
+  "@promoApplied": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "discount": "Discount",
+  "transferTicket": "Send to someone",
+  "transferHint": "Enter the Myanmar phone number of the person who will use this ticket. Your QR stops working and they will find the ticket in the app after signing in with that number.",
+  "send": "Send",
+  "cancel": "Cancel",
+  "transferDone": "Ticket sent to {phone}",
+  "@transferDone": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  }
 }

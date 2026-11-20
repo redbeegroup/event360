@@ -16,6 +16,7 @@ IconData _icon(String kind) => switch (kind) {
       'live_now' => Icons.live_tv,
       'order_refunded' => Icons.currency_exchange,
       'announcement' => Icons.campaign_outlined,
+      'ticket_received' => Icons.redeem,
       _ => Icons.notifications_none,
     };
 

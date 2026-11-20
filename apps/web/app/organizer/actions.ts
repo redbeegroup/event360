@@ -47,6 +47,9 @@ function eventPayload(fd: FormData, coverImageKey?: string) {
     // Empty practical fields are sent as null-ish (omitted) so they can be cleared by saving blanks.
     ...Object.fromEntries(PRACTICAL.map((k) => [k, str(fd, k) ?? ''])),
     ...(age ? { ageMin: Number(age) } : {}),
+    ...(fd.has('transferSettings')
+      ? { transfersEnabled: fd.get('transfersEnabled') === 'on', transferCutoffHours: Number(str(fd, 'transferCutoffHours') ?? 2) }
+      : {}),
     ...(venueName
       ? {
           venue: {
@@ -395,6 +398,45 @@ export async function sendAnnouncementAction(_: FormState, fd: FormData): Promis
     });
     revalidatePath(`/organizer/${orgId}/events/${id}`);
     return { ok: 'announced', data: { recipients: String(r.recipients) } };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function createPromoAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  const s = (k: string) => String(fd.get(k) ?? '').trim();
+  try {
+    const types = fd.getAll('ticketTypeIds').map(String).filter(Boolean);
+    await api(`/organizations/${orgId}/events/${id}/promo-codes`, {
+      method: 'POST',
+      json: {
+        code: s('code'),
+        kind: s('kind'),
+        value: Number(s('value')),
+        ...(s('maxUses') ? { maxUses: Number(s('maxUses')) } : {}),
+        ...(s('startsAt') ? { startsAt: fromLocalInput(s('startsAt')) } : {}),
+        ...(s('endsAt') ? { endsAt: fromLocalInput(s('endsAt')) } : {}),
+        ...(types.length ? { ticketTypeIds: types } : {}),
+      },
+    });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function togglePromoAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  try {
+    const promoId = String(fd.get('promoId'));
+    if (fd.get('op') === 'delete') await api(`/organizations/${orgId}/events/${id}/promo-codes/${promoId}`, { method: 'DELETE' });
+    else await api(`/organizations/${orgId}/events/${id}/promo-codes/${promoId}`, { method: 'PATCH', json: { isActive: fd.get('op') === 'on' } });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'saved' };
   } catch (e) {
     return err(e);
   }

@@ -69,9 +69,9 @@ class FakeApi extends Event360Api {
   Future<List<PaymentMethod>> paymentMethods() async => methods;
 
   @override
-  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP'}) async {
+  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP', String? promoCode}) async {
     final e = quantities.entries.first;
-    registered.add('$eventId:${e.key}:${e.value}');
+    registered.add('$eventId:${e.key}:${e.value}${promoCode != null ? ':$promoCode' : ''}');
     if (eventId == 'e1') return Order.fromJson({...orderJson('free-1', 'CONFIRMED', total: 0, qty: e.value), 'ticketIds': ['t1']});
     final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 5000 * e.value, qty: e.value);
     orders['ord-1'] = o;
@@ -80,6 +80,24 @@ class FakeApi extends Event360Api {
 
   @override
   Future<Order> order(String id) async => Order.fromJson(orders[id]!);
+
+  @override
+  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities) async {
+    final sub = 5000 * quantities.values.first;
+    return code.toUpperCase() == 'SAVE20'
+        ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
+        : PromoCheck(valid: false, reason: 'This code is not valid', discountMmk: 0, totalMmk: sub);
+  }
+
+  final transfers = <String>[];
+  @override
+  Future<String> transferTicket(String ticketId, String phone) async {
+    if (phone == '0911') throw ApiException(400, 'Enter a valid Myanmar mobile number');
+    transfers.add('$ticketId:$phone');
+    transferred = true;
+    return '+95979•••001';
+  }
+  bool transferred = false;
 
   @override
   Future<Order> payOrder(String id, String provider, {String? returnUrl}) async {
@@ -217,8 +235,9 @@ class FakeApi extends Event360Api {
           'organization': 'Yangon Live',
         },
         'qr': 'eyJ0aWQiOiJ0In0.c2ln',
+        'canTransfer': true,
       }),
-    ];
+    ].where((t) => !transferred).toList();
   }
 }
 
@@ -550,5 +569,59 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.devices, isEmpty);
     expect(sp.getString('push_token'), isNull);
+  });
+
+  testWidgets('promo code on the ticket sheet: wrong code explained, right code lowers the total and is sent', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('promoField')), 'nope');
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    expect(find.text('This code is not valid'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('promoField')), 'save20');
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    expect(find.text('Code applied: 2,000 MMK off'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '8,000 MMK');
+    // Changing the quantity drops the applied code (must be re-checked)
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pump();
+    expect(find.textContaining('Code applied'), findsNothing);
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sheetSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.registered, ['e2:tt-e2:2:save20']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('send a ticket to someone: bad number shown, then the ticket leaves my list', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    await tester.tap(find.text('My tickets'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yangon Food Fair e1').first);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('transfer')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byKey(const Key('transfer')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('transferPhone')), '0911');
+    await tester.tap(find.byKey(const Key('transferConfirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a valid Myanmar mobile number'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('transferPhone')), '09790000001');
+    await tester.tap(find.byKey(const Key('transferConfirm')));
+    await tester.pumpAndSettle();
+    expect(api.transfers, ['ticket-0001-abcd:09790000001']);
+    expect(find.text('Ticket sent to +95979•••001'), findsOneWidget);
+    expect(find.text('Yangon Food Fair e1'), findsNothing);
   });
 }

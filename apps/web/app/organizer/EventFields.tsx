@@ -90,6 +90,17 @@ export function EventFields({ tr, categories, event }: { tr: Tr; categories: Cat
           </div>
         ))}
       </div>
+      <div className="grid">
+        <div className="field">
+          <input type="hidden" name="transferSettings" value="1" />
+          <label className="check"><input type="checkbox" name="transfersEnabled" defaultChecked={e?.transfersEnabled ?? true} /> {tr.transfersEnabled}</label>
+          <small className="muted">{tr.transfersHint}</small>
+        </div>
+        <div className="field">
+          <label>{tr.transferCutoff}</label>
+          <input name="transferCutoffHours" type="number" min={0} max={168} defaultValue={e?.transferCutoffHours ?? 2} />
+        </div>
+      </div>
       <div className="field">
         <label>{tr.coverImage}</label>
         {e?.coverImageUrl && <img className="cover" src={e.coverImageUrl} alt="" style={{ marginBottom: 8 }} />}

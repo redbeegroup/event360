@@ -69,6 +69,8 @@ export class CreateEventDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(10000) termsMy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) refundPolicy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) refundPolicyMy?: string;
+  @ApiPropertyOptional({ description: 'Ticket holders may pass tickets to someone else' }) @IsOptional() @IsBoolean() transfersEnabled?: boolean;
+  @ApiPropertyOptional({ description: 'No transfers this many hours before the start' }) @IsOptional() @IsInt() @Min(0) @Max(168) transferCutoffHours?: number;
 }
 
 export class UpdateEventDto extends PartialType(CreateEventDto) {}

@@ -322,6 +322,7 @@ class MyTicket {
     this.coverImageUrl,
     required this.organizer,
     this.qr,
+    this.canTransfer = false,
   });
 
   final String id;
@@ -338,6 +339,9 @@ class MyTicket {
   final String? coverImageUrl;
   final String organizer;
   final String? qr;
+
+  /// The holder may send this ticket to someone else (organizer allows it, not used, not too close to the start).
+  final bool canTransfer;
 
   bool get isUpcoming => endsAt.isAfter(DateTime.now());
 
@@ -360,6 +364,7 @@ class MyTicket {
       coverImageUrl: e['coverImageUrl'] as String?,
       organizer: e['organization'] as String,
       qr: j['qr'] as String?,
+      canTransfer: j['canTransfer'] as bool? ?? false,
     );
   }
 
@@ -378,6 +383,7 @@ class MyTicket {
         'coverImageUrl': coverImageUrl,
         'organizer': organizer,
         'qr': qr,
+        'canTransfer': canTransfer,
       };
 
   factory MyTicket.fromJson(Map<String, dynamic> j) => MyTicket(
@@ -395,6 +401,7 @@ class MyTicket {
         coverImageUrl: j['coverImageUrl'] as String?,
         organizer: j['organizer'] as String,
         qr: j['qr'] as String?,
+        canTransfer: j['canTransfer'] as bool? ?? false,
       );
 }
 

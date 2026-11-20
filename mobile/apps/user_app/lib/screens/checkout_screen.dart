@@ -165,6 +165,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
         Text(pickLang(lang, o.eventTitle, o.eventTitleMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         for (final i in o.items) Text(t.orderSummary('${i.quantity}', pickLang(lang, i.name, i.nameMy))),
+        if (o.discountMmk > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(children: [
+              Expanded(child: Text(t.discount)),
+              Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount')),
+            ]),
+          ),
         const SizedBox(height: 8),
         Row(children: [
           Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),

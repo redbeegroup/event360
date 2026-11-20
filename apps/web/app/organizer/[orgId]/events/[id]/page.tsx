@@ -16,6 +16,8 @@ import {
   cancelEventAction,
   deleteTicketTypeAction,
   saveListAction,
+  createPromoAction,
+  togglePromoAction,
   sendAnnouncementAction,
   submitEventAction,
   updateEventAction,
@@ -41,6 +43,21 @@ interface Attendee {
   holder: { displayName: string | null; phone: string | null };
 }
 
+interface Promo {
+  id: string;
+  code: string;
+  kind: 'PERCENT' | 'FIXED';
+  value: number;
+  maxUses: number | null;
+  used: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  ticketTypeIds: string[];
+  isActive: boolean;
+  orders: number;
+  discountGivenMmk: number;
+}
+
 interface Announcements {
   items: { id: string; title: string; titleMy: string | null; body: string; recipients: number; createdAt: string }[];
   ticketHolders: number;
@@ -60,7 +77,7 @@ interface Sales {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -70,7 +87,9 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<StreamingOverview>(`/organizations/${orgId}/events/${id}/streaming`).catch(() => null),
     api<Sales>(`/organizations/${orgId}/events/${id}/sales`).catch(() => null),
     api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
+    api<Promo[]>(`/organizations/${orgId}/events/${id}/promo-codes`).catch(() => null),
   ]);
+  const paidTypes = e.ticketTypes.filter((tt) => tt.priceMmk > 0);
   const hasPaid = e.ticketTypes.some((tt) => tt.priceMmk > 0);
   const crewAppUrl = process.env.CREW_APP_URL ?? '';
   const crewLabels: CrewLabels = {
@@ -176,6 +195,77 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        </>
+      )}
+
+      {promos && hasPaid && (
+        <>
+          <h2>{tr.promoTitle}</h2>
+          <div className="card table-wrap">
+            <p className="muted">{tr.promoHint}</p>
+            {promos.length > 0 && (
+              <table>
+                <thead><tr><th>{tr.promoCode}</th><th>{tr.promoKind}</th><th>{tr.promoUsed}</th><th>{tr.promoDiscountGiven}</th><th>{tr.promoEnds}</th><th /></tr></thead>
+                <tbody>
+                  {promos.map((p) => (
+                    <tr key={p.id} style={{ opacity: p.isActive ? 1 : 0.55 }}>
+                      <td><code>{p.code}</code> {!p.isActive && <span className="badge DRAFT">{tr.promoInactive}</span>}</td>
+                      <td>
+                        {p.kind === 'PERCENT' ? `${p.value}%` : fmtMmk(p.value, tr.lang)}
+                        {p.ticketTypeIds.length > 0 && (
+                          <div className="muted" style={{ fontSize: 12 }}>{e.ticketTypes.filter((tt) => p.ticketTypeIds.includes(tt.id)).map((tt) => tt.name).join(', ')}</div>
+                        )}
+                      </td>
+                      <td>{p.used}{p.maxUses ? ` / ${p.maxUses}` : ''}</td>
+                      <td>{fmtMmk(p.discountGivenMmk, tr.lang)}</td>
+                      <td>{p.endsAt ? fmtDate(p.endsAt, tr.lang) : '—'}</td>
+                      <td style={{ minWidth: 200 }}>
+                        {codes !== null && (
+                          <div className="row" style={{ gap: 6 }}>
+                            <ActionForm action={togglePromoAction} submitLabel={p.isActive ? tr.promoOff : tr.promoOn} variant="secondary">
+                              <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="eventId" value={id} />
+                              <input type="hidden" name="promoId" value={p.id} /><input type="hidden" name="op" value={p.isActive ? 'off' : 'on'} />
+                            </ActionForm>
+                            <ActionForm action={togglePromoAction} submitLabel={tr.promoDelete} variant="secondary" confirm={tr.promoDeleteConfirm}>
+                              <input type="hidden" name="orgId" value={orgId} /><input type="hidden" name="eventId" value={id} />
+                              <input type="hidden" name="promoId" value={p.id} /><input type="hidden" name="op" value="delete" />
+                            </ActionForm>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {codes !== null && !closed && (
+              <ActionForm action={createPromoAction} submitLabel={tr.promoCreate} okText={okText}>
+                <input type="hidden" name="orgId" value={orgId} />
+                <input type="hidden" name="eventId" value={id} />
+                <div className="grid">
+                  <div className="field"><label>{tr.promoCode}</label><input name="code" required pattern="[A-Za-z0-9_\-]{3,24}" placeholder="EARLYBIRD" style={{ textTransform: 'uppercase' }} /></div>
+                  <div className="field">
+                    <label>{tr.promoKind}</label>
+                    <select name="kind" defaultValue="PERCENT"><option value="PERCENT">{tr.percentOff}</option><option value="FIXED">{tr.fixedOff}</option></select>
+                  </div>
+                  <div className="field"><label>{tr.promoValue}</label><input name="value" type="number" min={1} required placeholder="10" /></div>
+                  <div className="field"><label>{tr.promoMaxUses}</label><input name="maxUses" type="number" min={1} /></div>
+                  <div className="field"><label>{tr.promoStarts}</label><input name="startsAt" type="datetime-local" /></div>
+                  <div className="field"><label>{tr.promoEnds}</label><input name="endsAt" type="datetime-local" /></div>
+                </div>
+                {paidTypes.length > 1 && (
+                  <div className="field">
+                    <label>{tr.promoTypes}</label>
+                    <div className="row" style={{ gap: 12 }}>
+                      {paidTypes.map((tt) => (
+                        <label key={tt.id} className="check"><input type="checkbox" name="ticketTypeIds" value={tt.id} /> {pick(tr.lang, tt.name, tt.nameMy)}</label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ActionForm>
             )}
           </div>
         </>
@@ -367,6 +457,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       )}
 
       <h2>{tr.attendees} ({attendees.length})</h2>
+      <p className="row" style={{ gap: 8 }}>
+        <Link className="btn secondary" href={`/organizer/${orgId}/events/${id}/dashboard`}>{tr.dashboard}</Link>
+        {attendees.length > 0 && <a className="btn secondary" href={`/organizer/${orgId}/events/${id}/attendees.csv`}>{tr.downloadAttendees}</a>}
+      </p>
       <div className="card table-wrap">
         {attendees.length === 0 ? (
           <p className="muted">{tr.noAttendees}</p>

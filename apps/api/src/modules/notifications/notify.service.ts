@@ -12,6 +12,7 @@ export type NotificationKind =
   | 'live_now'
   | 'order_refunded'
   | 'announcement'
+  | 'ticket_received'
   | 'test';
 
 export interface NoticeText {

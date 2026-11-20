@@ -58,6 +58,8 @@ export interface EventDto {
   termsMy?: string | null;
   refundPolicy?: string | null;
   refundPolicyMy?: string | null;
+  transfersEnabled?: boolean;
+  transferCutoffHours?: number;
   sessions?: { id: string; title: string; titleMy: string | null; description: string | null; descriptionMy: string | null; location: string | null; startsAt: string; endsAt: string }[];
   performers?: { id: string; name: string; nameMy: string | null; role: string | null; roleMy: string | null; bio: string | null; bioMy: string | null; photoKey: string | null; photoUrl: string | null }[];
   media?: { id: string; key: string; url: string; caption: string | null; captionMy: string | null }[];

@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { normalizeMyanmarPhone } from '../auth/phone';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
@@ -90,8 +91,65 @@ export class TicketsService {
           organization: e.organization.name,
         },
         qr: t.status === 'VALID' ? this.tokens.sign({ tid: t.id, eid: e.id, tt: t.ticketTypeId, v: t.qrVersion }) : null,
+        canTransfer:
+          t.status === 'VALID' &&
+          e.transfersEnabled &&
+          !['CANCELLED', 'COMPLETED'].includes(e.status) &&
+          t.transferCount < TicketsService.MAX_TRANSFERS &&
+          Date.now() < e.startsAt.getTime() - e.transferCutoffHours * 3600e3,
       };
     });
+  }
+
+  static readonly MAX_TRANSFERS = 3;
+
+  /**
+   * Gives a ticket to another phone number. The old QR stops working (qrVersion bump); the recipient sees the ticket
+   * after signing in with that number (an account is created for it if needed) and gets a notification.
+   */
+  async transfer(userId: string, ticketId: string, rawPhone: string) {
+    const phone = normalizeMyanmarPhone(rawPhone);
+    if (!phone) throw new BadRequestException('Enter a valid Myanmar mobile number');
+    const t = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { ticketType: { include: { event: true } }, holder: { select: { phone: true, displayName: true } } },
+    });
+    if (!t || t.holderUserId !== userId) throw new NotFoundException('Ticket not found');
+    const e = t.ticketType.event;
+    if (t.status !== 'VALID') throw new ConflictException(t.status === 'CHECKED_IN' ? 'This ticket has already been used' : 'This ticket can no longer be transferred');
+    if (!e.transfersEnabled) throw new ForbiddenException('The organizer does not allow ticket transfers for this event');
+    if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException('This event is no longer running');
+    if (Date.now() > e.startsAt.getTime() - e.transferCutoffHours * 3600e3) {
+      throw new ConflictException(e.transferCutoffHours ? `Transfers close ${e.transferCutoffHours} hour(s) before the event starts` : 'Transfers are closed for this event');
+    }
+    if (t.transferCount >= TicketsService.MAX_TRANSFERS) throw new ConflictException(`A ticket can be transferred at most ${TicketsService.MAX_TRANSFERS} times`);
+    if (t.holder.phone === phone) throw new BadRequestException('This ticket is already yours');
+
+    const to = await this.prisma.user.upsert({
+      where: { phone },
+      update: {},
+      create: { phone, identities: { create: { provider: 'PHONE', subject: phone } } },
+    });
+    await this.prisma.$transaction(async (tx) => {
+      // Conditional update: a concurrent check-in or second transfer can't slip through
+      const n = await tx.ticket.updateMany({
+        where: { id: ticketId, holderUserId: userId, status: 'VALID', transferCount: { lt: TicketsService.MAX_TRANSFERS } },
+        data: { holderUserId: to.id, qrVersion: { increment: 1 }, transferCount: { increment: 1 } },
+      });
+      if (n.count !== 1) throw new ConflictException('This ticket changed meanwhile; please refresh');
+      await tx.ticketTransfer.create({ data: { ticketId, fromUserId: userId, toUserId: to.id } });
+    });
+    const from = t.holder.displayName || `${t.holder.phone?.slice(0, 6)}•••`;
+    void this.notify.toUsers([to.id], {
+      kind: 'ticket_received',
+      title: 'You received a ticket',
+      titleMy: 'လက်မှတ် လက်ခံရရှိပါသည်',
+      body: `${from} sent you a ${t.ticketType.name} ticket for ${e.title}.`,
+      bodyMy: `${from} က ${e.titleMy || e.title} အတွက် ${t.ticketType.nameMy || t.ticketType.name} လက်မှတ် ပေးပို့ထားပါသည်။`,
+      link: '/tickets',
+      eventId: e.id,
+    });
+    return { ok: true, to: `${phone.slice(0, 6)}•••${phone.slice(-3)}` };
   }
 
   async myTicket(userId: string, ticketId: string) {

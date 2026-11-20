@@ -98,6 +98,8 @@ export class EventsService {
       ...(opts.full ? this.details(e) : {}),
       ticketTypes: tickets,
       soldOut: tickets.length > 0 && tickets.every((t) => t.remaining === 0),
+      transfersEnabled: e.transfersEnabled,
+      transferCutoffHours: e.transferCutoffHours,
     };
   }
 
@@ -156,7 +158,16 @@ export class EventsService {
       include: fullInclude,
     });
     if (!e) throw new NotFoundException('Event not found');
+    void this.countView(e.id);
     return this.toDto(e, { full: true });
+  }
+
+  /** Daily page-view counter (Myanmar date) for the organizer dashboard. */
+  private async countView(eventId: string) {
+    const day = new Date(Date.now() + 6.5 * 3600e3).toISOString().slice(0, 10);
+    await this.prisma.$executeRaw`
+      INSERT INTO event_daily_stats (event_id, day, views) VALUES (${eventId}::uuid, ${day}::date, 1)
+      ON CONFLICT (event_id, day) DO UPDATE SET views = event_daily_stats.views + 1`.catch(() => undefined);
   }
 
   // ───────────── Organizer ─────────────

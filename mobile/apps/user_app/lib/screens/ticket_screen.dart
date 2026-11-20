@@ -3,6 +3,7 @@ import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
@@ -29,6 +30,16 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
   void dispose() {
     if (!kIsWeb) ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
     super.dispose();
+  }
+
+  Future<void> _transfer(MyTicket ticket) async {
+    final t = L10n.of(context);
+    final sentTo = await showDialog<String>(context: context, builder: (_) => _TransferDialog(ticketId: ticket.id));
+    if (sentTo == null || !mounted) return;
+    await ref.read(myTicketsProvider.notifier).refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.transferDone(sentTo))));
+    context.go('/tickets');
   }
 
   @override
@@ -81,7 +92,79 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                   trailing: Pill('#${ticket.id.substring(0, 8).toUpperCase()}'),
                 ),
               ),
+              if (ticket.canTransfer)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: OutlinedButton.icon(
+                    key: const Key('transfer'),
+                    onPressed: () => _transfer(ticket),
+                    icon: const Icon(Icons.send_outlined),
+                    label: Text(t.transferTicket),
+                  ),
+                ),
             ]),
+    );
+  }
+}
+
+/// Asks for the recipient's number and sends the ticket; pops with the masked number on success.
+class _TransferDialog extends ConsumerStatefulWidget {
+  const _TransferDialog({required this.ticketId});
+  final String ticketId;
+  @override
+  ConsumerState<_TransferDialog> createState() => _TransferDialogState();
+}
+
+class _TransferDialogState extends ConsumerState<_TransferDialog> {
+  final _phone = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final to = await ref.read(apiProvider).transferTicket(widget.ticketId, _phone.text.trim());
+      if (mounted) Navigator.of(context).pop(to);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    return AlertDialog(
+      title: Text(t.transferTicket),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(t.transferHint),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('transferPhone'),
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(labelText: t.phoneNumber, hintText: '09xxxxxxxxx', errorText: _error),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: Text(t.cancel)),
+        FilledButton(key: const Key('transferConfirm'), onPressed: _busy ? null : _send, child: Text(t.send)),
+      ],
     );
   }
 }

@@ -389,6 +389,31 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
   final String _idempotencyKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   int _qty = 1;
   bool _busy = false;
+  final _promo = TextEditingController();
+  PromoCheck? _promoResult; // applied code (for the current type and quantity)
+  bool _checking = false;
+
+  @override
+  void dispose() {
+    _promo.dispose();
+    super.dispose();
+  }
+
+  void _resetPromo() => _promoResult = null;
+
+  Future<void> _applyPromo() async {
+    final code = _promo.text.trim();
+    if (code.isEmpty) return;
+    setState(() => _checking = true);
+    try {
+      final r = await ref.read(apiProvider).checkPromo(widget.event.id, code, {_type.id: _qty});
+      if (mounted) setState(() => _promoResult = r);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _promoResult = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _type.priceMmk * _qty));
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
   String? _error;
   bool _done = false;
 
@@ -400,7 +425,8 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
       _error = null;
     });
     try {
-      final o = await ref.read(apiProvider).createOrder(widget.event.id, {_type.id: _qty}, idempotencyKey: '$_idempotencyKey-${_type.id}-$_qty');
+      final code = _promoResult?.valid == true ? _promo.text.trim() : null;
+      final o = await ref.read(apiProvider).createOrder(widget.event.id, {_type.id: _qty}, idempotencyKey: '$_idempotencyKey-${_type.id}-$_qty-${code ?? ''}', promoCode: code);
       ref.invalidate(eventProvider(widget.event.id));
       if (o.isPaid) {
         ref.invalidate(myTicketsProvider);
@@ -448,6 +474,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                   onChanged: (_) => setState(() {
                     _type = tt;
                     _qty = 1;
+                    _resetPromo();
                   }),
                   title: Text(pickLang(lang, tt.name, tt.nameMy)),
                   subtitle: Text(t.remaining(tt.remaining)),
@@ -456,18 +483,63 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(child: Text('${t.quantity} · ${t.perPersonLimit(_type.maxPerOrder)}')),
-                IconButton.outlined(onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
+                IconButton.outlined(
+                    onPressed: _qty > 1
+                        ? () => setState(() {
+                              _qty--;
+                              _resetPromo();
+                            })
+                        : null,
+                    icon: const Icon(Icons.remove)),
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', style: theme.textTheme.titleLarge)),
-                IconButton.outlined(onPressed: _qty < _max ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
+                IconButton.outlined(
+                    onPressed: _qty < _max
+                        ? () => setState(() {
+                              _qty++;
+                              _resetPromo();
+                            })
+                        : null,
+                    icon: const Icon(Icons.add)),
               ]),
-              if (!_type.isFree)
+              if (!_type.isFree) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('promoField'),
+                        controller: _promo,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(labelText: t.promoCode, isDense: true),
+                        onChanged: (_) => setState(_resetPromo),
+                        onSubmitted: (_) => _applyPromo(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(key: const Key('promoApply'), onPressed: _checking ? null : _applyPromo, child: Text(t.apply)),
+                  ]),
+                ),
+                if (_promoResult != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: _promoResult!.valid
+                        ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                        : Text(_promoResult!.reason ?? t.promoInvalid, style: TextStyle(color: theme.colorScheme.error)),
+                  ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [
                     Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-                    Text(t.mmk(formatAmount(_type.priceMmk * _qty, lang)), key: const Key('sheetTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                    if (_promoResult?.valid == true)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(t.mmk(formatAmount(_type.priceMmk * _qty, lang)), style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough)),
+                      ),
+                    Text(t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
+                        key: const Key('sheetTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                   ]),
                 ),
+              ],
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
               const SizedBox(height: 16),
               FilledButton(

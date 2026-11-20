@@ -406,4 +406,39 @@ class L10nEn extends L10n {
   @override
   String get noNotifications =>
       'No notifications yet. Ticket updates, reminders and organizer announcements will appear here.';
+
+  @override
+  String get promoCode => 'Promo code';
+
+  @override
+  String get apply => 'Apply';
+
+  @override
+  String get promoInvalid => 'This code is not valid';
+
+  @override
+  String promoApplied(String amount) {
+    return 'Code applied: $amount off';
+  }
+
+  @override
+  String get discount => 'Discount';
+
+  @override
+  String get transferTicket => 'Send to someone';
+
+  @override
+  String get transferHint =>
+      'Enter the Myanmar phone number of the person who will use this ticket. Your QR stops working and they will find the ticket in the app after signing in with that number.';
+
+  @override
+  String get send => 'Send';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String transferDone(String phone) {
+    return 'Ticket sent to $phone';
+  }
 }

@@ -177,14 +177,27 @@ class Event360Api {
       );
 
   /// Creates an order (free → confirmed with tickets; paid → seats held for 10 minutes).
-  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP'}) => _call(
+  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP', String? promoCode}) => _call(
         () => _dio.post('/events/$eventId/orders', data: {
           'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
           'idempotencyKey': idempotencyKey,
           'channel': channel,
+          if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
         }),
         (d) => Order.fromJson(d as Map<String, dynamic>),
       );
+
+  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities) => _call(
+        () => _dio.post('/events/$eventId/promo-check', data: {
+          'code': code,
+          'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
+        }),
+        (d) => PromoCheck.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// Sends a ticket to another phone number; returns the masked number it went to.
+  Future<String> transferTicket(String ticketId, String phone) =>
+      _call(() => _dio.post('/me/tickets/$ticketId/transfer', data: {'phone': phone}), (d) => (d as Map<String, dynamic>)['to'] as String);
 
   Future<Order> order(String id) => _call(() => _dio.get('/orders/$id'), (d) => Order.fromJson(d as Map<String, dynamic>));
 

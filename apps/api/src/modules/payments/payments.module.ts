@@ -64,6 +64,18 @@ class CreateOrderDto {
   @Length(8, 80)
   idempotencyKey?: string;
   @ApiPropertyOptional({ enum: ['APP', 'WEB'] }) @IsOptional() @IsIn(['APP', 'WEB']) channel?: 'APP' | 'WEB';
+  @ApiPropertyOptional({ description: 'Promo code' }) @IsOptional() @IsString() @MaxLength(24) promoCode?: string;
+}
+
+class PromoCheckDto {
+  @ApiProperty() @IsString() @Length(3, 24) code: string;
+  @ApiProperty({ type: [OrderItemDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
 }
 
 class PayDto {
@@ -111,7 +123,14 @@ export class CheckoutController {
   @Post('events/:id/orders')
   @Auth()
   create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateOrderDto, @CurrentUser() u: AuthUser) {
-    return this.payments.createOrder(u.sub, id, dto.items, dto.idempotencyKey, dto.channel);
+    return this.payments.createOrder(u.sub, id, dto.items, dto.idempotencyKey, dto.channel, dto.promoCode);
+  }
+
+  @Post('events/:id/promo-check')
+  @Auth()
+  @HttpCode(200)
+  promoCheck(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PromoCheckDto) {
+    return this.payments.previewPromo(id, dto.code, dto.items);
   }
 
   @Get('me/orders')
