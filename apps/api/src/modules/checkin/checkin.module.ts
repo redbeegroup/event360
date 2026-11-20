@@ -47,7 +47,7 @@ export class CrewController {
 
   @Post('redeem')
   @HttpCode(200)
-    @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   redeem(@Body() dto: RedeemDto) {
     return this.checkin.redeem(dto.code, dto.deviceName);
   }
