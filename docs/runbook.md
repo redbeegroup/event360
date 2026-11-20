@@ -165,3 +165,36 @@ Limits are kept in memory per pod, so with 2 API pods the real ceiling is up to 
 - **Off-site backup copy**: copy the weekly dumps elsewhere every month or so.
 - **Dependencies**: run `pnpm audit --prod` before big releases.
 - **Dev data**: dev is public and anyone can sign in, so don't load real attendee data there.
+
+## 10. Load test (dev only)
+
+`infra/loadtest/` holds a k6 test that runs inside the dev cluster against `http://api:3000`:
+- **Browsing**: up to 300 requests a second.
+- **On-sale rush**: 1,000 people sign in and try to claim 300 seats.
+- **Door scanning**: 25 scans a second, about half of them duplicates.
+
+It uses a private, unlisted test event and test phone numbers starting `0969000`.
+
+1. **Create the data.** Run `node /scripts/data.js` as a one-off Job in `event360-dev` with the API image and `envFrom: event360-secrets`. The script refuses to run on any schema other than `dev`. It prints a `LOADTEST {...}` line.
+2. **Run k6.** Use image `grafana/k6:0.54.0` with `run /scripts/k6.js`, the env var `LT` set to the JSON from step 1, and `API=http://api:3000`.
+3. **Remove everything.** Run `node /scripts/data.js cleanup`. This deletes the event, its orders, tickets and check-ins, and the test users.
+
+Don't push to the branch while it runs, because a dev redeploy mid-test spoils the numbers.
+
+**Results on 2026-11-20** (dev: 1 API pod, CPU request 200m):
+
+| Scenario | Before the fixes | After |
+|---|---|---|
+| Browsing at 300 req/s | ~55 req/s served, p50 5 s, pod pulled out of service | all served, p50 2 ms, p95 59 ms, 0 errors |
+| Rush (300 seats, 1,000 people) | about half timed out | exactly 300 sold, 700 told "sold out", 0 errors, no overselling |
+| Door scans at 25/s during the rush | most failed | all answered, p50 87 ms, p95 3.4 s |
+| Event list from inside the cluster | 81 req/s | 800 req/s |
+| Event page from inside the cluster | 110 req/s | 1,600 req/s |
+
+The fixes:
+- public event lists, event pages and categories are cached for 10 s in each pod;
+- page views are counted in memory and written in batches;
+- each workload has its own database pool size;
+- the readiness check has more slack.
+
+Scans during the rush are still slow on dev's single pod, because sign-ins and orders compete for the same CPU. The crew app falls back to offline checking after 4 s, so the door keeps moving. Prod runs 2 API pods.
