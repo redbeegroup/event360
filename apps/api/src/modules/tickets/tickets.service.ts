@@ -58,6 +58,7 @@ export class TicketsService {
       return { orderId: order.id, ticketIds: tickets.map((t) => t.id) };
     });
     void this.notify.ticketConfirmed(result.orderId);
+    void this.notify.checkSales(eventId, false);
     return result;
   }
 

@@ -6,6 +6,7 @@ import 'streams.dart';
 import 'models.dart';
 import 'notifications.dart';
 import 'orders.dart';
+import 'org.dart';
 import 'token_store.dart';
 
 /// Error with a user-presentable message from the API (`message` field) and the HTTP status.
@@ -301,4 +302,69 @@ class Event360Api {
 
   /// 409 = another device took over playback.
   Future<void> watchHeartbeat(String sessionId) => _call(() => _dio.post('/watch/sessions/$sessionId/heartbeat'), (_) {});
+
+  // ───── Organizer app ─────
+
+  Future<List<OrgMembership>> myOrganizations() => _call(
+        () => _dio.get('/auth/me'),
+        (d) => ((d as Map<String, dynamic>)['organizations'] as List? ?? const []).map((x) => OrgMembership.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  Future<List<OrgEvent>> orgEvents(String orgId) =>
+      _call(() => _dio.get('/organizations/$orgId/events'), (d) => (d as List).map((x) => OrgEvent.fromJson(x as Map<String, dynamic>)).toList());
+
+  Future<EventDashboard> eventDashboard(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/dashboard'), (d) => EventDashboard.fromJson(d as Map<String, dynamic>));
+
+  /// Live check-in numbers (same shape as the crew stats).
+  Future<CrewStats> eventAttendance(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/attendance'), (d) => CrewStats.fromJson(d as Map<String, dynamic>));
+
+  Future<List<RecentOrder>> recentOrders(String orgId, String eventId) => _call(
+        () => _dio.get('/organizations/$orgId/events/$eventId/sales'),
+        (d) => ((d as Map<String, dynamic>)['recent'] as List).map((x) => RecentOrder.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  Future<List<CrewCode>> crewCodes(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/crew-codes'), (d) => (d as List).map((x) => CrewCode.fromJson(x as Map<String, dynamic>)).toList());
+
+  Future<CrewCode> createCrewCode(String orgId, String eventId, String label, {String? gate}) => _call(
+        () => _dio.post('/organizations/$orgId/events/$eventId/crew-codes', data: {'label': label, if (gate != null && gate.isNotEmpty) 'gate': gate}),
+        (d) => CrewCode.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<void> revokeCrewCode(String orgId, String eventId, String codeId) =>
+      _call(() => _dio.delete('/organizations/$orgId/events/$eventId/crew-codes/$codeId'), (_) {});
+
+  Future<Announcements> announcements(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/announcements'), (d) => Announcements.fromJson(d as Map<String, dynamic>));
+
+  Future<void> sendAnnouncement(String orgId, String eventId, {required String title, required String body, String? titleMy, String? bodyMy}) => _call(
+        () => _dio.post('/organizations/$orgId/events/$eventId/announcements', data: {
+          'title': title,
+          'body': body,
+          if (titleMy != null && titleMy.isNotEmpty) 'titleMy': titleMy,
+          if (bodyMy != null && bodyMy.isNotEmpty) 'bodyMy': bodyMy,
+        }),
+        (_) {},
+      );
+
+  Future<List<PromoCodeInfo>> promoCodes(String orgId, String eventId) => _call(
+        () => _dio.get('/organizations/$orgId/events/$eventId/promo-codes'),
+        (d) => (d as List).map((x) => PromoCodeInfo.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  Future<void> createPromoCode(String orgId, String eventId, {required String code, required String kind, required int value, int? maxUses}) => _call(
+        () => _dio.post('/organizations/$orgId/events/$eventId/promo-codes', data: {'code': code, 'kind': kind, 'value': value, if (maxUses != null) 'maxUses': maxUses}),
+        (_) {},
+      );
+
+  Future<void> setPromoActive(String orgId, String eventId, String promoId, bool active) =>
+      _call(() => _dio.patch('/organizations/$orgId/events/$eventId/promo-codes/$promoId', data: {'isActive': active}), (_) {});
+
+  Future<Inbox> organizerNotifications() =>
+      _call(() => _dio.get('/me/notifications', queryParameters: {'audience': 'organizer'}), (d) => Inbox.fromJson(d as Map<String, dynamic>));
+
+  Future<void> markOrganizerNotificationsRead([List<String> ids = const []]) =>
+      _call(() => _dio.post('/me/notifications/read', data: ids.isEmpty ? {'audience': 'organizer'} : {'ids': ids}), (_) {});
 }

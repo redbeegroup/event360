@@ -13,11 +13,15 @@ event changes and cancellations also go by **SMS** (SMSPoh, when SMS is enabled)
 | Order refunded | ✓ | ✓ | |
 | Organizer announcement (max 3 per event per day) | ✓ | ✓ | |
 
+Organizers (Organizer app, separate inbox): event approved / needs changes, first paid order, half sold, sold out, and a daily sales summary at 8 PM Myanmar time.
+
 ## 1. Create the Firebase project (once)
 1. https://console.firebase.google.com → **Add project** → name it `event360` (Google Analytics not needed).
-2. **Project settings → General → Your apps → Add app → Android**, twice:
-   - package `app.event360` (prod app)
-   - package `app.event360.dev` (dev app)
+2. **Project settings → General → Your apps → Add app → Android**, four times:
+   - package `app.event360` (User app, prod)
+   - package `app.event360.dev` (User app, dev)
+   - package `app.event360.organizer` (Organizer app, prod)
+   - package `app.event360.organizer.dev` (Organizer app, dev)
 
    You do not need to download `google-services.json`; the app gets its config from build variables.
 3. Note from **Project settings → General**: *Project ID*, *Web API key*, and each Android app's *App ID*
@@ -33,6 +37,8 @@ GitHub → repo **Settings → Secrets and variables → Actions → Variables �
 | `FIREBASE_SENDER_ID` | Sender ID |
 | `FIREBASE_ANDROID_APP_ID` | App ID of `app.event360` |
 | `FIREBASE_ANDROID_APP_ID_DEV` | App ID of `app.event360.dev` |
+| `FIREBASE_ANDROID_APP_ID_ORGANIZER` | App ID of `app.event360.organizer` |
+| `FIREBASE_ANDROID_APP_ID_ORGANIZER_DEV` | App ID of `app.event360.organizer.dev` |
 
 The next CI run builds APKs with push. Without them the app still works (inbox only).
 

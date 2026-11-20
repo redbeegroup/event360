@@ -119,7 +119,8 @@ model Device {
 model Notification {
   id        String    @id @default(uuid()) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
-  kind      String // ticket_confirmed | event_reminder | event_changed | event_cancelled | live_now | order_refunded | announcement | test
+  kind      String // ticket_confirmed | event_reminder | event_changed | event_cancelled | live_now | order_refunded | announcement | test | org_*
+  audience  String    @default("attendee") // attendee (user app) | organizer (organizer app)
   title     String
   titleMy   String?   @map("title_my")
   body      String
@@ -130,7 +131,7 @@ model Notification {
   createdAt DateTime  @default(now()) @map("created_at")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, createdAt])
+  @@index([userId, audience, createdAt])
   @@map("notifications")
 }
 
@@ -313,6 +314,7 @@ model Event {
   endsAt              DateTime        @map("ends_at")
   publishedAt         DateTime?       @map("published_at")
   reminderSentAt      DateTime?       @map("reminder_sent_at") // day-before reminder sent
+  salesMilestone      Int             @default(0) @map("sales_milestone") // organizer told: 1 = first paid order, 50 = half sold, 100 = sold out
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 

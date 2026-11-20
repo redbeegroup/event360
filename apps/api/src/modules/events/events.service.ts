@@ -545,6 +545,7 @@ export class EventsService {
       data: { status: 'PUBLISHED', publishedAt: e.publishedAt ?? new Date(), rejectionReason: null },
       include: fullInclude,
     });
+    void this.notify.eventReviewed(e, true);
     return this.toDto(updated, { full: true });
   }
 
@@ -554,6 +555,7 @@ export class EventsService {
     if (!e) throw new NotFoundException('Event not found');
     if (!['SUBMITTED', 'PUBLISHED'].includes(e.status)) throw new ConflictException(`Cannot reject an event that is ${e.status}`);
     const updated = await this.prisma.event.update({ where: { id }, data: { status: 'REJECTED', rejectionReason: reason }, include: fullInclude });
+    void this.notify.eventReviewed(e, false, reason);
     return this.toDto(updated, { full: true });
   }
 }

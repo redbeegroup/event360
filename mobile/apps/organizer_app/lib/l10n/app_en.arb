@@ -1,0 +1,116 @@
+{
+  "appTitle": "Event 360 Organizer",
+  "signInTitle": "Sign in with your organizer account",
+  "email": "Email",
+  "password": "Password",
+  "signIn": "Sign in",
+  "signOut": "Sign out",
+  "notOrganizer": "This account is not part of any organization. Ask your organization owner to invite you in the portal.",
+  "events": "Events",
+  "upcoming": "Upcoming",
+  "past": "Past",
+  "noEvents": "No events yet. Create events in the portal.",
+  "liveNow": "Live now",
+  "loadError": "Couldn't load. Check your connection.",
+  "retry": "Retry",
+  "organization": "Organization",
+  "status_DRAFT": "Draft",
+  "status_SUBMITTED": "In review",
+  "status_PUBLISHED": "Published",
+  "status_ONGOING": "Ongoing",
+  "status_COMPLETED": "Completed",
+  "status_CANCELLED": "Cancelled",
+  "status_REJECTED": "Rejected",
+  "tabOverview": "Overview",
+  "tabDoor": "Door",
+  "tabAnnounce": "Announce",
+  "tabPromos": "Promos",
+  "ticketsSold": "Tickets sold",
+  "revenue": "Revenue",
+  "checkedIn": "Checked in",
+  "orders": "Orders",
+  "pageViews": "Page views",
+  "discounts": "Discounts",
+  "byTicketType": "By ticket type",
+  "byGate": "Check-ins by gate",
+  "recentOrders": "Recent orders",
+  "noOrders": "No orders yet.",
+  "updatedAt": "Updated {time}",
+  "@updatedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "noGate": "No gate",
+  "doorHint": "Create a code for each group of volunteers. They open the Crew app, scan the QR (or type the code) and start checking tickets in.",
+  "codeLabel": "Name (e.g. Volunteers)",
+  "gate": "Gate (optional)",
+  "createCode": "Create code",
+  "codeCreated": "Show this to your volunteers",
+  "codeOnce": "The code is shown only now. Create a new one if it gets lost.",
+  "revoke": "Revoke",
+  "revokeConfirm": "Revoke this code? Phones using it are signed out.",
+  "devices": "{n} phones",
+  "@devices": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "expired": "Expired",
+  "revoked": "Revoked",
+  "openCrewApp": "Open the Crew app",
+  "done": "Done",
+  "announceHint": "Sends a notification to everyone holding a ticket (not SMS). Up to 3 per day.",
+  "recipients": "{n} ticket holders",
+  "@recipients": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "leftToday": "{n} left today",
+  "@leftToday": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "heading": "Heading",
+  "message": "Message",
+  "headingMy": "Heading (Myanmar, optional)",
+  "messageMy": "Message (Myanmar, optional)",
+  "send": "Send",
+  "sendConfirm": "Send this to all ticket holders now?",
+  "sent": "Sent",
+  "cancel": "Cancel",
+  "noAnnouncements": "Nothing sent yet.",
+  "promosHint": "Discounts for paid tickets. Commission is calculated on the discounted price.",
+  "promoCode": "Code",
+  "percent": "% off",
+  "fixed": "MMK off",
+  "amount": "Amount",
+  "maxUses": "Max uses (optional)",
+  "createPromo": "Create code",
+  "used": "Used {n}",
+  "@used": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "turnOn": "Turn on",
+  "turnOff": "Turn off",
+  "off": "Off",
+  "noPromos": "No codes yet.",
+  "notifications": "Notifications",
+  "markAllRead": "Mark all read",
+  "noNotifications": "Sales milestones, approvals and the daily summary will appear here.",
+  "readOnly": "View only: your role can't change this."
+}

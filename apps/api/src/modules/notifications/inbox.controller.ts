@@ -8,6 +8,11 @@ import { NotifyService } from './notify.service';
 import { PushSettingsService } from './settings.service';
 
 class ReadDto {
+  @ApiPropertyOptional({ enum: ['attendee', 'organizer'], description: 'With no ids: which inbox to mark read' })
+  @IsOptional()
+  @IsIn(['attendee', 'organizer'])
+  audience?: 'attendee' | 'organizer';
+
   @ApiPropertyOptional({ description: 'Notification ids; omit to mark all read' })
   @IsOptional()
   @IsArray()
@@ -47,17 +52,18 @@ export class InboxController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get('notifications')
-  async list(@CurrentUser() u: AuthUser, @Query('before') before?: string, @Query('limit') limit?: string) {
+  async list(@CurrentUser() u: AuthUser, @Query('before') before?: string, @Query('limit') limit?: string, @Query('audience') audienceQ?: string) {
+    const audience = audienceQ === 'organizer' ? 'organizer' : 'attendee';
     const take = Math.min(Number(limit) || 30, 100);
     const cursor = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : undefined;
     const [items, unread] = await Promise.all([
       this.prisma.notification.findMany({
-        where: { userId: u.sub, ...(cursor ? { createdAt: { lt: cursor } } : {}) },
+        where: { userId: u.sub, audience, ...(cursor ? { createdAt: { lt: cursor } } : {}) },
         orderBy: { createdAt: 'desc' },
         take,
         select: { id: true, kind: true, title: true, titleMy: true, body: true, bodyMy: true, link: true, eventId: true, readAt: true, createdAt: true },
       }),
-      this.prisma.notification.count({ where: { userId: u.sub, readAt: null } }),
+      this.prisma.notification.count({ where: { userId: u.sub, audience, readAt: null } }),
     ]);
     return { items, unread };
   }
@@ -66,7 +72,7 @@ export class InboxController {
   @HttpCode(200)
   async read(@CurrentUser() u: AuthUser, @Body() dto: ReadDto) {
     const r = await this.prisma.notification.updateMany({
-      where: { userId: u.sub, readAt: null, ...(dto.ids?.length ? { id: { in: dto.ids } } : {}) },
+      where: { userId: u.sub, readAt: null, ...(dto.ids?.length ? { id: { in: dto.ids } } : { audience: dto.audience ?? 'attendee' }) },
       data: { readAt: new Date() },
     });
     return { updated: r.count };

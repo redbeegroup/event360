@@ -177,7 +177,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (!paid) await this.issueTickets(tx, order.id, userId, lines.map(({ tt, quantity }) => ({ ticketTypeId: tt.id, quantity })));
       return order.id;
     });
-    if (!paid) void this.notify.ticketConfirmed(orderId);
+    if (!paid) {
+      void this.notify.ticketConfirmed(orderId);
+      void this.notify.checkSales(eventId, false);
+    }
     return this.orderView(userId, orderId);
   }
 
@@ -399,7 +402,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       ]);
       return issued ? order.id : null;
     });
-    if (issuedFor) void this.notify.ticketConfirmed(issuedFor);
+    if (issuedFor) {
+      void this.notify.ticketConfirmed(issuedFor);
+      const o = await this.prisma.order.findUnique({ where: { id: issuedFor }, select: { eventId: true } });
+      if (o) void this.notify.checkSales(o.eventId, true);
+    }
   }
 
   // ───────────── background: holds + reconciliation ─────────────

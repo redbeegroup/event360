@@ -13,7 +13,13 @@ export type NotificationKind =
   | 'order_refunded'
   | 'announcement'
   | 'ticket_received'
-  | 'test';
+  | 'test'
+  | 'org_event_approved'
+  | 'org_event_rejected'
+  | 'org_first_sale'
+  | 'org_half_sold'
+  | 'org_sold_out'
+  | 'org_daily';
 
 export interface NoticeText {
   kind: NotificationKind;
@@ -25,7 +31,13 @@ export interface NoticeText {
   eventId?: string | null;
   /** English-only SMS (one part where possible); only sent when SMS is enabled. */
   sms?: string;
+  /** attendee → user app (default); organizer → organizer app. */
+  audience?: 'attendee' | 'organizer';
 }
+
+const ORG_STAFF = ['ORG_OWNER', 'ORG_MANAGER', 'ORG_FINANCE'] as const;
+const MMT_MS = 6.5 * 3600e3;
+const mmtDay = (d = new Date()) => new Date(d.getTime() + MMT_MS).toISOString().slice(0, 10);
 
 const TZ = 'Asia/Yangon';
 export const when = (d: Date, lang: 'en' | 'my' = 'en') =>
@@ -52,7 +64,10 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if ((process.env.APP_ROLE ?? 'api') === 'api' && process.env.NODE_ENV !== 'test') {
-      this.timer = setInterval(() => this.sendReminders().catch((e) => this.logger.warn(`reminders: ${e.message}`)), 5 * 60_000);
+      this.timer = setInterval(() => {
+        this.sendReminders().catch((e) => this.logger.warn(`reminders: ${e.message}`));
+        this.sendDailySummaries().catch((e) => this.logger.warn(`daily summary: ${e.message}`));
+      }, 5 * 60_000);
     }
   }
   onModuleDestroy() {
@@ -101,6 +116,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
           bodyMy: n.bodyMy?.slice(0, 1000) ?? null,
           link: n.link ?? null,
           eventId: n.eventId ?? null,
+          audience: n.audience ?? 'attendee',
         })),
       });
     }
@@ -113,7 +129,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     const cfg = await this.push.config();
     if (!cfg?.enabled) return;
     const devices = await this.prisma.device.findMany({
-      where: { userId: { in: userIds }, pushToken: { not: null } },
+      where: { userId: { in: userIds }, pushToken: { not: null }, appId: n.audience === 'organizer' ? 'organizer_app' : 'user_app' },
       select: { id: true, pushToken: true, user: { select: { locale: true } } },
     });
     let ok = 0;
@@ -257,5 +273,100 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
       sent++;
     }
     return sent;
+  }
+
+  // ───────────── organizer notices (organizer app) ─────────────
+
+  async orgStaff(organizationId: string): Promise<string[]> {
+    const m = await this.prisma.organizationMember.findMany({ where: { organizationId, role: { in: [...ORG_STAFF] } }, select: { userId: true } });
+    return m.map((x) => x.userId);
+  }
+
+  private toOrg(organizationId: string, n: Omit<NoticeText, 'audience'>) {
+    return this.background(this.orgStaff(organizationId).then((ids) => this.deliver(ids, { ...n, audience: 'organizer' })));
+  }
+
+  eventReviewed(e: { id: string; organizationId: string; title: string; titleMy: string | null }, approved: boolean, reason?: string | null) {
+    return this.toOrg(e.organizationId, approved
+      ? {
+          kind: 'org_event_approved',
+          title: 'Event approved',
+          titleMy: 'ပွဲ အတည်ပြုပြီးပါပြီ',
+          body: `${e.title} is now live in the Event 360 app.`,
+          bodyMy: `${e.titleMy || e.title} သည် Event 360 App တွင် ယခု ပေါ်နေပါပြီ။`,
+          link: `/event/${e.id}`,
+          eventId: e.id,
+        }
+      : {
+          kind: 'org_event_rejected',
+          title: 'Event needs changes',
+          titleMy: 'ပွဲကို ပြင်ဆင်ရန် လိုအပ်ပါသည်',
+          body: `${e.title} was not approved${reason ? `: ${reason}` : '.'} Edit it in the portal and submit again.`,
+          bodyMy: `${e.titleMy || e.title} ကို အတည်မပြုပါ${reason ? ` — ${reason}` : ''}။ Portal တွင် ပြင်ပြီး ပြန်တင်ပါ။`,
+          link: `/event/${e.id}`,
+          eventId: e.id,
+        });
+  }
+
+  /** After tickets are issued: first paid order, half sold, sold out — each once per event. */
+  checkSales(eventId: string, paid: boolean) {
+    return this.background(this.buildCheckSales(eventId, paid));
+  }
+
+  private async buildCheckSales(eventId: string, paid: boolean) {
+    const e = await this.prisma.event.findUnique({ where: { id: eventId }, include: { ticketTypes: { select: { sold: true, quota: true } } } });
+    if (!e) return;
+    const sold = e.ticketTypes.reduce((s, t) => s + t.sold, 0);
+    const quota = e.ticketTypes.reduce((s, t) => s + t.quota, 0);
+    const pct = quota ? (sold / quota) * 100 : 0;
+    const target = pct >= 100 ? 100 : pct >= 50 ? 50 : paid ? 1 : 0;
+    if (target === 0 || e.salesMilestone >= target) return;
+    const claim = await this.prisma.event.updateMany({ where: { id: eventId, salesMilestone: { lt: target } }, data: { salesMilestone: target } });
+    if (claim.count !== 1) return;
+    const base = { link: `/event/${e.id}`, eventId: e.id };
+    if (target === 100) {
+      await this.toOrg(e.organizationId, { ...base, kind: 'org_sold_out', title: 'Sold out 🎉', titleMy: 'လက်မှတ် ကုန်ပါပြီ 🎉', body: `All ${quota} tickets for ${e.title} are gone.`, bodyMy: `${e.titleMy || e.title} အတွက် လက်မှတ် ${quota} စောင်လုံး ကုန်ပါပြီ။` });
+    } else if (target === 50) {
+      await this.toOrg(e.organizationId, { ...base, kind: 'org_half_sold', title: 'Half sold', titleMy: 'ထက်ဝက် ရောင်းပြီး', body: `${sold} of ${quota} tickets for ${e.title} are taken.`, bodyMy: `${e.titleMy || e.title} — လက်မှတ် ${quota} စောင်တွင် ${sold} စောင် ရောင်းပြီး။` });
+    } else {
+      await this.toOrg(e.organizationId, { ...base, kind: 'org_first_sale', title: 'First paid order', titleMy: 'ပထမဆုံး ငွေပေးအော်ဒါ', body: `${e.title} just made its first sale.`, bodyMy: `${e.titleMy || e.title} — ပထမဆုံး ရောင်းချမှု ရရှိပါပြီ။` });
+    }
+  }
+
+  /** 8 PM Myanmar time: one summary per organization that sold something today (once per day across replicas). */
+  async sendDailySummaries(now = new Date(), force = false) {
+    const mmt = new Date(now.getTime() + MMT_MS);
+    if (!force && mmt.getUTCHours() < 20) return 0;
+    const day = mmtDay(now);
+    try {
+      await this.prisma.platformSetting.create({ data: { key: `org_digest:${day}`, value: { sentAt: now.toISOString() } } });
+    } catch {
+      return 0; // another replica (or an earlier run) already sent today's
+    }
+    const from = new Date(`${day}T00:00:00.000Z`).getTime() - MMT_MS;
+    const orders = await this.prisma.order.findMany({
+      where: { status: { in: ['PAID', 'CONFIRMED'] }, createdAt: { gte: new Date(from), lt: new Date(from + 86400e3) } },
+      select: { totalMmk: true, event: { select: { organizationId: true } }, items: { select: { quantity: true } } },
+    });
+    const byOrg = new Map<string, { orders: number; tickets: number; revenue: bigint }>();
+    for (const o of orders) {
+      const a = byOrg.get(o.event.organizationId) ?? { orders: 0, tickets: 0, revenue: 0n };
+      a.orders++;
+      a.tickets += o.items.reduce((s, i) => s + i.quantity, 0);
+      a.revenue += o.totalMmk;
+      byOrg.set(o.event.organizationId, a);
+    }
+    for (const [orgId, a] of byOrg) {
+      const rev = Number(a.revenue).toLocaleString('en-US');
+      await this.toOrg(orgId, {
+        kind: 'org_daily',
+        title: 'Today’s sales',
+        titleMy: 'ယနေ့ အရောင်း',
+        body: `${a.orders} orders · ${a.tickets} tickets · ${rev} MMK`,
+        bodyMy: `အော်ဒါ ${a.orders} · လက်မှတ် ${a.tickets} · ${rev} ကျပ်`,
+        link: '/',
+      });
+    }
+    return byOrg.size;
   }
 }
