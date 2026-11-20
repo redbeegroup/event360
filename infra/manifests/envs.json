@@ -31,7 +31,7 @@
     "prod": {
       "namespace": "event360-prod",
       "domain": "event360.app",
-      "imageTag": "9125373a810381c8fd9f9a25fa2b8ebc87ae362a",
+      "imageTag": "d20c76ad7db4cc92cc952e15f570a0d14139ed0b",
       "otpDevEcho": false,
       "paymentsMock": false,
       "replicas": {
@@ -49,7 +49,7 @@
         "maxLiveChannels": 2
       },
       "site": {
-        "enabled": false,
+        "enabled": true,
         "indexable": true,
         "www": true
       }
