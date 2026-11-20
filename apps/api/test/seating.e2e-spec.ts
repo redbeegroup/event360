@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { NotifyService } from '../src/modules/notifications/notify.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
@@ -91,6 +92,27 @@ run('Seat maps', () => {
     expect(v1.body.layout.sections).toHaveLength(1);
     expect(v1.body.layout.sections[0].rows[0].seats).toHaveLength(2);
     expect(await prisma.seatMapVersion.count({ where: { seatMapId: id } })).toBe(2);
+  });
+
+  it('saving over a draft that was published meanwhile never touches the published version', async () => {
+    const id = await newMap('Race');
+    const d1 = await http.put(`/v1/admin/seat-maps/${id}/draft`).set(A).send({ layout: small }).expect(200);
+    await http.post(`/v1/admin/seat-maps/${id}/publish`).set(A).expect(200);
+    // A stale saveDraft still holds the old draft id after publish committed
+    const adminId = (await prisma.seatMapVersion.findUniqueOrThrow({ where: { id: d1.body.id } })).createdById;
+    const out = await prisma.$transaction((tx) => app.get(SeatMapsService).writeDraft(tx, id, d1.body.id, theatre, 1200, adminId));
+    expect(out.version).toBe(2);
+    expect(out.publishedAt).toBeNull();
+    const v1 = await prisma.seatMapVersion.findUniqueOrThrow({ where: { id: d1.body.id } });
+    expect(v1.publishedAt).not.toBeNull();
+    expect(v1.seatCount).toBe(2);
+    expect((v1.layout as any).sections).toHaveLength(1);
+  });
+
+  it('unknown map is 404 for draft; publish without a draft is 409', async () => {
+    await http.put('/v1/admin/seat-maps/00000000-0000-4000-8000-000000000000/draft').set(A).send({ layout: small }).expect(404);
+    const id = await newMap('NoDraft');
+    await http.post(`/v1/admin/seat-maps/${id}/publish`).set(A).expect(409);
   });
 
   it.todo('new version does not touch events');

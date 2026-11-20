@@ -38,17 +38,24 @@ export class SeatMapsService {
   }
 
   create(dto: MapInput & { venueName: string; city: string }) {
-    return this.prisma.seatMap.create({ data: this.fields(dto) as Prisma.SeatMapCreateInput });
+    return this.prisma.seatMap.create({ data: { venueName: dto.venueName, venueNameMy: dto.venueNameMy, city: dto.city, address: dto.address, latitude: dto.latitude, longitude: dto.longitude, mapUrl: dto.mapUrl } });
   }
 
   async update(id: string, dto: MapInput) {
     await this.map(id);
-    return this.prisma.seatMap.update({ where: { id }, data: { ...this.fields(dto), ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) } });
+    const data: Prisma.SeatMapUpdateInput = { ...this.fields(dto), ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) };
+    return this.prisma.seatMap.update({ where: { id }, data });
   }
 
-  private fields(d: MapInput) {
-    const out: Record<string, unknown> = {};
-    for (const k of ['venueName', 'venueNameMy', 'city', 'address', 'latitude', 'longitude', 'mapUrl'] as const) if (d[k] !== undefined) out[k] = d[k];
+  private fields(d: MapInput): Prisma.SeatMapUpdateInput {
+    const out: Prisma.SeatMapUpdateInput = {};
+    if (d.venueName !== undefined) out.venueName = d.venueName;
+    if (d.venueNameMy !== undefined) out.venueNameMy = d.venueNameMy;
+    if (d.city !== undefined) out.city = d.city;
+    if (d.address !== undefined) out.address = d.address;
+    if (d.latitude !== undefined) out.latitude = d.latitude;
+    if (d.longitude !== undefined) out.longitude = d.longitude;
+    if (d.mapUrl !== undefined) out.mapUrl = d.mapUrl;
     return out;
   }
 
@@ -77,14 +84,26 @@ export class SeatMapsService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const draft = await tx.seatMapVersion.findFirst({ where: { seatMapId: id, publishedAt: null } });
-        if (draft) return tx.seatMapVersion.update({ where: { id: draft.id }, data: { layout, seatCount } });
-        const max = await tx.seatMapVersion.aggregate({ where: { seatMapId: id }, _max: { version: true } });
-        return tx.seatMapVersion.create({ data: { seatMapId: id, version: (max._max.version ?? 0) + 1, layout, seatCount, createdById: actorId } });
+        return this.writeDraft(tx, id, draft?.id ?? null, layout, seatCount, actorId);
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another draft was saved at the same time; try again');
       throw e;
     }
+  }
+
+  /**
+   * Replaces the layout of draft `draftId`, guarded by publishedAt = null so a version published in the
+   * meantime is never modified. If the draft is gone or was just published, a new draft (max+1) is created.
+   * Public only so the race can be tested.
+   */
+  async writeDraft(tx: Prisma.TransactionClient, mapId: string, draftId: string | null, layout: Prisma.InputJsonValue, seatCount: number, actorId: string) {
+    if (draftId) {
+      const done = await tx.seatMapVersion.updateMany({ where: { id: draftId, publishedAt: null }, data: { layout, seatCount } });
+      if (done.count === 1) return tx.seatMapVersion.findUniqueOrThrow({ where: { id: draftId } });
+    }
+    const max = await tx.seatMapVersion.aggregate({ where: { seatMapId: mapId }, _max: { version: true } });
+    return tx.seatMapVersion.create({ data: { seatMapId: mapId, version: (max._max.version ?? 0) + 1, layout, seatCount, createdById: actorId } });
   }
 
   async publish(id: string, actorId: string) {
