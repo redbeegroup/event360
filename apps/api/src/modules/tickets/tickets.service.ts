@@ -30,6 +30,8 @@ export class TicketsService {
     if (tt.salesEndAt && tt.salesEndAt < now) throw new ConflictException('Registration has closed');
     if (tt.priceMmk > 0n) throw new BadRequestException('Paid tickets are not available yet');
     if (quantity > tt.maxPerOrder) throw new BadRequestException(`At most ${tt.maxPerOrder} per person`);
+    // Seated types are sold seat by seat through checkout (their quota is recounted from event_seats)
+    if (await this.prisma.eventSeat.findFirst({ where: { ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
 
     const result = await this.prisma.$transaction(async (tx) => {
       const already = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, status: { in: ['VALID', 'CHECKED_IN'] } } });

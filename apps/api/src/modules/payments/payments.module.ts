@@ -41,6 +41,7 @@ import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PAYMENT_PROVIDER_FIELDS, PaymentProviderKey, PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SeatingModule } from '../seating/seating.module';
 import { mockPage, mockResultPage } from './mock-page';
 import { PaymentsService } from './payments.service';
 
@@ -52,13 +53,20 @@ class OrderItemDto {
 }
 
 class CreateOrderDto {
-  @ApiProperty({ type: [OrderItemDto] })
+  @ApiPropertyOptional({ type: [OrderItemDto], description: 'Quantity lines (unseated and standing ticket types). Required unless `seats` is given.' })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items: OrderItemDto[];
+  items?: OrderItemDto[];
+  @ApiPropertyOptional({ type: [String], description: 'Seated events: seat keys ("<section>:<row>:<seat>"); each seat is one ticket of its assigned type' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  seats?: string[];
   @ApiPropertyOptional({ description: 'Client-generated; repeating the request returns the same order' })
   @IsOptional()
   @IsString()
@@ -124,7 +132,7 @@ export class CheckoutController {
   @Post('events/:id/orders')
   @Auth()
   create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateOrderDto, @CurrentUser() u: AuthUser) {
-    return this.payments.createOrder(u.sub, id, dto.items, dto.idempotencyKey, dto.channel, dto.promoCode);
+    return this.payments.createOrder(u.sub, id, dto.items ?? [], dto.idempotencyKey, dto.channel, dto.promoCode, dto.seats);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } }) // codes can't be guessed by brute force
@@ -327,6 +335,7 @@ export class OrgSalesController {
 }
 
 @Module({
+  imports: [SeatingModule],
   controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController],
   providers: [PaymentsService],
   exports: [PaymentsService],

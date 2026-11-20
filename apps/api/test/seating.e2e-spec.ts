@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { NotifyService } from '../src/modules/notifications/notify.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { PaymentsService } from '../src/modules/payments/payments.service';
 import { EventSeatsService } from '../src/modules/seating/event-seats.service';
 import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
@@ -471,5 +472,318 @@ run('Seated events', () => {
     await prisma.event.update({ where: { id: ev.id }, data: { status: 'PUBLISHED' } });
     const v = await http.put(`${base(ev.id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
     expect(v.body).toMatchObject({ status: 'PUBLISHED', reReviewRequired: false });
+  });
+});
+
+run('Seated checkout', () => {
+  let app: INestApplication;
+  let http: ReturnType<typeof request>;
+  let prisma: PrismaService;
+  let svc: PaymentsService;
+  const tag = randomBytes(4).toString('hex');
+  const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+  // Hall: section A has 6 rows of 10 seats (A:<row>:<n>), section B one row of 4, plus a standing floor
+  const hall = {
+    width: 800,
+    height: 600,
+    sections: [
+      { key: 'A', name: 'Stalls', nameMy: 'ရှေ့ခန်း', kind: 'SEATED', x: 10, y: 10, rows: [1, 2, 3, 4, 5, 6].map((r) => ({ label: String(r), seats: Array.from({ length: 10 }, (_, i) => ({ n: i + 1 })) })) },
+      { key: 'B', name: 'Balcony', kind: 'SEATED', x: 10, y: 400, rows: [{ label: '1', seats: [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }] }] },
+      { key: 'F', name: 'Floor', kind: 'STANDING', x: 500, y: 10, capacity: 100, w: 100, h: 100 },
+    ],
+  };
+  let A: Record<string, string>, O: Record<string, string>, orgId: string, versionId: string;
+
+  async function acceptInvite(url: string) {
+    const r = await http.post(`/v1/auth/invitations/${url.split('/invite/')[1]}/accept`).send({ password: 'password-12345', displayName: 'T' }).expect(200);
+    return bearer(r.body.accessToken as string);
+  }
+  async function consumer() {
+    const p = `09${randomInt(700_000_000, 799_999_999)}`;
+    const r1 = await http.post('/v1/auth/otp/request').send({ phone: p }).expect(200);
+    const r2 = await http.post('/v1/auth/otp/verify').send({ phone: p, code: r1.body.devCode }).expect(200);
+    return bearer(r2.body.accessToken as string);
+  }
+  const base = (eventId: string) => `/v1/organizations/${orgId}/events/${eventId}`;
+  const tokenOf = (url: string) => new URL(url).searchParams.get('t')!;
+  const pathOf = (url: string) => new URL(url).pathname;
+  const seat = (eventId: string, key: string) => prisma.eventSeat.findUniqueOrThrow({ where: { eventId_seatKey: { eventId, seatKey: key } } });
+  const ttRow = (id: string) => prisma.ticketType.findUniqueOrThrow({ where: { id } });
+
+  /** Published event on the hall map: A rows 1-5 = Std (10,000), A row 6 = Free, B = VIP (30,000), F = Floor (standing, 5,000). */
+  async function seatedEvent(title: string, maxPerOrder = 4) {
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + 5 * 86400e3);
+    const ev = await http
+      .post(`/v1/organizations/${orgId}/events`)
+      .set(O)
+      .send({ categoryId: cats.body[0].children[0].id, title: `${title} ${tag}`, format: 'IN_PERSON', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3 * 3600e3).toISOString() })
+      .expect(201);
+    const id = ev.body.id as string;
+    const add = async (b: object) => (await http.post(`${base(id)}/ticket-types`).set(O).send(b).expect(201)).body.id as string;
+    const std = await add({ name: 'Std', priceMmk: 10_000, quota: 1, maxPerOrder });
+    const free = await add({ name: 'Free', priceMmk: 0, quota: 1, maxPerOrder });
+    const vip = await add({ name: 'VIP', priceMmk: 30_000, quota: 1, maxPerOrder });
+    const floor = await add({ name: 'Floor', priceMmk: 5_000, quota: 100, maxPerOrder });
+    await http.put(`${base(id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    await http
+      .put(`${base(id)}/seating/assignments`)
+      .set(O)
+      .send({ rules: [{ sectionKey: 'A', ticketTypeId: std }, { sectionKey: 'A', rowLabel: '6', ticketTypeId: free }, { sectionKey: 'B', ticketTypeId: vip }, { sectionKey: 'F', ticketTypeId: floor }] })
+      .expect(200);
+    await prisma.event.update({ where: { id }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
+    return { id, std, free, vip, floor };
+  }
+  const order = (B: Record<string, string>, eventId: string, body: object) => http.post(`/v1/events/${eventId}/orders`).set(B).send(body);
+  async function payWithMock(B: Record<string, string>, orderId: string) {
+    const p = await http.post(`/v1/orders/${orderId}/pay`).set(B).send({ provider: 'MOCK' }).expect(200);
+    return p.body.payment.action.url as string;
+  }
+  const mockPay = (url: string) => http.post(`${pathOf(url)}/pay`).type('form').send({ t: tokenOf(url) }).expect(201);
+  /** Seat-derived counters always match event_seats. */
+  async function expectCountersMatch(typeId: string) {
+    const [t, held, sold] = await Promise.all([
+      ttRow(typeId),
+      prisma.eventSeat.count({ where: { ticketTypeId: typeId, status: 'CHECKOUT_HOLD' } }),
+      prisma.eventSeat.count({ where: { ticketTypeId: typeId, status: 'SOLD' } }),
+    ]);
+    expect({ held: t.held, sold: t.sold }).toEqual({ held, sold });
+  }
+
+  beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET ??= 'e2e-secret';
+    process.env.OTP_DEV_ECHO = 'true';
+    process.env.PAYMENTS_MOCK = 'true';
+    process.env.SETTINGS_KEY ??= randomBytes(32).toString('base64');
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('v1', { exclude: ['healthz', 'readyz'] });
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    http = new Proxy({} as ReturnType<typeof request>, { get: (_t, m: string) => (request(app.getHttpServer()) as any)[m] });
+    prisma = app.get(PrismaService);
+    svc = app.get(PaymentsService);
+    const adm = await app.get(AuthService).createInvitation({ email: `adm-sc-${tag}@e2e.test`, platformRole: 'PLATFORM_ADMIN' });
+    A = await acceptInvite(adm.url);
+    const org = await http.post('/v1/admin/organizations').set(A).send({ name: `Checkout Org ${tag}`, slug: `seatco-${tag}`, ownerEmail: `own-sc-${tag}@e2e.test` }).expect(201);
+    orgId = org.body.organization.id;
+    O = await acceptInvite(org.body.inviteUrl);
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Hall ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: hall }).expect(200);
+    versionId = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id;
+  });
+  afterAll(async () => {
+    await app.get(NotifyService).idle();
+    await app?.close();
+  });
+
+  it('free seated order issues tickets with seat labels', async () => {
+    const ev = await seatedEvent('Free');
+    const B = await consumer();
+    const r = await order(B, ev.id, { seats: ['A:6:1', 'A:6:2'] }).expect(201);
+    expect(r.body).toMatchObject({ status: 'CONFIRMED', totalMmk: 0 });
+    expect(r.body.ticketIds).toHaveLength(2);
+    expect(r.body.items[0]).toMatchObject({ ticketTypeId: ev.free, quantity: 2 });
+    expect(r.body.items[0].seats.map((s: any) => s.seatKey)).toEqual(['A:6:1', 'A:6:2']);
+    const tickets = await prisma.ticket.findMany({ where: { orderId: r.body.id }, orderBy: { seatKey: 'asc' } });
+    expect(tickets.map((t) => [t.seatKey, t.seatLabel, t.seatLabelMy])).toEqual([
+      ['A:6:1', 'Stalls · Row 6 · Seat 1', 'ရှေ့ခန်း · အတန်း 6 · ခုံ 1'],
+      ['A:6:2', 'Stalls · Row 6 · Seat 2', 'ရှေ့ခန်း · အတန်း 6 · ခုံ 2'],
+    ]);
+    for (const t of tickets) expect(await seat(ev.id, t.seatKey!)).toMatchObject({ status: 'SOLD', orderId: r.body.id, ticketId: t.id });
+    expect(await ttRow(ev.free)).toMatchObject({ quota: 10, sold: 2, held: 0 });
+    // the older free-registration route cannot sell a seated type without a seat
+    await http.post(`/v1/events/${ev.id}/registrations`).set(B).send({ ticketTypeId: ev.free, quantity: 1 }).expect(400);
+    expect(await ttRow(ev.free)).toMatchObject({ sold: 2 });
+  });
+
+  it('paid seated order holds then settles', async () => {
+    const ev = await seatedEvent('Paid');
+    const B = await consumer();
+    const r = await order(B, ev.id, { seats: ['A:1:1', 'A:1:2', 'B:1:1'] }).expect(201);
+    expect(r.body).toMatchObject({ status: 'PENDING_PAYMENT', totalMmk: 50_000 });
+    for (const k of ['A:1:1', 'A:1:2', 'B:1:1']) expect(await seat(ev.id, k)).toMatchObject({ status: 'CHECKOUT_HOLD', orderId: r.body.id, heldUntil: new Date(r.body.holdExpiresAt) });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 50, held: 2, sold: 0 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 4, held: 1, sold: 0 });
+    // the public map shows them taken
+    const pub = await http.get(`/v1/events/${ev.id}/seats`).expect(200);
+    expect(pub.body.status[0]).toBe('T');
+
+    await mockPay(await payWithMock(B, r.body.id));
+    const paid = await http.get(`/v1/orders/${r.body.id}`).set(B).expect(200);
+    expect(paid.body.status).toBe('PAID');
+    expect(paid.body.ticketIds).toHaveLength(3);
+    const tickets = await prisma.ticket.findMany({ where: { orderId: r.body.id } });
+    expect(tickets.map((t) => t.seatLabel).sort()).toEqual(['Balcony · Row 1 · Seat 1', 'Stalls · Row 1 · Seat 1', 'Stalls · Row 1 · Seat 2']);
+    expect(tickets.find((t) => t.seatKey === 'B:1:1')).toMatchObject({ ticketTypeId: ev.vip, seatLabelMy: 'Balcony · အတန်း 1 · ခုံ 1' });
+    for (const t of tickets) expect(await seat(ev.id, t.seatKey!)).toMatchObject({ status: 'SOLD', ticketId: t.id, orderId: r.body.id });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 50, held: 0, sold: 2 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 4, held: 0, sold: 1 });
+  });
+
+  it('taken seat returns 409 naming it and holds nothing', async () => {
+    const ev = await seatedEvent('Taken');
+    const [B1, B2] = [await consumer(), await consumer()];
+    await order(B1, ev.id, { seats: ['A:2:5'] }).expect(201);
+    const r = await order(B2, ev.id, { seats: ['A:2:4', 'A:2:5', 'A:2:6'] }).expect(409);
+    expect(r.body).toMatchObject({ message: 'Some seats were just taken', takenSeats: ['A:2:5'] });
+    expect(await seat(ev.id, 'A:2:4')).toMatchObject({ status: 'AVAILABLE', orderId: null });
+    expect(await seat(ev.id, 'A:2:6')).toMatchObject({ status: 'AVAILABLE', orderId: null });
+    expect(await ttRow(ev.std)).toMatchObject({ held: 1, sold: 0 });
+    // validation: unknown, unassigned, duplicate, seated type via items, empty
+    const fresh = await seatedEvent('Taken2');
+    await prisma.eventSeat.update({ where: { eventId_seatKey: { eventId: fresh.id, seatKey: 'B:1:4' } }, data: { ticketTypeId: null, status: 'UNSOLD' } });
+    await order(B2, fresh.id, { seats: ['Z:9:9'] }).expect(400);
+    await order(B2, fresh.id, { seats: ['A:2:5'] }).expect(201); // same key on another event is a different seat
+    await order(B2, ev.id, { seats: [] }).expect(400);
+    await order(B2, fresh.id, { seats: ['B:1:4'] }).expect(400);
+    await order(B2, fresh.id, { seats: ['A:3:1', 'A:3:1'] }).expect(400);
+    await order(B2, fresh.id, { items: [{ ticketTypeId: fresh.std, quantity: 1 }] }).expect(400);
+    await order(B2, fresh.id, {}).expect(400);
+    // an unseated event has no seats to choose
+    await prisma.event.update({ where: { id: ev.id }, data: { seatMapVersionId: null } });
+    await order(B2, ev.id, { seats: ['A:1:1'] }).expect(400);
+  });
+
+  it('50 parallel overlapping claims', async () => {
+    const ev = await seatedEvent('Rush');
+    const users = await Promise.all(Array.from({ length: 50 }, (_, i) => prisma.user.create({ data: { phone: `0960${tag.slice(0, 4)}${String(i).padStart(3, '0')}`.slice(0, 14) } })));
+    const unique = (i: number) => `A:${2 + Math.floor(i / 10)}:${(i % 10) + 1}`; // rows 2-6, 50 distinct seats
+    const results = await Promise.allSettled(users.map((u, i) => svc.createOrder(u.id, ev.id, [], undefined, 'APP', undefined, ['A:1:1', 'A:1:2', unique(i)])));
+    const won = results.filter((r) => r.status === 'fulfilled');
+    const lost = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(49);
+    for (const l of lost) {
+      expect(l.reason.getStatus?.()).toBe(409);
+      expect(l.reason.getResponse()).toMatchObject({ message: 'Some seats were just taken' });
+    }
+    const winner = (won[0] as PromiseFulfilledResult<{ id: string }>).value.id;
+    const held = await prisma.eventSeat.findMany({ where: { eventId: ev.id, status: { not: 'AVAILABLE' }, ticketTypeId: { not: null } } });
+    expect(held.every((s) => s.orderId === winner && s.status === 'CHECKOUT_HOLD')).toBe(true); // the shared seats make every order a paid one
+    expect(held).toHaveLength(3);
+    expect(await prisma.order.count({ where: { eventId: ev.id } })).toBe(1);
+    const holdCount = await prisma.eventSeat.count({ where: { ticketTypeId: ev.std, status: 'CHECKOUT_HOLD' } });
+    expect((await ttRow(ev.std)).held).toBe(holdCount);
+    await expectCountersMatch(ev.std);
+    await expectCountersMatch(ev.free);
+  });
+
+  it('expired hold frees seats', async () => {
+    const ev = await seatedEvent('Expire');
+    const B = await consumer();
+    const r = await order(B, ev.id, { seats: ['A:1:3', 'A:1:4'] }).expect(201);
+    expect(await ttRow(ev.std)).toMatchObject({ held: 2 });
+    await prisma.order.update({ where: { id: r.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+    await svc.sweep();
+    expect((await http.get(`/v1/orders/${r.body.id}`).set(B).expect(200)).body.status).toBe('EXPIRED');
+    for (const k of ['A:1:3', 'A:1:4']) expect(await seat(ev.id, k)).toMatchObject({ status: 'AVAILABLE', orderId: null, heldUntil: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 50, held: 0, sold: 0 });
+    // cancel frees them too
+    const c = await order(B, ev.id, { seats: ['A:1:3'] }).expect(201);
+    await http.post(`/v1/orders/${c.body.id}/cancel`).set(B).expect(200);
+    expect(await seat(ev.id, 'A:1:3')).toMatchObject({ status: 'AVAILABLE', orderId: null });
+    expect(await ttRow(ev.std)).toMatchObject({ held: 0 });
+  });
+
+  it('late payment after seat resold', async () => {
+    const ev = await seatedEvent('Late');
+    const [B1, B2, B3] = [await consumer(), await consumer(), await consumer()];
+    const expire = async (id: string) => {
+      await prisma.order.update({ where: { id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+      await svc.sweep();
+    };
+    // Seats still free: the late payment re-claims them
+    const ok = await order(B3, ev.id, { seats: ['A:5:1', 'A:5:2'] }).expect(201);
+    const okUrl = await payWithMock(B3, ok.body.id);
+    await expire(ok.body.id);
+    await mockPay(okUrl);
+    const okRow = await prisma.order.findUniqueOrThrow({ where: { id: ok.body.id }, include: { tickets: true } });
+    expect(okRow).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(okRow.tickets.map((t) => t.seatKey).sort()).toEqual(['A:5:1', 'A:5:2']);
+    expect(await seat(ev.id, 'A:5:1')).toMatchObject({ status: 'SOLD', orderId: ok.body.id, ticketId: expect.any(String) });
+
+    // One of the seats was taken meanwhile: none are taken, the order is flagged
+    const o = await order(B1, ev.id, { seats: ['A:4:1', 'A:4:2'] }).expect(201);
+    const url = await payWithMock(B1, o.body.id);
+    await expire(o.body.id);
+    const other = await order(B2, ev.id, { seats: ['A:4:2'] }).expect(201);
+    await mockPay(url);
+    const late = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
+    expect(late).toMatchObject({ status: 'PAID', needsReview: true, reviewNote: 'Paid after the hold expired and the tickets sold out: refund the buyer' });
+    expect(late.tickets).toHaveLength(0);
+    expect(await seat(ev.id, 'A:4:1')).toMatchObject({ status: 'AVAILABLE', orderId: null });
+    expect(await seat(ev.id, 'A:4:2')).toMatchObject({ status: 'CHECKOUT_HOLD', orderId: other.body.id });
+    await mockPay(await payWithMock(B2, other.body.id));
+    const sold = await prisma.ticket.findMany({ where: { ticketType: { eventId: ev.id }, seatKey: 'A:4:2', status: 'VALID' } });
+    expect(sold).toHaveLength(1);
+    expect(sold[0].orderId).toBe(other.body.id);
+    expect(await ttRow(ev.std)).toMatchObject({ held: 0, sold: 3 });
+    await expectCountersMatch(ev.std);
+    // the flagged order is refunded by an admin without touching B2's seat
+    await http.post(`/v1/admin/finance/orders/${o.body.id}/refund`).set(A).send({ reason: 'Seat taken before payment arrived' }).expect(200);
+    expect(await seat(ev.id, 'A:4:2')).toMatchObject({ status: 'SOLD', orderId: other.body.id });
+  });
+
+  it('admin refund frees all seats', async () => {
+    const ev = await seatedEvent('Refund');
+    const B = await consumer();
+    const r = await order(B, ev.id, { seats: ['A:3:1', 'A:3:2', 'B:1:2'], items: [{ ticketTypeId: ev.floor, quantity: 1 }] }).expect(201);
+    await mockPay(await payWithMock(B, r.body.id));
+    expect(await ttRow(ev.floor)).toMatchObject({ sold: 1, held: 0 });
+    const res = await http.post(`/v1/admin/finance/orders/${r.body.id}/refund`).set(A).send({ reason: 'Buyer request' }).expect(200);
+    expect(res.body.status).toBe('REFUNDED');
+    expect(await prisma.ticket.count({ where: { orderId: r.body.id, status: 'REFUNDED' } })).toBe(4);
+    for (const k of ['A:3:1', 'A:3:2', 'B:1:2']) expect(await seat(ev.id, k)).toMatchObject({ status: 'AVAILABLE', orderId: null, ticketId: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 50, held: 0, sold: 0 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 4, held: 0, sold: 0 });
+    expect(await ttRow(ev.floor)).toMatchObject({ quota: 100, sold: 0 });
+    // the seats can be bought again
+    await order(await consumer(), ev.id, { seats: ['A:3:1'] }).expect(201);
+  });
+
+  it('per-person limit counts seats', async () => {
+    const ev = await seatedEvent('Limit', 2);
+    const B = await consumer();
+    await order(B, ev.id, { seats: ['A:1:1', 'A:1:2', 'A:1:3'] }).expect(400); // more than maxPerOrder in one order
+    await order(B, ev.id, { seats: ['A:1:1'] }).expect(201);
+    const r = await order(B, ev.id, { seats: ['A:1:2', 'A:1:3'] }).expect(409); // 1 pending + 2 > 2
+    expect(r.body.message).toBe('You already have 1 Std ticket(s); the limit is 2 per person');
+    await order(B, ev.id, { seats: ['A:6:1', 'A:6:2'] }).expect(201); // other type, own limit
+    const again = await order(B, ev.id, { seats: ['A:6:3'] }).expect(409); // issued free tickets count
+    expect(again.body.message).toBe('You already have 2 Free ticket(s); the limit is 2 per person');
+    await order(B, ev.id, { seats: ['A:1:2'] }).expect(201);
+    expect(await seat(ev.id, 'A:1:3')).toMatchObject({ status: 'AVAILABLE' });
+    // sales window applies to seated types
+    await prisma.ticketType.update({ where: { id: ev.vip }, data: { salesEndAt: new Date(Date.now() - 1000) } });
+    await order(B, ev.id, { seats: ['B:1:1'] }).expect(409);
+    expect(await seat(ev.id, 'B:1:1')).toMatchObject({ status: 'AVAILABLE' });
+  });
+
+  it('mixed order: seats plus standing quantity', async () => {
+    const ev = await seatedEvent('Mixed');
+    const B = await consumer();
+    const r = await order(B, ev.id, { seats: ['A:2:1'], items: [{ ticketTypeId: ev.floor, quantity: 2 }] }).expect(201);
+    expect(r.body).toMatchObject({ status: 'PENDING_PAYMENT', totalMmk: 20_000 });
+    expect(r.body.items).toHaveLength(2);
+    expect(r.body.items.find((i: any) => i.ticketTypeId === ev.floor)).toMatchObject({ quantity: 2, seats: [] });
+    expect(await ttRow(ev.floor)).toMatchObject({ quota: 100, held: 2, sold: 0 });
+    expect(await ttRow(ev.std)).toMatchObject({ held: 1 });
+    await mockPay(await payWithMock(B, r.body.id));
+    const tickets = await prisma.ticket.findMany({ where: { orderId: r.body.id } });
+    expect(tickets).toHaveLength(3);
+    expect(tickets.filter((t) => t.seatKey === null && t.ticketTypeId === ev.floor)).toHaveLength(2);
+    expect(tickets.find((t) => t.seatKey === 'A:2:1')).toMatchObject({ seatLabel: 'Stalls · Row 2 · Seat 1', ticketTypeId: ev.std });
+    expect(await ttRow(ev.floor)).toMatchObject({ quota: 100, held: 0, sold: 2 });
+    expect(await ttRow(ev.std)).toMatchObject({ held: 0, sold: 1 });
+    // a taken seat rolls back the standing hold as well
+    const B2 = await consumer();
+    await order(B2, ev.id, { seats: ['A:2:1'], items: [{ ticketTypeId: ev.floor, quantity: 1 }] }).expect(409);
+    expect(await ttRow(ev.floor)).toMatchObject({ held: 0, sold: 2 });
+    // promo codes act on seated lines too
+    const owner = await prisma.user.findFirstOrThrow({ where: { email: `own-sc-${tag}@e2e.test` } });
+    await prisma.promoCode.create({ data: { eventId: ev.id, code: `HALF${tag}`.toUpperCase(), kind: 'PERCENT', value: 5000, createdById: owner.id } });
+    const p = await order(B2, ev.id, { seats: ['A:2:2'], promoCode: `half${tag}` }).expect(201);
+    expect(p.body).toMatchObject({ subtotalMmk: 10_000, discountMmk: 5_000, totalMmk: 5_000 });
   });
 });

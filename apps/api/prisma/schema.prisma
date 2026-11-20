@@ -492,6 +492,8 @@ model OrderItem {
   ticketTypeId String     @map("ticket_type_id") @db.Uuid
   quantity     Int
   unitPriceMmk BigInt     @map("unit_price_mmk")
+  /// Seated lines: the seats bought (one ticket each); kept after a hold expires so a late payment can re-claim them.
+  seatKeys     String[]   @default([]) @map("seat_keys")
   order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
 
