@@ -16,8 +16,8 @@ event changes and cancellations also go by **SMS** (SMSPoh, when SMS is enabled)
 ## 1. Create the Firebase project (once)
 1. https://console.firebase.google.com → **Add project** → name it `event360` (Google Analytics not needed).
 2. **Project settings → General → Your apps → Add app → Android**, twice:
-   - package `net.corexlab.event360` (prod app)
-   - package `net.corexlab.event360.dev` (dev app)
+   - package `app.event360` (prod app)
+   - package `app.event360.dev` (dev app)
 
    You do not need to download `google-services.json`; the app gets its config from build variables.
 3. Note from **Project settings → General**: *Project ID*, *Web API key*, and each Android app's *App ID*
@@ -31,8 +31,8 @@ GitHub → repo **Settings → Secrets and variables → Actions → Variables �
 | `FIREBASE_PROJECT_ID` | Project ID |
 | `FIREBASE_API_KEY` | Web API key |
 | `FIREBASE_SENDER_ID` | Sender ID |
-| `FIREBASE_ANDROID_APP_ID` | App ID of `net.corexlab.event360` |
-| `FIREBASE_ANDROID_APP_ID_DEV` | App ID of `net.corexlab.event360.dev` |
+| `FIREBASE_ANDROID_APP_ID` | App ID of `app.event360` |
+| `FIREBASE_ANDROID_APP_ID_DEV` | App ID of `app.event360.dev` |
 
 The next CI run builds APKs with push. Without them the app still works (inbox only).
 

@@ -1,4 +1,4 @@
-package net.corexlab.user_app
+package app.event360.crew
 
 import io.flutter.embedding.android.FlutterActivity
 
