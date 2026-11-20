@@ -169,14 +169,23 @@ export class CheckinService {
     return 'Guest';
   }
 
+  /** Holder line shown to door staff; guest tickets read "<guest> · Complimentary · <label>". */
+  private holderLine(t: TicketRow) {
+    const name = t.isComplimentary && t.guestName ? t.guestName : this.holderName(t.holder);
+    return t.isComplimentary ? [name, 'Complimentary', t.compLabel].filter(Boolean).join(' · ') : name;
+  }
+
   private ticketView(t: TicketRow) {
     const last = t.checkins[0];
     return {
       id: t.id,
       code: t.id.slice(0, 8).toUpperCase(),
       status: t.status,
-      holderName: this.holderName(t.holder),
+      holderName: this.holderLine(t),
       phoneLast4: t.holder.phone?.slice(-4) ?? null,
+      seat: t.seatLabel,
+      seatMy: t.seatLabelMy,
+      isComplimentary: t.isComplimentary,
       ticketType: { id: t.ticketType.id, name: t.ticketType.name, nameMy: t.ticketType.nameMy },
       checkedIn:
         t.status === 'CHECKED_IN' && last
@@ -291,6 +300,7 @@ export class CheckinService {
       JOIN users u ON u.id = t.holder_user_id
       WHERE tt.event_id = ${eventId}::uuid AND (
         u.display_name ILIKE ${'%' + term + '%'}
+        OR t.guest_name ILIKE ${'%' + term + '%'}
         OR (${digits.length >= 3} AND u.phone LIKE ${'%' + digits + '%'})
         OR (${code !== null} AND t.id::text LIKE ${(code ?? '') + '%'})
       )
@@ -312,7 +322,7 @@ export class CheckinService {
       ticketTypes: types,
       tickets: tickets.map((t) => {
         const v = this.ticketView(t);
-        return { id: t.id, code: v.code, tt: t.ticketTypeId, v: t.qrVersion, status: t.status, holderName: v.holderName, phoneLast4: v.phoneLast4, checkedInAt: v.checkedIn?.at ?? null };
+        return { id: t.id, code: v.code, tt: t.ticketTypeId, v: t.qrVersion, status: t.status, holderName: v.holderName, phoneLast4: v.phoneLast4, seat: v.seat, seatMy: v.seatMy, checkedInAt: v.checkedIn?.at ?? null };
       }),
     };
   }
@@ -320,7 +330,7 @@ export class CheckinService {
   async stats(eventId: string) {
     const [types, byStatus, byGate, recent] = await Promise.all([
       this.prisma.ticketType.findMany({ where: { eventId }, select: { id: true, name: true, nameMy: true }, orderBy: { priceMmk: 'asc' } }),
-      this.prisma.ticket.groupBy({ by: ['ticketTypeId', 'status'], where: { ticketType: { eventId } }, _count: { _all: true } }),
+      this.prisma.ticket.groupBy({ by: ['ticketTypeId', 'status', 'isComplimentary'], where: { ticketType: { eventId } }, _count: { _all: true } }),
       this.prisma.checkin.groupBy({ by: ['gate'], where: { eventId, isDuplicate: false, undoneAt: null }, _count: { _all: true } }),
       this.prisma.checkin.findMany({
         where: { eventId },
@@ -333,12 +343,12 @@ export class CheckinService {
         },
       }),
     ]);
-    const count = (tt: string | null, statuses: TicketStatus[]) =>
-      byStatus.filter((r) => (tt === null || r.ticketTypeId === tt) && statuses.includes(r.status)).reduce((a, r) => a + r._count._all, 0);
+    const count = (tt: string | null, statuses: TicketStatus[], comp?: boolean) =>
+      byStatus.filter((r) => (tt === null || r.ticketTypeId === tt) && statuses.includes(r.status) && (comp === undefined || r.isComplimentary === comp)).reduce((a, r) => a + r._count._all, 0);
     return {
       registered: count(null, ['VALID', 'CHECKED_IN']),
       checkedIn: count(null, ['CHECKED_IN']),
-      byTicketType: types.map((t) => ({ ...t, registered: count(t.id, ['VALID', 'CHECKED_IN']), checkedIn: count(t.id, ['CHECKED_IN']) })),
+      byTicketType: types.map((t) => ({ ...t, registered: count(t.id, ['VALID', 'CHECKED_IN']), checkedIn: count(t.id, ['CHECKED_IN']), comp: count(t.id, ['VALID', 'CHECKED_IN'], true) })),
       byGate: byGate.map((g) => ({ gate: g.gate, checkedIn: g._count._all })).sort((a, b) => b.checkedIn - a.checkedIn),
       recent: recent.map((c) => ({
         id: c.id,

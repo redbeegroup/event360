@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { EventSeatsService } from '../seating/event-seats.service';
 import { normalizeMyanmarPhone, upsertUserByPhone } from '../auth/phone';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
@@ -14,6 +16,7 @@ export class TicketsService {
     private readonly tokens: TicketTokenService,
     private readonly media: MediaService,
     private readonly notify: NotifyService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /**
@@ -74,6 +77,7 @@ export class TicketsService {
       where: { holderUserId: userId },
       orderBy: { createdAt: 'desc' },
       include: {
+        order: { select: { totalMmk: true, channel: true } },
         ticketType: {
           include: { event: { include: { venue: true, organization: { select: { name: true } } } } },
         },
@@ -104,6 +108,7 @@ export class TicketsService {
           organization: e.organization.name,
         },
         qr: t.status === 'VALID' ? this.tokens.sign({ tid: t.id, eid: e.id, tt: t.ticketTypeId, v: t.qrVersion }) : null,
+        canCancel: TicketsService.cancelBlock(t, t.order, e) === null,
         canTransfer:
           t.status === 'VALID' &&
           !t.isComplimentary &&
@@ -116,6 +121,52 @@ export class TicketsService {
   }
 
   static readonly MAX_TRANSFERS = 3;
+
+  /** Why an attendee cannot cancel this ticket (null = allowed): free, own, valid, not a guest ticket, before the event starts. */
+  private static cancelBlock(
+    t: { status: string; isComplimentary: boolean },
+    o: { totalMmk: bigint; channel: string },
+    e: { startsAt: Date },
+  ): string | null {
+    if (t.isComplimentary || o.channel === 'COMP') return "Guest tickets can't be cancelled by the holder";
+    if (o.totalMmk !== 0n) return 'Paid tickets cannot be cancelled here; contact the organizer for a refund';
+    if (t.status !== 'VALID') return t.status === 'CHECKED_IN' ? 'This ticket has already been used' : 'This ticket is no longer valid';
+    if (Date.now() >= e.startsAt.getTime()) return 'The event has already started';
+    return null;
+  }
+
+  /**
+   * Attendee gives back a free ticket before the event starts. A checkout-like path: shares the event row lock
+   * with other checkouts and uses conditional updates, so a concurrent check-in, transfer or second cancel can't
+   * double-release. Seated: the seat goes back on sale and the type is recounted; unseated: sold -= 1.
+   */
+  async cancel(userId: string, ticketId: string) {
+    const t = await this.prisma.ticket.findUnique({ where: { id: ticketId }, include: { order: { select: { id: true, totalMmk: true, channel: true } }, ticketType: { include: { event: true } } } });
+    if (!t || t.holderUserId !== userId) throw new NotFoundException('Ticket not found');
+    const e = t.ticketType.event;
+    const why = TicketsService.cancelBlock(t, t.order, e);
+    if (why) throw new ConflictException(why);
+    await this.prisma.$transaction(async (tx) => {
+      await shareLockEvent(tx, e.id);
+      const n = await tx.ticket.updateMany({
+        where: { id: ticketId, holderUserId: userId, status: 'VALID', isComplimentary: false },
+        data: { status: 'VOID', qrVersion: { increment: 1 } },
+      });
+      if (n.count !== 1) throw new ConflictException('This ticket changed meanwhile; please refresh');
+      if (t.seatKey) {
+        await tx.$executeRaw`
+          UPDATE event_seats SET status = 'AVAILABLE', ticket_id = NULL, order_id = NULL, held_until = NULL
+          WHERE ticket_id = ${ticketId}::uuid AND status = 'SOLD'`;
+        await this.moduleRef.get(EventSeatsService, { strict: false }).recountTicketTypes(tx, e.id, [], [t.ticketTypeId]);
+      } else {
+        await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
+      }
+      if ((await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } })) === 0) {
+        await tx.order.updateMany({ where: { id: t.orderId, status: { in: ['PAID', 'CONFIRMED'] } }, data: { status: 'CANCELLED' } });
+      }
+    });
+    return { ok: true };
+  }
 
   /**
    * Gives a ticket to another phone number. The old QR stops working (qrVersion bump); the recipient sees the ticket

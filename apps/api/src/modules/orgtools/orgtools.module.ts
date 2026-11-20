@@ -141,7 +141,7 @@ export class OrgToolsService {
       return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const fmt = (d?: Date | null) => (d ? new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ') : '');
-    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers', 'complimentary'];
+    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers', 'complimentary', 'seat'];
     const lines = tickets.map((t) =>
       [
         t.id.slice(0, 8).toUpperCase(),
@@ -158,6 +158,7 @@ export class OrgToolsService {
         t.checkins[0]?.gate ?? '',
         t.transferCount,
         t.isComplimentary ? 'yes' : '',
+        t.seatLabel ?? '',
       ]
         .map(esc)
         .join(','),
@@ -214,6 +215,16 @@ export class OrgToolsService {
     const totalViews = views.reduce((s, v) => s + v.views, 0);
     const sold = e.ticketTypes.reduce((s, t) => s + t.sold, 0);
     const quota = e.ticketTypes.reduce((s, t) => s + t.quota, 0);
+    const seatRows = await this.prisma.$queryRaw<{ ticket_type_id: string; available: number; guest: number; sold: number; comp: number }[]>`
+      SELECT s.ticket_type_id,
+        count(*) FILTER (WHERE s.status IN ('AVAILABLE', 'CHECKOUT_HOLD'))::int AS available,
+        count(*) FILTER (WHERE s.status = 'GUEST_HOLD')::int AS guest,
+        count(*) FILTER (WHERE s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false))::int AS sold,
+        count(*) FILTER (WHERE s.status = 'SOLD' AND COALESCE(t.is_complimentary, false))::int AS comp
+      FROM event_seats s LEFT JOIN tickets t ON t.id = s.ticket_id
+      WHERE s.event_id = ${eventId}::uuid AND s.ticket_type_id IS NOT NULL
+      GROUP BY s.ticket_type_id`;
+    const seatsByType = new Map(seatRows.map((r) => [r.ticket_type_id, { available: r.available, guest: r.guest, sold: r.sold, comp: r.comp }]));
     return {
       totals: {
         views: totalViews,
@@ -229,7 +240,7 @@ export class OrgToolsService {
       daily: series,
       checkinsByQuarterHour: [...buckets.entries()].sort().map(([at, count]) => ({ at, count })),
       checkinsByGate: [...gates.entries()].sort((a, b) => b[1] - a[1]).map(([gate, count]) => ({ gate, count })),
-      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, sold: t.sold, quota: t.quota, priceMmk: mmk(t.priceMmk) })),
+      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, sold: t.sold, quota: t.quota, priceMmk: mmk(t.priceMmk), ...(seatsByType.has(t.id) ? { seats: seatsByType.get(t.id) } : {}) })),
     };
   }
 }

@@ -31,6 +31,13 @@ export class MyTicketsController {
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: AuthUser) {
+    return this.tickets.cancel(u.sub, id);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post(':id/transfer')
   @HttpCode(200)
   transfer(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TransferDto, @CurrentUser() u: AuthUser) {

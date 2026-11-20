@@ -1157,3 +1157,217 @@ run('Guest seats', () => {
     await get('?ids=nope').expect(400);
   });
 });
+
+run('Seat everywhere', () => {
+  let app: INestApplication;
+  let http: ReturnType<typeof request>;
+  let prisma: PrismaService;
+  const tag = randomBytes(4).toString('hex');
+  const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+  // Hall: section A has 2 rows of 5 seats; row 1 is Free, row 2 is Std (10,000)
+  const hall = {
+    width: 600,
+    height: 400,
+    sections: [{ key: 'A', name: 'Stalls', nameMy: 'ရှေ့ခန်း', kind: 'SEATED', x: 10, y: 10, rows: [1, 2].map((r) => ({ label: String(r), seats: Array.from({ length: 5 }, (_, i) => ({ n: i + 1 })) })) }],
+  };
+  let A: Record<string, string>, O: Record<string, string>, orgId: string, versionId: string;
+
+  async function acceptInvite(url: string) {
+    const r = await http.post(`/v1/auth/invitations/${url.split('/invite/')[1]}/accept`).send({ password: 'password-12345', displayName: 'T' }).expect(200);
+    return bearer(r.body.accessToken as string);
+  }
+  const newPhone = () => `09${randomInt(700_000_000, 799_999_999)}`;
+  async function login(phone = newPhone()) {
+    const r1 = await http.post('/v1/auth/otp/request').send({ phone }).expect(200);
+    const r2 = await http.post('/v1/auth/otp/verify').send({ phone, code: r1.body.devCode }).expect(200);
+    return bearer(r2.body.accessToken as string);
+  }
+  const base = (eventId: string) => `/v1/organizations/${orgId}/events/${eventId}`;
+  const seat = (eventId: string, key: string) => prisma.eventSeat.findUniqueOrThrow({ where: { eventId_seatKey: { eventId, seatKey: key } } });
+  const ttRow = (id: string) => prisma.ticketType.findUniqueOrThrow({ where: { id } });
+  const mine = async (B: Record<string, string>) => (await http.get('/v1/me/tickets').set(B).expect(200)).body as any[];
+
+  async function newEvent(title: string, startsInDays = 5) {
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + startsInDays * 86400e3);
+    const ev = await http
+      .post(`/v1/organizations/${orgId}/events`)
+      .set(O)
+      .send({ categoryId: cats.body[0].children[0].id, title: `${title} ${tag}`, format: 'IN_PERSON', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3 * 3600e3).toISOString() })
+      .expect(201);
+    return ev.body.id as string;
+  }
+  const publish = (id: string) => prisma.event.update({ where: { id }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
+  async function seatedEvent(title: string) {
+    const id = await newEvent(title);
+    const add = async (b: object) => (await http.post(`${base(id)}/ticket-types`).set(O).send(b).expect(201)).body.id as string;
+    const free = await add({ name: 'Free', priceMmk: 0, quota: 1, maxPerOrder: 4 });
+    const std = await add({ name: 'Std', priceMmk: 10_000, quota: 1, maxPerOrder: 4 });
+    await http.put(`${base(id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    await http.put(`${base(id)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'A', rowLabel: '1', ticketTypeId: free }, { sectionKey: 'A', rowLabel: '2', ticketTypeId: std }] }).expect(200);
+    await publish(id);
+    return { id, free, std };
+  }
+  const order = (B: Record<string, string>, eventId: string, body: object) => http.post(`/v1/events/${eventId}/orders`).set(B).send(body);
+
+  beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET ??= 'e2e-secret';
+    process.env.OTP_DEV_ECHO = 'true';
+    process.env.PAYMENTS_MOCK = 'true';
+    process.env.SETTINGS_KEY ??= randomBytes(32).toString('base64');
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('v1', { exclude: ['healthz', 'readyz'] });
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    http = new Proxy({} as ReturnType<typeof request>, { get: (_t, m: string) => (request(app.getHttpServer()) as any)[m] });
+    prisma = app.get(PrismaService);
+    const adm = await app.get(AuthService).createInvitation({ email: `adm-ev-${tag}@e2e.test`, platformRole: 'PLATFORM_ADMIN' });
+    A = await acceptInvite(adm.url);
+    const org = await http.post('/v1/admin/organizations').set(A).send({ name: `Everywhere Org ${tag}`, slug: `every-${tag}`, ownerEmail: `own-ev-${tag}@e2e.test` }).expect(201);
+    orgId = org.body.organization.id;
+    O = await acceptInvite(org.body.inviteUrl);
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Every Hall ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: hall }).expect(200);
+    versionId = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id;
+  });
+  afterAll(async () => {
+    await app.get(NotifyService).idle();
+    await app?.close();
+  });
+
+  it('my tickets show seat label', async () => {
+    const ev = await seatedEvent('MySeat');
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:1'] }).expect(201);
+    const t = (await mine(B)).find((x) => x.seatKey === 'A:1:1');
+    expect(t).toMatchObject({ seatLabel: 'Stalls · Row 1 · Seat 1', seatLabelMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 1', isComplimentary: false, canCancel: true, canTransfer: true });
+  });
+
+  it('crew manifest and scan include seat', async () => {
+    const ev = await seatedEvent('Crew');
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:2'] }).expect(201);
+    // a guest ticket reads "<guest> · Complimentary · <label>"
+    await http.post(`${base(ev.id)}/seating/hold`).set(O).send({ seats: ['A:2:1'], label: 'Press' }).expect(201);
+    await http.post(`${base(ev.id)}/seating/comps`).set(O).send({ seats: ['A:2:1'], guestName: 'Daw Mya', phone: newPhone(), label: 'VIP guest' }).expect(201);
+    const man = await http.get(`/v1/crew/events/${ev.id}/manifest`).set(O).expect(200);
+    const t = man.body.tickets.find((x: any) => x.seat === 'Stalls · Row 1 · Seat 2');
+    expect(t).toMatchObject({ seat: 'Stalls · Row 1 · Seat 2', seatMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 2' });
+    const comp = man.body.tickets.find((x: any) => x.seat === 'Stalls · Row 2 · Seat 1');
+    expect(comp.holderName).toBe('Daw Mya · Complimentary · VIP guest');
+    const s = await http.get(`/v1/crew/events/${ev.id}/search`).query({ q: 'Daw' }).set(O).expect(200);
+    expect(s.body[0]).toMatchObject({ seat: 'Stalls · Row 2 · Seat 1', holderName: 'Daw Mya · Complimentary · VIP guest' });
+    const mt = (await mine(B)).find((x) => x.seatKey === 'A:1:2');
+    const qr = mt.qr as string;
+    const scan = await http.post(`/v1/crew/events/${ev.id}/scan`).set(O).send({ qr }).expect(200);
+    expect(scan.body.ticket).toMatchObject({ seat: 'Stalls · Row 1 · Seat 2', seatMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 2' });
+    const st = await http.get(`/v1/crew/events/${ev.id}/stats`).set(O).expect(200);
+    expect(st.body.byTicketType.find((x: any) => x.id === ev.std).comp).toBe(1);
+    expect(st.body.byTicketType.find((x: any) => x.id === ev.free).comp).toBe(0);
+    const dash = await http.get(`${base(ev.id)}/dashboard`).set(O).expect(200);
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.free).seats).toEqual({ available: 4, guest: 0, sold: 1, comp: 0 });
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.std).seats).toEqual({ available: 4, guest: 0, sold: 0, comp: 1 });
+  });
+
+  it('attendee CSV has Seat column', async () => {
+    const ev = await seatedEvent('Csv');
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:3'] }).expect(201);
+    const r = await http.get(`${base(ev.id)}/attendees.csv`).set(O).expect(200);
+    const [header, row] = (r.text as string).replace('﻿', '').split('\r\n');
+    expect(header.split(',')).toContain('seat');
+    expect(row).toContain('"Stalls · Row 1 · Seat 3"');
+  });
+
+  it('cancel free seated ticket frees the seat', async () => {
+    const ev = await seatedEvent('CancelSeated');
+    const B = await login();
+    const o = await order(B, ev.id, { seats: ['A:1:1', 'A:1:2'] }).expect(201);
+    expect(await ttRow(ev.free)).toMatchObject({ sold: 2, quota: 5 });
+    const [t1, t2] = await mine(B);
+    const first = t1.seatKey === 'A:1:1' ? t1 : t2;
+    const other = first === t1 ? t2 : t1;
+    await http.post(`/v1/me/tickets/${first.id}/cancel`).set(await login()).expect(404);
+    await http.post(`/v1/me/tickets/${first.id}/cancel`).set(B).expect(200, { ok: true });
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', ticketId: null, orderId: null });
+    expect(await ttRow(ev.free)).toMatchObject({ sold: 1, quota: 5, held: 0 });
+    const row = await prisma.ticket.findUniqueOrThrow({ where: { id: first.id } });
+    expect(row.status).toBe('VOID');
+    expect(row.qrVersion).toBe(2);
+    await http.post(`/v1/me/tickets/${first.id}/cancel`).set(B).expect(409); // already void
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).status).toBe('CONFIRMED');
+    // the seat is for sale again
+    await order(await login(), ev.id, { seats: ['A:1:1'] }).expect(201);
+    // cancelling the last ticket cancels the order
+    await http.post(`/v1/me/tickets/${other.id}/cancel`).set(B).expect(200);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).status).toBe('CANCELLED');
+    expect(await ttRow(ev.free)).toMatchObject({ sold: 1, quota: 5 });
+  });
+
+  it('cancel free unseated ticket returns quota', async () => {
+    const id = await newEvent('CancelUnseated');
+    const tt = (await http.post(`${base(id)}/ticket-types`).set(O).send({ name: 'Free', priceMmk: 0, quota: 10, maxPerOrder: 4 }).expect(201)).body.id as string;
+    await publish(id);
+    const B = await login();
+    await http.post(`/v1/events/${id}/registrations`).set(B).send({ ticketTypeId: tt, quantity: 2 }).expect(201);
+    expect((await ttRow(tt)).sold).toBe(2);
+    const [t] = await mine(B);
+    expect(t.canCancel).toBe(true);
+    await http.post(`/v1/me/tickets/${t.id}/cancel`).set(B).expect(200, { ok: true });
+    expect((await ttRow(tt)).sold).toBe(1);
+    await http.post(`/v1/me/tickets/${t.id}/cancel`).set(B).expect(409);
+    expect((await ttRow(tt)).sold).toBe(1);
+  });
+
+  it('cannot cancel paid ticket', async () => {
+    const ev = await seatedEvent('CancelPaid');
+    const B = await login();
+    const o = await order(B, ev.id, { seats: ['A:2:1'] }).expect(201);
+    const p = await http.post(`/v1/orders/${o.body.id}/pay`).set(B).send({ provider: 'MOCK' }).expect(200);
+    const url = new URL(p.body.payment.action.url);
+    await http.post(`${url.pathname}/pay`).type('form').send({ t: url.searchParams.get('t')! }).expect(201);
+    const t = (await mine(B)).find((x) => x.seatKey === 'A:2:1');
+    expect(t.canCancel).toBe(false);
+    await http.post(`/v1/me/tickets/${t.id}/cancel`).set(B).expect(409);
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'SOLD', ticketId: t.id });
+  });
+
+  it('cannot cancel a guest ticket, or after the event starts', async () => {
+    const ev = await seatedEvent('CancelGuest');
+    await http.post(`${base(ev.id)}/seating/hold`).set(O).send({ seats: ['A:1:1'], label: 'x' }).expect(201);
+    const phone = newPhone();
+    await http.post(`${base(ev.id)}/seating/comps`).set(O).send({ seats: ['A:1:1'], guestName: 'G', phone }).expect(201);
+    const G = await login(phone);
+    const g = (await mine(G))[0];
+    expect(g.canCancel).toBe(false);
+    await http.post(`/v1/me/tickets/${g.id}/cancel`).set(G).expect(409);
+
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:2'] }).expect(201);
+    const t = (await mine(B))[0];
+    expect(t.canCancel).toBe(true);
+    await prisma.event.update({ where: { id: ev.id }, data: { startsAt: new Date(Date.now() - 3600e3) } });
+    expect((await mine(B))[0].canCancel).toBe(false);
+    const r = await http.post(`/v1/me/tickets/${t.id}/cancel`).set(B).expect(409);
+    expect(r.body.message).toBe('The event has already started');
+    expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'SOLD' });
+  });
+
+  it('transfer keeps the seat', async () => {
+    const ev = await seatedEvent('Transfer');
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:4'] }).expect(201);
+    const before = (await mine(B))[0];
+    const phone = newPhone();
+    await http.post(`/v1/me/tickets/${before.id}/transfer`).set(B).send({ phone }).expect(200);
+    const R = await login(phone);
+    const after = (await mine(R))[0];
+    expect(after).toMatchObject({ id: before.id, seatKey: 'A:1:4', seatLabel: before.seatLabel, seatLabelMy: before.seatLabelMy });
+    expect(after.qr).not.toBe(before.qr);
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: before.id } })).qrVersion).toBe(2); // default 1, bumped by the transfer
+    expect(await seat(ev.id, 'A:1:4')).toMatchObject({ status: 'SOLD', ticketId: before.id });
+    // the new holder can cancel (their own free ticket); the old one no longer can
+    await http.post(`/v1/me/tickets/${before.id}/cancel`).set(B).expect(404);
+  });
+});
