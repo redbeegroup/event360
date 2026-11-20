@@ -182,9 +182,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const orderId = await this.prisma.$transaction(async (tx) => {
       // Serialize one buyer's checkouts so the per-person limit can't be raced
       await tx.$executeRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
-      if (seats.length) {
-        // Shared lock: excludes seat assignment and map changes (not other checkouts); then make sure the seats are still sold as the types we priced
+      if (event.seatMapVersionId) {
+        // Shared lock: excludes seat assignment and map changes (not other checkouts) for the rest of the checkout
         await shareLockEvent(tx, eventId);
+      }
+      if (seats.length) {
+        // The seats must still be sold as the types we priced
         const now2 = await tx.eventSeat.findMany({ where: { eventId, seatKey: { in: seats } }, select: { seatKey: true, ticketTypeId: true } });
         const moved = now2.filter((x) => x.ticketTypeId !== seatType.get(x.seatKey)).map((x) => x.seatKey);
         if (moved.length) throw seatsTaken(moved);
@@ -204,6 +207,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           ? await tx.$executeRaw`UPDATE ticket_types SET held = held + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + ${quantity} <= quota`
           : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + ${quantity} <= quota`;
         if (n !== 1) throw new ConflictException(`Not enough ${tt.name} tickets left`);
+      }
+      if (merged.size) {
+        // Quantity lines never sell a seated type. Checked again here, after the counter rows are locked: on a seated
+        // event the share lock keeps assignments out; on an event that was unseated when read, an assignment that
+        // commits from now on must wait for (or deadlock with, and be refused against) this checkout.
+        const seated = await tx.eventSeat.findFirst({ where: { eventId, ticketTypeId: { in: [...merged.keys()] } }, select: { id: true } });
+        if (seated) throw new BadRequestException('Seated tickets are bought by choosing seats');
       }
       if (promo) {
         const used = await tx.$executeRaw`UPDATE promo_codes SET used = used + 1 WHERE id = ${promo.id}::uuid AND (max_uses IS NULL OR used < max_uses)`;
@@ -415,7 +425,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (i.seatKeys.length) continue;
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
       }
-      if (seatedIn) {
+      if (seatedIn?.typeIds.length) {
         await releaseSeats(tx, orderId, 'AVAILABLE');
         await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
       }
@@ -423,11 +433,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /** For an order with seats: its event (seat changes take the event share lock) and its seated ticket types; else null. */
+  /**
+   * For an order on a seated event (or with seats): its event, whose row the caller share-locks so seat
+   * assignments can't change under it, and the order's seated ticket types (empty for quantity-only orders).
+   * Null for unseated events, which take no event lock, as before.
+   */
   private async seatedEvent(tx: Prisma.TransactionClient, orderId: string): Promise<{ eventId: string; typeIds: string[] } | null> {
-    const o = await tx.order.findUnique({ where: { id: orderId }, select: { eventId: true, items: { select: { seatKeys: true, ticketTypeId: true } } } });
+    const o = await tx.order.findUnique({
+      where: { id: orderId },
+      select: { eventId: true, event: { select: { seatMapVersionId: true } }, items: { select: { seatKeys: true, ticketTypeId: true } } },
+    });
     const seated = o?.items.filter((i) => i.seatKeys.length) ?? [];
-    return o && seated.length ? { eventId: o.eventId, typeIds: [...new Set(seated.map((i) => i.ticketTypeId))] } : null;
+    return o && (seated.length || o.event.seatMapVersionId) ? { eventId: o.eventId, typeIds: [...new Set(seated.map((i) => i.ticketTypeId))] } : null;
   }
 
   // ───────────── provider callbacks ─────────────
@@ -497,10 +514,24 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         issued = true; // held seats become SOLD as their tickets are issued
       } else {
         // Hold expired or cancelled before the money arrived: try to take the same seats again (all or none)
-        let seatsOk = true;
+        // Same lock order as createOrder: quantity lines (ticket_types) first, then seats.
+        const taken: { id: string; q: number }[] = [];
+        // A quantity type that has become seated since the order can only be sold with seats now
+        const nowSeated =
+          seatedIn && quantityItems.length
+            ? await tx.eventSeat.findFirst({ where: { eventId: order.eventId, ticketTypeId: { in: quantityItems.map((i) => i.ticketTypeId) } }, select: { id: true } })
+            : null;
+        if (!nowSeated) {
+          for (const i of quantityItems) {
+            const n = await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid AND sold + held + ${i.quantity} <= quota`;
+            if (n !== 1) break;
+            taken.push({ id: i.ticketTypeId, q: i.quantity });
+          }
+        }
+        let seatsOk = taken.length === quantityItems.length;
         let claimed: string[] = [];
         const seatKeys = order.items.flatMap((i) => i.seatKeys);
-        if (seatKeys.length) {
+        if (seatsOk && seatKeys.length) {
           const c = await claimSeats(tx, order.eventId, seatKeys, order.id, null, true);
           claimed = c.seats.map((s) => s.id);
           for (const s of c.seats) if (s.ticketTypeId && seatedIn && !seatedIn.typeIds.includes(s.ticketTypeId)) seatedIn.typeIds.push(s.ticketTypeId);
@@ -508,15 +539,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           const typeOf = new Map(order.items.flatMap((i) => i.seatKeys.map((k) => [k, i.ticketTypeId] as const)));
           seatsOk = c.ok && c.seats.every((s) => s.ticketTypeId === typeOf.get(s.seatKey));
         }
-        const taken: { id: string; q: number }[] = [];
-        if (seatsOk) {
-          for (const i of quantityItems) {
-            const n = await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid AND sold + held + ${i.quantity} <= quota`;
-            if (n !== 1) break;
-            taken.push({ id: i.ticketTypeId, q: i.quantity });
-          }
-        }
-        issued = seatsOk && taken.length === quantityItems.length;
+        issued = seatsOk;
         if (!issued) {
           for (const t of taken) await tx.$executeRaw`UPDATE ticket_types SET sold = sold - ${t.q} WHERE id = ${t.id}::uuid`;
           await unclaimSeats(tx, claimed);
@@ -592,7 +615,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       const perType = new Map<string, number>();
       for (const t of live) if (!t.seatKey) perType.set(t.ticketTypeId, (perType.get(t.ticketTypeId) ?? 0) + 1);
       for (const [id, q] of perType) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
-      if (seatedIn) {
+      if (seatedIn?.typeIds.length) {
         // Refunded seats go back on sale; seated counters follow event_seats
         await refundSeats(tx, orderId);
         await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);

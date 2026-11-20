@@ -3,6 +3,7 @@ import { normalizeMyanmarPhone } from '../auth/phone';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
+import { shareLockEvent } from '../seating/seat-claims';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from './ticket-token.service';
 
@@ -34,6 +35,8 @@ export class TicketsService {
     if (await this.prisma.eventSeat.findFirst({ where: { ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // Seated event: share-lock the event row so seat assignments can't change during this registration
+      if (e.seatMapVersionId) await shareLockEvent(tx, eventId);
       const already = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, status: { in: ['VALID', 'CHECKED_IN'] } } });
       if (already + quantity > tt.maxPerOrder) {
         throw new ConflictException(`You already hold ${already} ticket(s); the limit is ${tt.maxPerOrder} per person`);
@@ -42,6 +45,8 @@ export class TicketsService {
         UPDATE ticket_types SET sold = sold + ${quantity}
         WHERE id = ${ticketTypeId}::uuid AND sold + held + ${quantity} <= quota`;
       if (reserved !== 1) throw new ConflictException('Not enough tickets left');
+      // Checked again with the counter row locked (see PaymentsService.createOrder)
+      if (await tx.eventSeat.findFirst({ where: { eventId, ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
 
       const order = await tx.order.create({
         data: {

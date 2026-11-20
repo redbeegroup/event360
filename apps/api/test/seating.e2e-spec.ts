@@ -12,6 +12,7 @@ import { AuthService } from '../src/modules/auth/auth.service';
 import { NotifyService } from '../src/modules/notifications/notify.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { PaymentsService } from '../src/modules/payments/payments.service';
+import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { EventSeatsService } from '../src/modules/seating/event-seats.service';
 import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
@@ -682,10 +683,7 @@ run('Seated checkout', () => {
     await http.put(`${base(ev)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'R', ticketTypeId: ring }] }).expect(200);
     await prisma.event.update({ where: { id: ev }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
     const users = await prisma.$transaction(Array.from({ length: 200 }, (_, i) => prisma.user.create({ data: { phone: `0961${tag.slice(0, 4)}${String(i).padStart(3, '0')}` } })));
-    const t0 = Date.now();
     const results = await Promise.allSettled(users.map((u, i) => svc.createOrder(u.id, ev, [], undefined, 'APP', undefined, [`R:${Math.floor(i / 10) + 1}:${(i % 10) + 1}`])));
-    const ms = Date.now() - t0;
-    console.log(`200 parallel seated claims on distinct seats: ${ms} ms`);
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect(failed.map((f) => String(f.reason?.message ?? f.reason))).toEqual([]);
     expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'CHECKOUT_HOLD' } })).toBe(200);
@@ -695,6 +693,53 @@ run('Seated checkout', () => {
     await Promise.all(ids.map((id, i) => svc.cancel(users[i].id, id)));
     expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'AVAILABLE' } })).toBe(200);
     expect(await ttRow(ring)).toMatchObject({ quota: 200, held: 0, sold: 0 });
+  });
+
+  it('a type that becomes seated mid-checkout is never sold as a quantity line', async () => {
+    const ev = await seatedEvent('Race');
+    const extra = (await http.post(`${base(ev.id)}/ticket-types`).set(O).send({ name: 'Extra', priceMmk: 2_000, quota: 10 }).expect(201)).body.id as string;
+    const freebie = (await http.post(`${base(ev.id)}/ticket-types`).set(O).send({ name: 'Freebie', priceMmk: 0, quota: 10 }).expect(201)).body.id as string;
+    const rules = (b: string) => [
+      { sectionKey: 'A', ticketTypeId: ev.std },
+      { sectionKey: 'A', rowLabel: '6', ticketTypeId: ev.free },
+      { sectionKey: 'B', ticketTypeId: b },
+      { sectionKey: 'F', ticketTypeId: ev.floor },
+    ];
+    const seating = app.get(EventSeatsService);
+    const tickets = app.get(TicketsService);
+    // The organizer's assignment commits after the buyer's pre-checks passed and before the buyer's transaction
+    const original = prisma.$transaction.bind(prisma);
+    const between = (fn: () => Promise<unknown>) =>
+      jest.spyOn(prisma, '$transaction').mockImplementationOnce((async (...args: any[]) => {
+        await fn();
+        return (original as any)(...args);
+      }) as any);
+    const buyer = await prisma.user.create({ data: { phone: `0962${tag.slice(0, 4)}001` } });
+
+    between(() => seating.setAssignments(orgId, ev.id, rules(extra)));
+    await expect(svc.createOrder(buyer.id, ev.id, [{ ticketTypeId: extra, quantity: 1 }])).rejects.toMatchObject({ status: 400 });
+    expect(await ttRow(extra)).toMatchObject({ quota: 4, held: 0, sold: 0 });
+    expect(await prisma.order.count({ where: { eventId: ev.id } })).toBe(0);
+
+    between(() => seating.setAssignments(orgId, ev.id, rules(freebie)));
+    await expect(tickets.registerFree(buyer.id, ev.id, freebie, 1)).rejects.toMatchObject({ status: 400 });
+    expect(await ttRow(freebie)).toMatchObject({ quota: 4, held: 0, sold: 0 });
+    jest.restoreAllMocks();
+
+    // Late payment for a quantity line whose type became seated after the hold expired: flagged, not sold seatless
+    await seating.setAssignments(orgId, ev.id, rules(ev.vip));
+    await http.patch(`${base(ev.id)}/ticket-types/${extra}`).set(O).send({ quota: 10 }).expect(200); // unseated again
+    const B = await consumer();
+    const o = await order(B, ev.id, { items: [{ ticketTypeId: extra, quantity: 1 }] }).expect(201);
+    const url = await payWithMock(B, o.body.id);
+    await prisma.order.update({ where: { id: o.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+    await svc.sweep();
+    await seating.setAssignments(orgId, ev.id, rules(extra));
+    await mockPay(url);
+    const late = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
+    expect(late).toMatchObject({ status: 'PAID', needsReview: true });
+    expect(late.tickets).toHaveLength(0);
+    expect(await ttRow(extra)).toMatchObject({ quota: 4, held: 0, sold: 0 });
   });
 
   it('expired hold frees seats', async () => {
