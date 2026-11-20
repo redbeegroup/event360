@@ -2,8 +2,8 @@ import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, H
 import type { Response } from 'express';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { Type } from 'class-transformer';
-import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, Matches, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -146,18 +146,20 @@ export class EventSeatingController {
   }
 }
 
+const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
+
 class SeatKeysDto {
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @IsString({ each: true }) @MaxLength(300, { each: true }) seats: string[];
 }
 
 class HoldDto extends SeatKeysDto {
-  @ApiProperty() @IsString() @MinLength(1) @MaxLength(100) label: string;
+  @ApiProperty() @Transform(trim) @IsString() @Matches(/\S/, { message: 'label must not be blank' }) @MaxLength(100) label: string;
 }
 
 class CompsDto extends SeatKeysDto {
-  @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) guestName: string;
+  @ApiProperty() @Transform(trim) @IsString() @Matches(/\S/, { message: 'guestName must not be blank' }) @MaxLength(200) guestName: string;
   @ApiProperty() @IsString() @MinLength(5) @MaxLength(30) phone: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) label?: string;
+  @ApiPropertyOptional() @Transform(trim) @IsOptional() @IsString() @MaxLength(100) label?: string;
 }
 
 /** Organizer: hold seats for guests, issue and revoke complimentary tickets, print them. */
@@ -172,7 +174,7 @@ export class EventGuestsController {
 
   @Post('hold') async hold(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HoldDto, @CurrentUser() u: AuthUser) {
     await this.access.assert(u, orgId, ORG_EDITORS);
-    return this.guests.hold(orgId, id, dto.seats, dto.label.trim());
+    return this.guests.hold(orgId, id, dto.seats, dto.label);
   }
 
   @Post('release') @HttpCode(200) async release(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SeatKeysDto, @CurrentUser() u: AuthUser) {

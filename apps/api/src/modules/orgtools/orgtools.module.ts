@@ -5,7 +5,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional
 import type { Response } from 'express';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
-import { mmk } from '../../common/util';
+import { maskPhone, mmk } from '../../common/util';
 import { normalizeCode } from '../payments/promo';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -27,7 +27,6 @@ class PromoPatchDto {
 
 const TZ_OFFSET_MS = 6.5 * 3600e3; // Myanmar time (no DST)
 const ymd = (d: Date) => new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 10);
-const maskPhone = (p?: string | null) => (p ? `${p.replace(/^\+95/, '0').slice(0, 4)}•••${p.slice(-3)}` : '');
 
 @Injectable()
 export class OrgToolsService {
@@ -147,7 +146,7 @@ export class OrgToolsService {
       [
         t.id.slice(0, 8).toUpperCase(),
         t.holder.displayName ?? '',
-        maskPhone(t.holder.phone),
+        maskPhone(t.holder.phone) ?? '',
         t.ticketType.name,
         t.isComplimentary ? 0 : mmk(t.ticketType.priceMmk),
         t.status,

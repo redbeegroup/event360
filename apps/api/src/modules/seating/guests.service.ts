@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { maskPhone } from '../../common/util';
 import { normalizeMyanmarPhone, upsertUserByPhone } from '../auth/phone';
 import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,7 +10,6 @@ import { PdfTicket, renderTicketsPdf } from './ticket-pdf';
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const maskPhone = (p?: string | null) => (p ? `${p.replace(/^\+95/, '0').slice(0, 4)}•••${p.slice(-3)}` : null);
 const taken = (message: string, takenSeats: string[]) => new ConflictException({ message, takenSeats });
 
 /**
@@ -106,7 +106,6 @@ export class GuestsService {
           subtotalMmk: 0n,
           totalMmk: 0n,
           commissionMmk: 0n,
-          paidAt: new Date(),
           items: { create: [...perType].map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity, unitPriceMmk: 0n })) },
         },
       });
@@ -121,8 +120,8 @@ export class GuestsService {
             seatLabel: s.label,
             seatLabelMy: s.labelMy,
             isComplimentary: true,
-            compLabel: dto.label?.trim() || s.holdLabel || 'Guest',
-            guestName: dto.guestName.trim(),
+            compLabel: dto.label || s.holdLabel || 'Guest',
+            guestName: dto.guestName,
           },
         });
         const n = await tx.eventSeat.updateMany({ where: { id: s.id, status: 'GUEST_HOLD' }, data: { status: 'SOLD', orderId: order.id, ticketId: t.id, holdLabel: null, heldUntil: null } });
@@ -181,9 +180,11 @@ export class GuestsService {
       await this.lockedEvent(tx, orgId, eventId);
       const t = await tx.ticket.findFirst({ where: { id: ticketId, isComplimentary: true, ticketType: { eventId } } });
       if (!t) throw new NotFoundException('Guest ticket not found');
-      if (t.status === 'CHECKED_IN') throw new ConflictException('This ticket has already been used');
+      if (t.status === 'CHECKED_IN') throw new ConflictException('This guest has already checked in');
       if (t.status !== 'VALID') throw new ConflictException('This ticket was already revoked');
-      await tx.ticket.update({ where: { id: t.id }, data: { status: 'VOID', qrVersion: { increment: 1 } } });
+      // Conditional: a gate check-in that committed meanwhile must win
+      const n = await tx.ticket.updateMany({ where: { id: t.id, status: 'VALID' }, data: { status: 'VOID', qrVersion: { increment: 1 } } });
+      if (n.count !== 1) throw new ConflictException('This guest has already checked in');
       await tx.eventSeat.updateMany({ where: { ticketId: t.id }, data: { status: 'GUEST_HOLD', holdLabel: t.compLabel, ticketId: null, orderId: null, heldUntil: null } });
       const live = await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } });
       if (!live) await tx.order.update({ where: { id: t.orderId }, data: { status: 'CANCELLED' } });
@@ -201,8 +202,9 @@ export class GuestsService {
       if (!only.length || only.some((s) => !UUID.test(s))) throw new BadRequestException('ids must be a comma-separated list of ticket ids');
     }
     const rows = await this.prisma.ticket.findMany({
-      where: { isComplimentary: true, status: { in: ['VALID', 'CHECKED_IN'] }, ticketType: { eventId }, ...(only ? { id: { in: only } } : {}) },
+      where: { isComplimentary: true, status: 'VALID', ticketType: { eventId }, ...(only ? { id: { in: only } } : {}) },
       orderBy: [{ seatKey: 'asc' }, { createdAt: 'asc' }],
+      include: { holder: { select: { phone: true } } },
     });
     if (!rows.length) throw new NotFoundException('No guest tickets to print');
     const venue = e.venue ? [e.venue.name, e.venue.city].filter(Boolean).join(', ') : '';
@@ -212,6 +214,7 @@ export class GuestsService {
       startsAt: e.startsAt,
       venue,
       guestName: t.guestName ?? '',
+      phoneHint: maskPhone(t.holder.phone) ?? '',
       seatLabel: t.seatLabel ?? '',
       seatLabelMy: t.seatLabelMy,
       compLabel: t.compLabel ?? '',

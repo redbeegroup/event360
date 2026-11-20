@@ -13,7 +13,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { PaymentProviderCode, Prisma } from '@prisma/client';
 import { createHmac, randomUUID } from 'crypto';
-import { mmk } from '../../common/util';
+import { maskPhone, mmk } from '../../common/util';
 import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,7 +35,6 @@ export interface OrderItemInput {
   quantity: number;
 }
 
-const maskPhone = (p?: string | null) => (p ? `${p.slice(0, 4)}•••${p.slice(-3)}` : null);
 /** 409 for a seated checkout: the app refreshes the map and keeps the buyer's other seats. */
 const seatsTaken = (takenSeats: string[]) => new ConflictException({ message: 'Some seats were just taken', takenSeats });
 /** A seated on-sale rush queues for pool connections and for the seated types' counter rows: wait, don't fail. */

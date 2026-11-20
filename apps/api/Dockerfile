@@ -7,7 +7,7 @@ COPY apps/api/package.json apps/api/
 RUN pnpm install --frozen-lockfile --filter @event360/api...
 COPY apps/api apps/api
 RUN cd apps/api && pnpm prisma generate && pnpm build && pnpm deploy --filter @event360/api --prod --legacy /out \
-    && cp -r dist prisma assets /out/ && cd /out && npx prisma generate
+    && cp -r dist prisma /out/ && cd /out && npx prisma generate
 
 FROM node:22-alpine
 RUN apk add --no-cache openssl && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app

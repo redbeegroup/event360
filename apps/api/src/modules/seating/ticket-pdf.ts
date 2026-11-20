@@ -1,5 +1,3 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 
@@ -9,6 +7,8 @@ export interface PdfTicket {
   startsAt: Date;
   venue: string;
   guestName: string;
+  /** Masked phone, printed instead of a Myanmar-script guest name */
+  phoneHint: string;
   seatLabel: string;
   seatLabelMy?: string | null;
   compLabel: string;
@@ -16,9 +16,8 @@ export interface PdfTicket {
   code: string;
 }
 
-/** Noto Sans Myanmar ships with the API (assets/fonts, copied into the image); without it Myanmar text is skipped, never garbled. */
-const MY_FONT = [join(__dirname, '../../../assets/fonts/NotoSansMyanmar-400.ttf'), join(process.cwd(), 'assets/fonts/NotoSansMyanmar-400.ttf')].find((p) => existsSync(p));
-const HAS_MY = /[က-႟ꩠ-ꩿꧠ-꧿]/;
+/** pdfkit cannot shape Myanmar script, so any string containing it is left off the page rather than printed garbled. */
+const HAS_MY = /[\u1000-\u109F\uAA60-\uAA7F\uA9E0-\uA9FF]/;
 const A5: [number, number] = [419.53, 595.28];
 const MARGIN = 36;
 
@@ -36,15 +35,13 @@ export async function renderTicketsPdf(tickets: PdfTicket[]): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
   });
-  if (MY_FONT) doc.registerFont('my', MY_FONT);
   const width = A5[0] - MARGIN * 2;
 
-  /** Writes text in a font that can draw it; Myanmar text with no Myanmar font is dropped. Returns whether it wrote. */
+  /** Writes the text; strings with Myanmar script are skipped. Returns whether it wrote. */
   const write = (text: string | null | undefined, size: number, opts: { bold?: boolean; gap?: number; color?: string; align?: 'center' | 'left' } = {}) => {
     if (!text) return false;
-    const my = HAS_MY.test(text);
-    if (my && !MY_FONT) return false;
-    doc.font(my ? 'my' : opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(opts.color ?? '#111111');
+    if (HAS_MY.test(text)) return false;
+    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(opts.color ?? '#111111');
     doc.text(text, MARGIN, doc.y, { width, align: opts.align ?? 'center' });
     doc.moveDown(opts.gap ?? 0.3);
     return true;
@@ -61,7 +58,7 @@ export async function renderTicketsPdf(tickets: PdfTicket[]): Promise<Buffer> {
     write(mmtDate(t.startsAt), 11, { color: '#333333' });
     write(t.venue, 11, { color: '#333333', gap: 1.2 });
     write('GUEST', 8, { bold: true, color: '#777777', gap: 0.1 });
-    write(t.guestName, 17, { bold: true });
+    write(HAS_MY.test(t.guestName) || !t.guestName ? `Guest ${t.phoneHint}` : t.guestName, 17, { bold: true });
     doc.moveDown(0.4);
     write('SEAT', 8, { bold: true, color: '#777777', gap: 0.1 });
     write(t.seatLabel, 13, { bold: true });

@@ -1,6 +1,9 @@
 import { randomBytes, scrypt as _scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 
+/** "09xx•••123": first four digits (local format) and last three, for lists shown to organizers and admins. */
+export const maskPhone = (p?: string | null): string | null => (p ? `${p.replace(/^\+95/, '0').slice(0, 4)}•••${p.slice(-3)}` : null);
+
 /** URL slug from an English title plus a short random suffix (titles need not be unique). */
 export function makeSlug(title: string): string {
   const base = title

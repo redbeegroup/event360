@@ -1093,6 +1093,24 @@ run('Guest seats', () => {
     await comps(ev.id, [first.seatKey], newPhone()).expect(201);
   });
 
+  it('cannot revoke a guest who already checked in; blank names and labels are rejected; comp orders have no paidAt', async () => {
+    const ev = await guestEvent('Checked');
+    await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
+    await comps(ev.id, ['A:1:1'], newPhone(), { guestName: '   ' }).expect(400);
+    await comps(ev.id, ['A:1:1'], newPhone(), { label: 'x', guestName: '  Daw Mya  ' }).expect(201);
+    await http.post(`${seating(ev.id)}/hold`).set(O).send({ seats: ['A:1:3'], label: '   ' }).expect(400);
+    const t = await prisma.ticket.findFirstOrThrow({ where: { order: { eventId: ev.id } }, include: { order: true } });
+    expect(t.guestName).toBe('Daw Mya');
+    expect(t.order.paidAt).toBeNull();
+    await prisma.ticket.update({ where: { id: t.id }, data: { status: 'CHECKED_IN' } });
+    const r = await http.post(`${seating(ev.id)}/comps/${t.id}/revoke`).set(O).expect(409);
+    expect(r.body.message).toBe('This guest has already checked in');
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'SOLD', ticketId: t.id });
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: t.id } })).status).toBe('CHECKED_IN');
+    // checked-in tickets are not printed (only VALID ones), so nothing is left to print
+    await http.get(`${seating(ev.id)}/comps.pdf`).set(O).expect(404);
+  });
+
   it('comps.pdf has one page per ticket', async () => {
     const ev = await guestEvent('Pdf');
     await hold(ev.id, ['A:1:1', 'A:1:2', 'A:1:3']).expect(201);
