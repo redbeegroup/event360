@@ -215,16 +215,17 @@ export class OrgToolsService {
     const totalViews = views.reduce((s, v) => s + v.views, 0);
     const sold = e.ticketTypes.reduce((s, t) => s + t.sold, 0);
     const quota = e.ticketTypes.reduce((s, t) => s + t.quota, 0);
-    const seatRows = await this.prisma.$queryRaw<{ ticket_type_id: string; available: number; guest: number; sold: number; comp: number }[]>`
+    const seatRows = await this.prisma.$queryRaw<{ ticket_type_id: string; available: number; held: number; guest: number; sold: number; comp: number }[]>`
       SELECT s.ticket_type_id,
-        count(*) FILTER (WHERE s.status IN ('AVAILABLE', 'CHECKOUT_HOLD'))::int AS available,
+        count(*) FILTER (WHERE s.status = 'AVAILABLE')::int AS available,
+        count(*) FILTER (WHERE s.status = 'CHECKOUT_HOLD')::int AS held,
         count(*) FILTER (WHERE s.status = 'GUEST_HOLD')::int AS guest,
         count(*) FILTER (WHERE s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false))::int AS sold,
         count(*) FILTER (WHERE s.status = 'SOLD' AND COALESCE(t.is_complimentary, false))::int AS comp
       FROM event_seats s LEFT JOIN tickets t ON t.id = s.ticket_id
       WHERE s.event_id = ${eventId}::uuid AND s.ticket_type_id IS NOT NULL
       GROUP BY s.ticket_type_id`;
-    const seatsByType = new Map(seatRows.map((r) => [r.ticket_type_id, { available: r.available, guest: r.guest, sold: r.sold, comp: r.comp }]));
+    const seatsByType = new Map(seatRows.map((r) => [r.ticket_type_id, { available: r.available, held: r.held, guest: r.guest, sold: r.sold, comp: r.comp }]));
     return {
       totals: {
         views: totalViews,

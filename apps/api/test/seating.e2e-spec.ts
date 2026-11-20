@@ -1266,8 +1266,8 @@ run('Seat everywhere', () => {
     expect(st.body.byTicketType.find((x: any) => x.id === ev.std).comp).toBe(1);
     expect(st.body.byTicketType.find((x: any) => x.id === ev.free).comp).toBe(0);
     const dash = await http.get(`${base(ev.id)}/dashboard`).set(O).expect(200);
-    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.free).seats).toEqual({ available: 4, guest: 0, sold: 1, comp: 0 });
-    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.std).seats).toEqual({ available: 4, guest: 0, sold: 0, comp: 1 });
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.free).seats).toEqual({ available: 4, held: 0, guest: 0, sold: 1, comp: 0 });
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.std).seats).toEqual({ available: 4, held: 0, guest: 0, sold: 0, comp: 1 });
   });
 
   it('attendee CSV has Seat column', async () => {

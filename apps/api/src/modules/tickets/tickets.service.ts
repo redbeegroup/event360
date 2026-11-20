@@ -161,6 +161,8 @@ export class TicketsService {
       } else {
         await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
       }
+      // Serialise cancels within one order so the last one to commit sees every VOID and cancels the order
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${t.orderId}::uuid FOR UPDATE`;
       if ((await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } })) === 0) {
         await tx.order.updateMany({ where: { id: t.orderId, status: { in: ['PAID', 'CONFIRMED'] } }, data: { status: 'CANCELLED' } });
       }
