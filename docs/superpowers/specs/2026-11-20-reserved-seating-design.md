@@ -1,6 +1,6 @@
 # Reserved seating: design
 
-Status: draft for approval · 2026-11-20
+Status: ready for approval · 2026-11-20
 
 ## Intent
 
@@ -191,7 +191,10 @@ New tables (one migration). The names are suggestions; the builder may refine th
 - **Ticket views:** the user app ticket, the Crew scan result, the Crew manual lookup, the attendee list/CSV and the printable PDF show the seat label. Comp tickets show "Complimentary · <label>".
 - **Crew offline manifest:** gains `seat` per ticket. A scan result shows the seat large.
 - **Transfers:** keep `seatKey`, and `qrVersion` bumps as today.
-- **Refunds:** set the seat back to AVAILABLE, or to GUEST_HOLD if it was a comp being revoked.
+- **Refunds and giving seats back** (decided by the user: refunds stay admin-only):
+  - **Paid orders:** only Event 360 admins refund, and always the whole order, exactly as today. Refunded seats go back to AVAILABLE. There are no per-seat or organizer refunds.
+  - **Free seated tickets:** the attendee can **cancel their own ticket** in the user app, up until the event starts (one ticket at a time, with a confirm step). The ticket is voided and its seat goes back to AVAILABLE, so no-shows at free theatre shows can be refilled. This also works for free unseated tickets, returning one to the quota, since the same rule applies.
+  - **Complimentary tickets:** the organizer can **revoke a single comp seat**. That ticket is voided and the seat returns to GUEST_HOLD (same label), ready to re-issue or release.
 - **Event cancelled:** existing flow, no seat changes needed.
 - **Organizer dashboard:** a sold/held/available seat count per ticket type, plus a small map thumbnail showing sold density.
 
@@ -219,7 +222,9 @@ The event page shows "Reserved seating" and a static, non-interactive overview o
   - hold expiry frees seats;
   - settle sets tickets' seats;
   - late payment rules;
-  - refund and revoke;
+  - admin refund frees all of an order's seats;
+  - an attendee cancelling a free ticket frees its seat (and quota for unseated events);
+  - revoking one comp of several returns only that seat to GUEST_HOLD;
   - transfer keeps the seat;
   - best available picks an adjacent block;
   - comps excluded from revenue and commission;
