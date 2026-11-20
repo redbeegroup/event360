@@ -139,7 +139,7 @@ export class OrgToolsService {
     const esc = (v: unknown) => {
       const s = v == null ? '' : String(v);
       // Neutralise spreadsheet formulas, quote everything
-      return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+      return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const fmt = (d?: Date | null) => (d ? new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ') : '');
     const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers'];

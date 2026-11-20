@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +15,8 @@ import 'l10n/app_localizations.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Uncaught errors go to Admin → Operations (not from debug runs on a developer machine)
+  if (!kDebugMode) ErrorReporter(AppConfig.fromEnvironment(Event360App.user)).install();
   await Future.wait([initializeDateFormatting('en'), initializeDateFormatting('my')]);
   final prefs = await SharedPreferences.getInstance();
   runApp(ProviderScope(overrides: [prefsProvider.overrideWithValue(prefs)], child: const UserApp()));

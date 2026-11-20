@@ -86,7 +86,7 @@ jobs:
       # Push: Firebase client config from repository variables (Settings → Secrets and variables → Actions → Variables).
       # Missing variables → the app is built without push (the in-app inbox still works).
       - run: >-
-          flutter build apk --debug --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
+          flutter build apk --debug --dart-define=APP_VERSION=${{ github.sha }} --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
           --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }}
           --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
           --dart-define=FIREBASE_APP_ID=${{ matrix.app == 'organizer_app' && (matrix.env == 'dev' && vars.FIREBASE_ANDROID_APP_ID_ORGANIZER_DEV || vars.FIREBASE_ANDROID_APP_ID_ORGANIZER) || (matrix.env == 'dev' && vars.FIREBASE_ANDROID_APP_ID_DEV || vars.FIREBASE_ANDROID_APP_ID) }}
@@ -124,19 +124,19 @@ jobs:
         working-directory: mobile/apps/user_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
+          flutter build web --release --no-web-resources-cdn --dart-define=APP_VERSION=${{ github.sha }} --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
       - name: Build Crew web (served by the same image under /crew/)
         working-directory: mobile/apps/crew_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --base-href /crew/ --dart-define=API_BASE_URL=${{ matrix.api }}
+          flutter build web --release --no-web-resources-cdn --base-href /crew/ --dart-define=APP_VERSION=${{ github.sha }} --dart-define=API_BASE_URL=${{ matrix.api }}
           mkdir -p ../user_app/build/web/crew
           cp -r build/web/. ../user_app/build/web/crew/
       - name: Build Organizer web (served under /organizer/)
         working-directory: mobile/apps/organizer_app
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --base-href /organizer/ --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=CREW_WEB_URL=${{ matrix.web }}/crew/
+          flutter build web --release --no-web-resources-cdn --base-href /organizer/ --dart-define=APP_VERSION=${{ github.sha }} --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=CREW_WEB_URL=${{ matrix.web }}/crew/
           mkdir -p ../user_app/build/web/organizer
           cp -r build/web/. ../user_app/build/web/organizer/
       - uses: docker/setup-buildx-action@v3

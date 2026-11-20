@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CrewAuth, CurrentUser } from '../../common/auth';
@@ -47,8 +47,7 @@ export class CrewController {
 
   @Post('redeem')
   @HttpCode(200)
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+    @Throttle({ default: { ttl: 60_000, limit: 10 } })
   redeem(@Body() dto: RedeemDto) {
     return this.checkin.redeem(dto.code, dto.deviceName);
   }

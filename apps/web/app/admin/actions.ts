@@ -198,3 +198,46 @@ export async function sendTestPushAction(): Promise<FormState> {
     return err(e);
   }
 }
+
+export async function saveEmailSettingsAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    const pass = String(fd.get('pass') ?? '');
+    const alertTo = String(fd.get('alertTo') ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    await api('/admin/settings/email', {
+      method: 'PUT',
+      json: {
+        host: String(fd.get('host') ?? '').trim(),
+        port: Number(fd.get('port') || 587),
+        secure: fd.get('secure') === 'on',
+        user: String(fd.get('user') ?? '').trim(),
+        ...(pass ? { pass } : {}),
+        from: String(fd.get('from') ?? '').trim(),
+        alertTo,
+        enabled: fd.get('enabled') === 'on',
+      },
+    });
+    revalidatePath('/admin/settings');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function sendTestEmailAction(): Promise<FormState> {
+  try {
+    await api('/admin/settings/email/test', { method: 'POST' });
+    return { ok: 'emailTestSent' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function resolveErrorAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    await api(`/admin/ops/errors/${encodeURIComponent(String(fd.get('id')))}/resolve`, { method: 'POST' });
+    revalidatePath('/admin/ops');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}

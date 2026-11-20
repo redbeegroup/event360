@@ -1,5 +1,5 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers as requestHeaders } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 export const API_URL = process.env.API_URL ?? 'http://localhost:3000';
@@ -23,6 +23,9 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   const { json, auth = true, headers, ...rest } = init;
   const h = new Headers(headers);
   if (json !== undefined) h.set('content-type', 'application/json');
+  // Pass the visitor's proxy chain on so the API rate-limits per visitor, not per portal pod
+  const xff = (await requestHeaders()).get('x-forwarded-for');
+  if (xff) h.set('x-forwarded-for', xff);
   if (auth) {
     const token = (await cookies()).get(ACCESS_COOKIE)?.value;
     if (!token) redirect('/login');

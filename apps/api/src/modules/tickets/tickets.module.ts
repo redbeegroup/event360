@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Length } from 'class-validator';
@@ -29,6 +30,7 @@ export class MyTicketsController {
     return this.tickets.myTicket(u.sub, id);
   }
 
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post(':id/transfer')
   @HttpCode(200)
   transfer(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TransferDto, @CurrentUser() u: AuthUser) {

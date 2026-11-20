@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { api, ApiError, clearSession, getMe, isAdmin, setSession, TokenPair } from './lib/api';
+import { api, ApiError, clearSession, getMe, isAdmin, REFRESH_COOKIE, setSession, TokenPair } from './lib/api';
 import { LANG_COOKIE } from './lib/i18n';
 
 export interface FormState {
@@ -17,6 +17,8 @@ export async function setLangAction(fd: FormData) {
 }
 
 export async function logoutAction() {
+  const refreshToken = (await cookies()).get(REFRESH_COOKIE)?.value;
+  if (refreshToken) await api('/auth/logout', { method: 'POST', auth: false, json: { refreshToken } }).catch(() => null);
   await clearSession();
   redirect('/login');
 }

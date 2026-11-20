@@ -1,13 +1,12 @@
-import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ApiTags } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AcceptInviteDto, PasswordLoginDto, RefreshDto, RequestOtpDto, VerifyOtpDto } from './dto';
 
 @ApiTags('auth')
 @Controller('auth')
-@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
@@ -30,6 +29,13 @@ export class AuthController {
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
+  }
+
+  /** Signs out: the refresh token stops working (the short-lived access token simply expires). */
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@Body() dto: RefreshDto) {
+    await this.auth.logout(dto.refreshToken);
   }
 
   @Post('password/login')

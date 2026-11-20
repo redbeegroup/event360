@@ -10,6 +10,7 @@ interface InviteInfo {
   organization: string | null;
   orgRole: string | null;
   platformRole: string | null;
+  existingAccount?: boolean;
 }
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
@@ -36,14 +37,26 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <p className="muted">{info.email}</p>
           <ActionForm action={acceptInviteAction} submitLabel={tr.acceptInvite}>
             <input type="hidden" name="token" value={token} />
-            <div className="field">
-              <label htmlFor="displayName">{tr.displayName}</label>
-              <input id="displayName" name="displayName" autoComplete="name" />
-            </div>
-            <div className="field">
-              <label htmlFor="password">{tr.newPassword}</label>
-              <input id="password" name="password" type="password" minLength={10} autoComplete="new-password" required />
-            </div>
+            {info.existingAccount ? (
+              <>
+                <p className="muted">{tr.inviteExistingAccount}</p>
+                <div className="field">
+                  <label htmlFor="password">{tr.currentPassword}</label>
+                  <input id="password" name="password" type="password" autoComplete="current-password" required />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="field">
+                  <label htmlFor="displayName">{tr.displayName}</label>
+                  <input id="displayName" name="displayName" autoComplete="name" />
+                </div>
+                <div className="field">
+                  <label htmlFor="password">{tr.newPassword}</label>
+                  <input id="password" name="password" type="password" minLength={10} autoComplete="new-password" required />
+                </div>
+              </>
+            )}
           </ActionForm>
         </>
       )}

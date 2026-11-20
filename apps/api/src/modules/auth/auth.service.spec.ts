@@ -34,6 +34,18 @@ function makePrisma() {
         const i = otps.findIndex((o) => o.id === where.id);
         return otps.splice(i, 1)[0];
       },
+      updateMany: async ({ where, data }: any) => {
+        const row = otps.find(
+          (o) =>
+            o.id === where.id &&
+            (where.consumedAt === undefined || o.consumedAt === null) &&
+            (where.attempts?.lt === undefined || o.attempts < where.attempts.lt),
+        );
+        if (!row) return { count: 0 };
+        if (data.attempts?.increment) row.attempts += data.attempts.increment;
+        if (data.consumedAt) row.consumedAt = data.consumedAt;
+        return { count: 1 };
+      },
       update: async ({ where, data }: any) => {
         const row = otps.find((o) => o.id === where.id);
         if (data.attempts?.increment) row.attempts += data.attempts.increment;

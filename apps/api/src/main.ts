@@ -27,7 +27,8 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableShutdownHooks();
 
-  if (role === 'api') {
+  // API docs on dev only (the route list helps attackers more than anyone else on prod)
+  if (role === 'api' && process.env.ENV_NAME !== 'prod') {
     const config = new DocumentBuilder()
       .setTitle('Event 360 API')
       .setVersion('0.1.0')

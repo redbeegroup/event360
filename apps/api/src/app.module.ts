@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { AppThrottlerGuard } from './common/throttle.guard';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EventsModule } from './modules/events/events.module';
@@ -13,6 +15,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OrgToolsModule } from './modules/orgtools/orgtools.module';
+import { OpsModule } from './modules/ops/ops.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
@@ -34,6 +37,8 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     StreamingModule,
     PaymentsModule,
     OrgToolsModule,
+    OpsModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}

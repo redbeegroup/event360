@@ -22,7 +22,7 @@ export async function middleware(req: NextRequest) {
 
   const r = await fetch(`${API_URL}/v1/auth/refresh`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(req.headers.get('x-forwarded-for') ? { 'x-forwarded-for': req.headers.get('x-forwarded-for')! } : {}) },
     body: JSON.stringify({ refreshToken: refresh }),
   }).catch(() => null);
 

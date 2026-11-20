@@ -21,8 +21,14 @@ export async function hashPassword(password: string): Promise<string> {
   return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
 }
 
+// Checked when there is no stored hash, so a missing account takes as long as a wrong password
+const DUMMY_HASH = 'scrypt$' + Buffer.alloc(16).toString('base64') + '$' + Buffer.alloc(64).toString('base64');
+
 export async function verifyPassword(password: string, stored: string | null | undefined): Promise<boolean> {
-  if (!stored?.startsWith('scrypt$')) return false;
+  if (!stored?.startsWith('scrypt$')) {
+    if (stored !== DUMMY_HASH) await verifyPassword(password, DUMMY_HASH);
+    return false;
+  }
   const [, saltB64, hashB64] = stored.split('$');
   const expected = Buffer.from(hashB64, 'base64');
   const actual = await scrypt(password, Buffer.from(saltB64, 'base64'), expected.length);

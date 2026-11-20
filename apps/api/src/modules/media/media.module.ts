@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
@@ -60,8 +61,12 @@ export class MediaService {
     return key ? `${this.publicApiUrl}/v1/media/${key}` : null;
   }
 
+  /**
+   * Only uploaded images are public. Everything else in the bucket (recordings, uploads, database
+   * backups) must never be reachable through GET /v1/media.
+   */
   isOwnKey(key: string): boolean {
-    return KEY_RE.test(key) && key.startsWith(`${this.prefix}/`) && !key.includes('..');
+    return KEY_RE.test(key) && key.startsWith(`${this.prefix}/images/`) && !key.includes('..');
   }
 
   async uploadImage(file: Express.Multer.File | undefined): Promise<{ key: string; url: string }> {
@@ -86,6 +91,7 @@ export class MediaService {
 export class MediaController {
   constructor(private readonly media: MediaService) {}
 
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('images')
   @Auth()
   @ApiConsumes('multipart/form-data')

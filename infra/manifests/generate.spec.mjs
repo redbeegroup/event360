@@ -95,3 +95,36 @@ for (const envName of Object.keys(config.environments)) {
     }
   });
 }
+
+for (const envName of Object.keys(config.environments)) {
+  const env = config.environments[envName];
+  const objs = buildManifests(envName, config);
+
+  test(`${envName}: nightly backup and monthly restore test`, () => {
+    const crons = Object.fromEntries(objs.filter((o) => o.kind === 'CronJob').map((c) => [c.metadata.name, c]));
+    assert.deepEqual(Object.keys(crons).sort(), ['backup-db', 'backup-restore-test']);
+    assert.equal(crons['backup-db'].spec.schedule, '30 2 * * *');
+    assert.equal(crons['backup-restore-test'].spec.schedule, '30 4 1 * *');
+    for (const c of Object.values(crons)) {
+      assert.equal(c.spec.timeZone, 'Asia/Yangon');
+      assert.equal(c.spec.concurrencyPolicy, 'Forbid');
+      const pod = c.spec.jobTemplate.spec.template.spec;
+      assert.equal(pod.automountServiceAccountToken, false);
+      for (const ct of [...pod.initContainers, ...pod.containers]) {
+        assert.deepEqual(ct.envFrom, [{ secretRef: { name: 'event360-secrets' } }]);
+        assert.equal(ct.securityContext.allowPrivilegeEscalation, false);
+      }
+    }
+    const dump = crons['backup-db'].spec.jobTemplate.spec.template.spec.initContainers[0].command.join(' ');
+    assert.match(dump, /pg_dump .*-n "\$SCHEMA" -Fc/);
+  });
+
+  test(`${envName}: monitor settings on the backend`, () => {
+    const worker = objs.find((o) => o.kind === 'Deployment' && o.metadata.name === 'worker');
+    const e = Object.fromEntries(worker.spec.template.spec.containers[0].env.map((v) => [v.name, v.value]));
+    assert.equal(e.ENV_NAME, envName);
+    assert.equal(e.PUBLIC_DOMAIN, env.domain);
+    assert.equal(e.APP_VERSION, env.imageTag);
+    assert.equal(e.SITE_ENABLED, String(!!env.site?.enabled));
+  });
+}

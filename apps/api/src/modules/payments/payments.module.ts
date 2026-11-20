@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   BadRequestException,
   Body,
@@ -126,6 +127,7 @@ export class CheckoutController {
     return this.payments.createOrder(u.sub, id, dto.items, dto.idempotencyKey, dto.channel, dto.promoCode);
   }
 
+  @Throttle({ default: { ttl: 60_000, limit: 10 } }) // codes can't be guessed by brute force
   @Post('events/:id/promo-check')
   @Auth()
   @HttpCode(200)
@@ -174,6 +176,7 @@ export class PaymentsController {
   }
 
   /** Provider callbacks (signature-checked; raw payload always stored). */
+  @Throttle({ default: { ttl: 60_000, limit: 300 } })
   @Post('webhook/:provider')
   @HttpCode(200)
   async webhook(@Param('provider') provider: string, @Headers() headers: Record<string, string>, @Body() body: unknown, @Res() res: Response) {

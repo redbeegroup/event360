@@ -931,3 +931,50 @@ model EventDailyStat {
   @@id([eventId, day])
   @@map("event_daily_stats")
 }
+
+// ───────────────────────────── Operations ─────────────────────────────
+
+/// Errors grouped by fingerprint (same message + place), from the API, web servers and the apps.
+model ErrorGroup {
+  id          String    @id @default(uuid()) @db.Uuid
+  fingerprint String    @unique
+  source      String // api | portal | site | user_app | crew_app | organizer_app
+  message     String
+  stack       String?
+  path        String? // request path or app route
+  count       Int       @default(1)
+  firstSeen   DateTime  @default(now()) @map("first_seen")
+  lastSeen    DateTime  @default(now()) @map("last_seen")
+  lastRelease String?   @map("last_release")
+  lastContext Json?     @map("last_context")
+  resolvedAt  DateTime? @map("resolved_at")
+  alertedAt   DateTime? @map("alerted_at")
+
+  @@index([lastSeen])
+  @@map("error_groups")
+}
+
+/// Latest state of each health check (one row per check).
+model MonitorCheck {
+  name                String    @id
+  ok                  Boolean   @default(true)
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastError           String?   @map("last_error")
+  detail              String?
+  lastCheckedAt       DateTime? @map("last_checked_at")
+  changedAt           DateTime  @default(now()) @map("changed_at")
+  alerting            Boolean   @default(false) // an alert was sent and recovery not yet announced
+
+  @@map("monitor_checks")
+}
+
+model MonitorIncident {
+  id        String    @id @default(uuid()) @db.Uuid
+  check     String
+  error     String
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
+  @@index([startedAt])
+  @@map("monitor_incidents")
+}

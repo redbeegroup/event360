@@ -95,18 +95,23 @@ export class AuthService {
     if (!challenge || challenge.attempts >= MAX_ATTEMPTS) {
       throw new UnauthorizedException('Code expired or too many attempts');
     }
+    // Count the attempt atomically before comparing, so parallel guesses can't exceed MAX_ATTEMPTS
+    const counted = await this.prisma.otpChallenge.updateMany({
+      where: { id: challenge.id, consumedAt: null, attempts: { lt: MAX_ATTEMPTS } },
+      data: { attempts: { increment: 1 } },
+    });
+    if (counted.count === 0) throw new UnauthorizedException('Code expired or too many attempts');
 
     const expected = Buffer.from(challenge.codeHash, 'hex');
     const actual = Buffer.from(sha256(`${phone}:${code}`), 'hex');
-    if (!timingSafeEqual(expected, actual)) {
-      await this.prisma.otpChallenge.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid code');
-    }
+    if (!timingSafeEqual(expected, actual)) throw new UnauthorizedException('Invalid code');
 
-    await this.prisma.otpChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
+    // Single use: only one request can consume the code
+    const consumed = await this.prisma.otpChallenge.updateMany({
+      where: { id: challenge.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    if (consumed.count === 0) throw new UnauthorizedException('Code expired or too many attempts');
 
     const user = await this.prisma.user.upsert({
       where: { phone },
@@ -134,6 +139,11 @@ export class AuthService {
     }
     await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
     return this.issueTokens(stored.user);
+  }
+
+  /** Ends a session: revokes the given refresh token (unknown tokens are ignored). */
+  async logout(refreshToken: string) {
+    await this.prisma.refreshToken.updateMany({ where: { tokenHash: sha256(refreshToken), revokedAt: null }, data: { revokedAt: new Date() } });
   }
 
   /** Portal staff (admins, organizer members) sign in with email + password. */
@@ -181,13 +191,29 @@ export class AuthService {
       include: { organization: { select: { name: true } } },
     });
     if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invite is invalid or expired');
-    return { email: inv.email, organization: inv.organization?.name ?? null, orgRole: inv.orgRole, platformRole: inv.platformRole };
+    const existing = await this.prisma.user.findUnique({ where: { email: inv.email }, select: { passwordHash: true } });
+    return {
+      email: inv.email,
+      organization: inv.organization?.name ?? null,
+      orgRole: inv.orgRole,
+      platformRole: inv.platformRole,
+      // The invitee already has a password: they confirm it instead of choosing a new one
+      existingAccount: !!existing?.passwordHash,
+    };
   }
 
   async acceptInvitation(token: string, password: string, displayName?: string): Promise<TokenPair> {
     const inv = await this.prisma.invitation.findUnique({ where: { tokenHash: sha256(token) } });
     if (!inv || inv.acceptedAt || inv.expiresAt < new Date()) throw new BadRequestException('Invite is invalid or expired');
-    const passwordHash = await hashPassword(password);
+    // An invite link only proves someone received it, not that they own the email. If the email already
+    // has an account, joining requires that account's current password, and the password is never replaced.
+    const current = await this.prisma.user.findUnique({ where: { email: inv.email } });
+    if (current?.passwordHash) {
+      if (!(await verifyPassword(password, current.passwordHash)) || !current.isActive) {
+        throw new BadRequestException('This email already has an Event 360 account. Enter its current password to accept the invite.');
+      }
+    }
+    const passwordHash = current?.passwordHash ? null : await hashPassword(password);
 
     const user = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.user.findUnique({ where: { email: inv.email } });
@@ -196,7 +222,11 @@ export class AuthService {
       const u = existing
         ? await tx.user.update({
             where: { id: existing.id },
-            data: { passwordHash, platformRoles: [...roles], displayName: displayName ?? existing.displayName },
+            data: {
+              platformRoles: [...roles],
+              ...(passwordHash && !existing.passwordHash ? { passwordHash } : {}),
+              ...(existing.displayName ? {} : { displayName }),
+            },
           })
         : await tx.user.create({
             data: {

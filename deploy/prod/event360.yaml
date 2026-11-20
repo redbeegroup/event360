@@ -149,6 +149,16 @@ spec:
           env:
             - name: NODE_ENV
               value: production
+            - name: ENV_NAME
+              value: prod
+            - name: PUBLIC_DOMAIN
+              value: event360.app
+            - name: SITE_ENABLED
+              value: 'true'
+            - name: USER_WEB_ENABLED
+              value: 'true'
+            - name: APP_VERSION
+              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -263,6 +273,16 @@ spec:
           env:
             - name: NODE_ENV
               value: production
+            - name: ENV_NAME
+              value: prod
+            - name: PUBLIC_DOMAIN
+              value: event360.app
+            - name: SITE_ENABLED
+              value: 'true'
+            - name: USER_WEB_ENABLED
+              value: 'true'
+            - name: APP_VERSION
+              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -361,6 +381,16 @@ spec:
           env:
             - name: NODE_ENV
               value: production
+            - name: ENV_NAME
+              value: prod
+            - name: PUBLIC_DOMAIN
+              value: event360.app
+            - name: SITE_ENABLED
+              value: 'true'
+            - name: USER_WEB_ENABLED
+              value: 'true'
+            - name: APP_VERSION
+              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -477,6 +507,8 @@ spec:
           env:
             - name: API_URL
               value: http://api:3000
+            - name: APP_VERSION
+              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
             - name: CREW_APP_URL
               value: https://app.event360.app/crew/
           readinessProbe:
@@ -547,6 +579,8 @@ spec:
           env:
             - name: API_URL
               value: http://api:3000
+            - name: APP_VERSION
+              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
             - name: SITE_URL
               value: https://event360.app
             - name: APP_URL
@@ -897,6 +931,247 @@ spec:
           port: 1935
         - protocol: UDP
           port: 8890
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-db
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: backup-db
+    app.kubernetes.io/part-of: event360
+spec:
+  schedule: 30 2 * * *
+  timeZone: Asia/Yangon
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup-db
+            app.kubernetes.io/part-of: event360
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: 10Gi
+          initContainers:
+            - name: dump
+              image: postgres:16-alpine
+              command:
+                - sh
+                - '-c'
+                - >-
+                  URL="${DATABASE_URL%%\?*}"; SCHEMA=$(printf %s "$DATABASE_URL" | sed -n
+                  "s/.*[?&]schema=\([^&]*\).*/\1/p"); SCHEMA=${SCHEMA:-public}; pg_dump --dbname="$URL" -n "$SCHEMA" -Fc
+                  --no-owner --no-privileges -f /work/db.dump && ls -l /work/db.dump
+              envFrom:
+                - secretRef:
+                    name: event360-secrets
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+          containers:
+            - name: upload
+              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              imagePullPolicy: IfNotPresent
+              command:
+                - node
+                - dist/backup-store.js
+                - put
+                - /work/db.dump
+              envFrom:
+                - secretRef:
+                    name: event360-secrets
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-restore-test
+  namespace: event360-prod
+  labels:
+    app.kubernetes.io/name: backup-restore-test
+    app.kubernetes.io/part-of: event360
+spec:
+  schedule: 30 4 1 * *
+  timeZone: Asia/Yangon
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup-restore-test
+            app.kubernetes.io/part-of: event360
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: 10Gi
+          initContainers:
+            - name: fetch
+              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              imagePullPolicy: IfNotPresent
+              command:
+                - node
+                - dist/backup-store.js
+                - fetch-latest
+                - /work/db.dump
+              envFrom:
+                - secretRef:
+                    name: event360-secrets
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+            - name: restore
+              image: postgres:16-alpine
+              command:
+                - sh
+                - '-c'
+                - >-
+                  set -u; start=$(date +%s); NAME=$(cat /work/db.dump.name 2>/dev/null || echo unknown); SCHEMA=$(printf
+                  %s "$DATABASE_URL" | sed -n "s/.*[?&]schema=\([^&]*\).*/\1/p"); SCHEMA=${SCHEMA:-public}
+
+                  fail() { printf '{"ok":false,"backup":"%s","error":"%s","testedAt":"%s"}' "$NAME" "$1" "$(date -u
+                  +%FT%TZ)" > /work/report.json; cat /work/report.json; exit 0; }
+
+                  [ -s /work/db.dump ] || fail "no dump downloaded"
+
+                  initdb -D /work/pg -U restore --auth=trust >/dev/null || fail "initdb failed"
+
+                  pg_ctl -D /work/pg -o "-k /work -c listen_addresses=" -w start >/dev/null || fail "postgres did not
+                  start"
+
+                  createdb -h /work -U restore check || fail "createdb failed"
+
+                  psql -h /work -U restore -d check -qc "drop schema if exists public cascade" || fail "could not
+                  prepare database"
+
+                  pg_restore -h /work -U restore -d check --no-owner --no-privileges --exit-on-error /work/db.dump
+                  2>/work/restore.err || fail "pg_restore: $(tail -c 300 /work/restore.err | tr -d '"\n')"
+
+                  ROWS=$(psql -h /work -U restore -d check -Atc "select coalesce(json_object_agg(table_name,
+                  (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema,
+                  table_name), false, true, '')))[1]::text::bigint), '{}') from information_schema.tables where
+                  table_schema = '$SCHEMA' and table_type = 'BASE TABLE'") || fail "row count failed"
+
+                  TABLES=$(psql -h /work -U restore -d check -Atc "select count(*) from information_schema.tables where
+                  table_schema = '$SCHEMA' and table_type = 'BASE TABLE'")
+
+                  [ "$TABLES" -gt 0 ] || fail "restored schema $SCHEMA has no tables"
+
+                  pg_ctl -D /work/pg -m fast stop >/dev/null
+
+                  printf
+                  '{"ok":true,"backup":"%s","schema":"%s","tables":%s,"rows":%s,"durationSec":%s,"testedAt":"%s"}'
+                  "$NAME" "$SCHEMA" "$TABLES" "$ROWS" "$(( $(date +%s) - start ))" "$(date -u +%FT%TZ)" >
+                  /work/report.json
+
+                  cat /work/report.json
+              envFrom:
+                - secretRef:
+                    name: event360-secrets
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+          containers:
+            - name: report
+              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              imagePullPolicy: IfNotPresent
+              command:
+                - node
+                - dist/backup-store.js
+                - report
+                - /work/report.json
+              envFrom:
+                - secretRef:
+                    name: event360-secrets
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

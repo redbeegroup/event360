@@ -47,6 +47,9 @@ export function ladderArgs(input: string, out: string, mode: 'live' | 'vod'): st
   return [
     'ffmpeg -hide_banner -loglevel warning',
     mode === 'live' ? '-rw_timeout 15000000' : '',
+    // Inputs come from organizers: only the protocols the source needs, so a crafted playlist
+    // can't make ffmpeg fetch internal addresses over plain HTTP or read local files
+    mode === 'live' ? '-protocol_whitelist rtmp,tcp' : '-protocol_whitelist https,tls,tcp',
     `-i "${input}"`,
     `-filter_complex "${split}"`,
     maps,
@@ -87,7 +90,9 @@ function job(name: string, labels: Record<string, string>, deadline: number, spe
         metadata: { labels: { 'app.kubernetes.io/part-of': 'event360', ...labels } },
         spec: {
           restartPolicy: 'Never',
-          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001 },
+          // Job pods never talk to the Kubernetes API
+          automountServiceAccountToken: false,
+          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: { type: 'RuntimeDefault' } },
           ...spec,
         },
       },

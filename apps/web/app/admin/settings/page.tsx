@@ -1,7 +1,7 @@
 import { ActionForm } from '../../components/ActionForm';
 import { api } from '../../lib/api';
 import { fmtDate, t } from '../../lib/i18n';
-import { savePaymentSettingsAction, savePushSettingsAction, saveSmsSettingsAction, sendTestPushAction, sendTestSmsAction } from '../actions';
+import { saveEmailSettingsAction, savePaymentSettingsAction, savePushSettingsAction, saveSmsSettingsAction, sendTestEmailAction, sendTestPushAction, sendTestSmsAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +30,18 @@ interface SmsLogRow {
   createdAt: string;
 }
 
+interface EmailView {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  passSet: boolean;
+  from: string;
+  alertTo: string[];
+  enabled: boolean;
+  canStoreSecrets: boolean;
+}
+
 interface PushView {
   projectId: string;
   clientEmail: string;
@@ -51,12 +63,13 @@ interface PaymentView {
 }
 
 export default async function SettingsPage() {
-  const [tr, sms, log, pays, push] = await Promise.all([
+  const [tr, sms, log, pays, push, mail] = await Promise.all([
     t(),
     api<SmsView>('/admin/settings/sms'),
     api<SmsLogRow[]>('/admin/sms-log?limit=20'),
     api<PaymentView[]>('/admin/settings/payments'),
     api<PushView>('/admin/settings/push'),
+    api<EmailView>('/admin/settings/email'),
   ]);
   const label = (k: string) => (tr as unknown as Record<string, string>)[`f_${k}`] ?? k;
   const configured = !!sms.apiKey && sms.apiSecretSet && !!sms.senderId;
@@ -145,6 +158,49 @@ export default async function SettingsPage() {
         {push.privateKeySet && (
           <ActionForm action={sendTestPushAction} submitLabel={`${tr.pushTest} (${push.myDevices})`} variant="secondary" okText={{ pushTestSent: tr.pushTestSent }} />
         )}
+      </div>
+
+      <h2 id="email">{tr.emailTitle}</h2>
+      <div className="card">
+        <p className="muted">{tr.emailHint}</p>
+        <p>
+          <span className={`badge ${mail.enabled ? 'PUBLISHED' : 'SUBMITTED'}`}>{mail.enabled ? tr.providerOn : tr.providerOff}</span>
+        </p>
+        <ActionForm action={saveEmailSettingsAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
+          <div className="grid">
+            <div className="field">
+              <label>{tr.emailHost}</label>
+              <input name="host" defaultValue={mail.host} placeholder="smtp.example.com" autoComplete="off" />
+            </div>
+            <div className="field">
+              <label>{tr.emailPort}</label>
+              <input name="port" type="number" min={1} max={65535} defaultValue={mail.port} />
+            </div>
+            <div className="field">
+              <label>{tr.emailUser}</label>
+              <input name="user" defaultValue={mail.user} autoComplete="off" />
+            </div>
+            <div className="field">
+              <label>{tr.emailPass}</label>
+              <input name="pass" type="password" autoComplete="new-password" placeholder={mail.passSet ? '••••••••' : ''} />
+              {mail.passSet && <small className="muted">{tr.keepSecretHint}</small>}
+            </div>
+            <div className="field">
+              <label>{tr.emailFrom}</label>
+              <input name="from" defaultValue={mail.from} placeholder="Event 360 <alerts@example.com>" />
+            </div>
+            <div className="field">
+              <label>{tr.emailAlertTo}</label>
+              <input name="alertTo" defaultValue={mail.alertTo.join(', ')} placeholder="ops@example.com, you@example.com" />
+              <small className="muted">{tr.emailAlertToHint}</small>
+            </div>
+          </div>
+          <label className="check"><input type="checkbox" name="secure" defaultChecked={mail.secure} /> {tr.emailSecure}</label>
+          <label className="check"><input type="checkbox" name="enabled" defaultChecked={mail.enabled} /> {tr.emailEnabled}</label>
+        </ActionForm>
+        <div style={{ marginTop: 12 }}>
+          <ActionForm action={sendTestEmailAction} submitLabel={tr.emailTest} variant="secondary" okText={{ emailTestSent: tr.emailTestSent }} />
+        </div>
       </div>
 
       <h2>{tr.paymentsTitle}</h2>

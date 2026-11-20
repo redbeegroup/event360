@@ -41,8 +41,15 @@ function service(name, ns, port, annotations) {
 
 function backendEnv(env, config) {
   const st = { ...(config.streaming ?? {}), ...(env.streaming ?? {}) };
+  const site = { ...(config.site ?? {}), ...(env.site ?? {}) };
   return [
     { name: 'NODE_ENV', value: 'production' },
+    // Operations monitor + error tracking (alert subjects, public checks, release tag)
+    { name: 'ENV_NAME', value: env.namespace.replace(/^event360-/, '') },
+    { name: 'PUBLIC_DOMAIN', value: env.domain },
+    { name: 'SITE_ENABLED', value: String(!!site.enabled) },
+    { name: 'USER_WEB_ENABLED', value: String(!!env.userWeb) },
+    { name: 'APP_VERSION', value: env.imageTag },
     { name: 'PORT', value: '3000' },
     // NPMPlus → Traefik → pod
     { name: 'TRUST_PROXY', value: '2' },
@@ -115,6 +122,83 @@ function deployment({ name, ns, image, pullPolicy, replicas, env, envFrom, runAs
       },
     },
   };
+}
+
+/** Shell: DATABASE_URL without Prisma's query string, plus the schema it names. */
+const DB_SH = 'URL="${DATABASE_URL%%\\?*}"; SCHEMA=$(printf %s "$DATABASE_URL" | sed -n "s/.*[?&]schema=\\([^&]*\\).*/\\1/p"); SCHEMA=${SCHEMA:-public}; ';
+
+const DUMP_SH = DB_SH + 'pg_dump --dbname="$URL" -n "$SCHEMA" -Fc --no-owner --no-privileges -f /work/db.dump && ls -l /work/db.dump';
+
+// Restores the newest dump into a throwaway Postgres inside the pod, counts rows, writes /work/report.json.
+// Always exits 0 so the report (ok true/false) is uploaded; the monitor alerts on a failed test.
+const RESTORE_SH = [
+  'set -u; start=$(date +%s); NAME=$(cat /work/db.dump.name 2>/dev/null || echo unknown); SCHEMA=$(printf %s "$DATABASE_URL" | sed -n "s/.*[?&]schema=\\([^&]*\\).*/\\1/p"); SCHEMA=${SCHEMA:-public}',
+  'fail() { printf \'{"ok":false,"backup":"%s","error":"%s","testedAt":"%s"}\' "$NAME" "$1" "$(date -u +%FT%TZ)" > /work/report.json; cat /work/report.json; exit 0; }',
+  '[ -s /work/db.dump ] || fail "no dump downloaded"',
+  'initdb -D /work/pg -U restore --auth=trust >/dev/null || fail "initdb failed"',
+  'pg_ctl -D /work/pg -o "-k /work -c listen_addresses=" -w start >/dev/null || fail "postgres did not start"',
+  'createdb -h /work -U restore check || fail "createdb failed"',
+  'psql -h /work -U restore -d check -qc "drop schema if exists public cascade" || fail "could not prepare database"',
+  'pg_restore -h /work -U restore -d check --no-owner --no-privileges --exit-on-error /work/db.dump 2>/work/restore.err || fail "pg_restore: $(tail -c 300 /work/restore.err | tr -d \'"\\n\')"',
+  'ROWS=$(psql -h /work -U restore -d check -Atc "select coalesce(json_object_agg(table_name, (xpath(\'/row/c/text()\', query_to_xml(format(\'select count(*) as c from %I.%I\', table_schema, table_name), false, true, \'\')))[1]::text::bigint), \'{}\') from information_schema.tables where table_schema = \'$SCHEMA\' and table_type = \'BASE TABLE\'") || fail "row count failed"',
+  'TABLES=$(psql -h /work -U restore -d check -Atc "select count(*) from information_schema.tables where table_schema = \'$SCHEMA\' and table_type = \'BASE TABLE\'")',
+  '[ "$TABLES" -gt 0 ] || fail "restored schema $SCHEMA has no tables"',
+  'pg_ctl -D /work/pg -m fast stop >/dev/null',
+  'printf \'{"ok":true,"backup":"%s","schema":"%s","tables":%s,"rows":%s,"durationSec":%s,"testedAt":"%s"}\' "$NAME" "$SCHEMA" "$TABLES" "$ROWS" "$(( $(date +%s) - start ))" "$(date -u +%FT%TZ)" > /work/report.json',
+  'cat /work/report.json',
+].join('\n');
+
+function backupJobs({ ns, apiImage, pullPolicy, envFrom, config, backup }) {
+  const pgImage = backup.postgresImage ?? 'postgres:16-alpine';
+  const secure = { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } };
+  const work = [{ name: 'work', mountPath: '/work' }];
+  const node = (name, args) => ({
+    name, image: apiImage, imagePullPolicy: pullPolicy, command: ['node', 'dist/backup-store.js', ...args],
+    envFrom, volumeMounts: work, securityContext: secure,
+    resources: { requests: { cpu: '50m', memory: '128Mi' }, limits: { memory: '512Mi' } },
+  });
+  const pg = (name, script) => ({
+    name, image: pgImage, command: ['sh', '-c', script], envFrom, volumeMounts: work, securityContext: secure,
+    resources: { requests: { cpu: '200m', memory: '256Mi' }, limits: { memory: '1Gi' } },
+  });
+  const cron = (name, schedule, initContainers, containers) => ({
+    apiVersion: 'batch/v1',
+    kind: 'CronJob',
+    metadata: meta(name, ns),
+    spec: {
+      schedule,
+      timeZone: 'Asia/Yangon',
+      concurrencyPolicy: 'Forbid',
+      successfulJobsHistoryLimit: 3,
+      failedJobsHistoryLimit: 3,
+      jobTemplate: {
+        spec: {
+          backoffLimit: 2,
+          activeDeadlineSeconds: 3600,
+          ttlSecondsAfterFinished: 7 * 86400,
+          template: {
+            metadata: { labels: labels(name) },
+            spec: {
+              restartPolicy: 'Never',
+              automountServiceAccountToken: false,
+              // postgres image user (70) can write the shared work dir
+              securityContext: { runAsNonRoot: true, runAsUser: 70, runAsGroup: 70, fsGroup: 70 },
+              ...avoidNodesAffinity(config),
+              volumes: [{ name: 'work', emptyDir: { sizeLimit: backup.workSize ?? '10Gi' } }],
+              initContainers,
+              containers,
+            },
+          },
+        },
+      },
+    },
+  });
+  return [
+    cron('backup-db', backup.schedule ?? '30 2 * * *', [pg('dump', DUMP_SH)], [node('upload', ['put', '/work/db.dump'])]),
+    cron('backup-restore-test', backup.restoreTestSchedule ?? '30 4 1 * *',
+      [node('fetch', ['fetch-latest', '/work/db.dump']), pg('restore', RESTORE_SH)],
+      [node('report', ['report', '/work/report.json'])]),
+  ];
 }
 
 export function buildManifests(envName, config) {
@@ -253,6 +337,7 @@ export function buildManifests(envName, config) {
       replicas: env.replicas.web,
       env: [
         { name: 'API_URL', value: 'http://api:3000' },
+        { name: 'APP_VERSION', value: env.imageTag }, // release tag on reported errors
         // Crew web preview link shown on the event page (dev only, served by user-web under /crew/)
         { name: 'CREW_APP_URL', value: env.userWeb ? `https://app.${env.domain}/crew/` : '' },
       ],
@@ -276,6 +361,7 @@ export function buildManifests(envName, config) {
       replicas: env.replicas.site ?? 1,
       env: [
         { name: 'API_URL', value: 'http://api:3000' },
+        { name: 'APP_VERSION', value: env.imageTag },
         { name: 'SITE_URL', value: `https://${env.domain}` },
         { name: 'APP_URL', value: `https://app.${env.domain}` },
         { name: 'PORTAL_URL', value: `https://portal.${env.domain}` },
@@ -454,6 +540,9 @@ export function buildManifests(envName, config) {
       },
     },
   );
+
+  // ── Database backups to SeaweedFS: nightly dump, monthly restore test ──
+  objects.push(...backupJobs({ ns, apiImage, pullPolicy, envFrom, config, backup: { ...(config.backup ?? {}), ...(env.backup ?? {}) } }));
 
   // ── Ingress (Traefik; TLS terminated upstream by NPMPlus) ──
   const routes = [
