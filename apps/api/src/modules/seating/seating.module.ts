@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { Allow, ArrayMaxSize, IsArray, IsBoolean, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { Allow, ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -142,6 +143,11 @@ export class EventSeatingController {
   }
 }
 
+class BestSeatsDto {
+  @ApiProperty() @IsUUID() ticketTypeId: string;
+  @ApiProperty({ minimum: 1, maximum: 20 }) @IsInt() @Min(1) @Max(20) quantity: number;
+}
+
 /** Public seat availability. `events/:idOrSlug/seats` does not overlap the routes of PublicEventsController. */
 @ApiTags('events')
 @Controller('events')
@@ -150,6 +156,14 @@ export class PublicSeatsController {
 
   @Get(':idOrSlug/seats') get(@Param('idOrSlug') idOrSlug: string) {
     return this.seats.publicSeats(idOrSlug);
+  }
+
+  /** Suggests seats; holds nothing. The buyer then submits them to createOrder. */
+  @Post(':idOrSlug/seats/best') @HttpCode(200) @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async best(@Param('idOrSlug') idOrSlug: string, @Body() dto: BestSeatsDto) {
+    const seats = await this.seats.bestSeats(idOrSlug, dto.ticketTypeId, dto.quantity);
+    if (!seats) throw new ConflictException({ message: 'Not enough seats together', seats: [] });
+    return { seats };
   }
 }
 

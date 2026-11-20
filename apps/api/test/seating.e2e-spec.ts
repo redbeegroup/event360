@@ -441,6 +441,29 @@ run('Seated events', () => {
     expect(r.body.status).toBe('TTGAAAUU');
   });
 
+  describe('Best available', () => {
+    it('suggests seats without holding them; 409 when not enough; 400 on bad input', async () => {
+      const ev = await newEvent('Best');
+      const vip = await addType(ev.id, { name: 'VIP', priceMmk: 30_000, quota: 1 });
+      const plain = await addType(ev.id, { name: 'Plain', priceMmk: 1_000, quota: 5 });
+      await http.put(`${base(ev.id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+      await http.put(`${base(ev.id)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'A', ticketTypeId: vip }] }).expect(200);
+      const url = `/v1/events/${ev.id}/seats/best`;
+      await http.post(url).send({ ticketTypeId: vip, quantity: 2 }).expect(404); // draft is not public
+      await prisma.event.update({ where: { id: ev.id }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
+      const ok = await http.post(url).send({ ticketTypeId: vip, quantity: 2 }).expect(200);
+      expect(ok.body.seats).toHaveLength(2);
+      expect(ok.body.seats.every((k: string) => k.startsWith('A:1:'))).toBe(true); // nearest the stage (no stage: top edge)
+      expect((await seat(ev.id, ok.body.seats[0])).status).toBe('AVAILABLE'); // nothing held
+      await http.post(url).send({ ticketTypeId: vip, quantity: 7 }).expect(409).expect((r) => expect(r.body).toMatchObject({ message: 'Not enough seats together', seats: [] }));
+      await http.post(url).send({ ticketTypeId: plain, quantity: 1 }).expect(404); // not a seated type
+      await http.post(url).send({ ticketTypeId: vip, quantity: 0 }).expect(400);
+      await http.post(url).send({ ticketTypeId: vip, quantity: 21 }).expect(400);
+      await http.post(url).send({ ticketTypeId: vip }).expect(400);
+      await http.post(url).send({ ticketTypeId: 'nope', quantity: 1 }).expect(400);
+    });
+  });
+
   it('unseated event unchanged', async () => {
     const ev = await newEvent('Plain', true);
     await addType(ev.id, { name: 'GA', priceMmk: 1000, quota: 5 });

@@ -5,7 +5,8 @@ import { mmk } from '../../common/util';
 import { EDITABLE_STATUSES, needsReReview } from '../events/events.service';
 import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { expandSeats, Layout } from './layout';
+import { aisleKeys, bestAvailable, stageCentre } from './best-available';
+import { expandSeats, ExpandedSeat, Layout } from './layout';
 import { SeatMapsService } from './seat-maps.service';
 
 export interface AssignmentRule {
@@ -248,7 +249,7 @@ export class EventSeatsService {
   // ───────────── Public availability ─────────────
 
   /** Layout and seat order never change for a version; kept long. */
-  private readonly layouts = new MicroCache<{ layout: Layout; index: Map<string, number> }>(process.env.NODE_ENV === 'test' ? 0 : 600_000, 50);
+  private readonly layouts = new MicroCache<{ layout: Layout; index: Map<string, number>; seats: ExpandedSeat[]; aisles: Set<string> }>(process.env.NODE_ENV === 'test' ? 0 : 600_000, 50);
   /** Types and seat status change with every order; kept at most 2 s per pod. */
   private readonly availability = new MicroCache<{ id: string; versionId: string; types: unknown[]; seatTypes: string; status: string }>(Math.min(publicCacheMs(2000), 2000));
 
@@ -258,9 +259,30 @@ export class EventSeatsService {
     return { versionId: a.versionId, layout, types: a.types, seatTypes: a.seatTypes, status: a.status };
   }
 
+  /** Best available seats of a type for a public event. Holds nothing; null when no good block/section exists. */
+  async bestSeats(idOrSlug: string, ticketTypeId: string, quantity: number): Promise<string[] | null> {
+    const isUuid = /^[0-9a-f-]{36}$/i.test(idOrSlug);
+    const e = await this.prisma.event.findFirst({
+      where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: { in: [...VISIBLE] } },
+      select: { id: true, seatMapVersionId: true },
+    });
+    if (!e || !e.seatMapVersionId) throw new NotFoundException('Seated event not found');
+    const versionId = e.seatMapVersionId;
+    const [{ layout, seats, aisles }, type, rows] = await Promise.all([
+      this.layouts.get(versionId, () => this.loadLayout(versionId)),
+      this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId: e.id, eventSeats: { some: {} } }, select: { id: true } }),
+      this.prisma.eventSeat.findMany({ where: { eventId: e.id, ticketTypeId }, select: { seatKey: true, status: true } }),
+    ]);
+    if (!type) throw new NotFoundException('Seated ticket type not found');
+    const status = new Map(rows.map((r) => [r.seatKey, r.status as string]));
+    const states = seats.map((s) => ({ ...s, status: status.get(s.seatKey) ?? 'UNSOLD', ticketTypeId: status.has(s.seatKey) ? ticketTypeId : null }));
+    return bestAvailable(states, stageCentre(layout), ticketTypeId, quantity, aisles);
+  }
+
   private async loadLayout(versionId: string) {
     const { layout } = await this.maps.publishedVersion(versionId);
-    return { layout, index: new Map(expandSeats(layout).map((s, i) => [s.seatKey, i] as const)) };
+    const seats = expandSeats(layout);
+    return { layout, index: new Map(seats.map((s, i) => [s.seatKey, i] as const)), seats, aisles: aisleKeys(layout) };
   }
 
   private async loadAvailability(idOrSlug: string) {
