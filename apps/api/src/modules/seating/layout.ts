@@ -51,6 +51,8 @@ export const SEAT_SPACING = 24;
 const ATTRS: SeatAttr[] = ['RESTRICTED_VIEW', 'WHEELCHAIR'];
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+/** Optional field: absent is fine, present must pass `ok`. */
+const badOpt = (v: unknown, ok: (x: unknown) => boolean) => v !== undefined && !ok(v);
 const seatLabelOf = (s: LayoutSeat) => s.label ?? String(s.n);
 
 export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok: false; problems: string[] } {
@@ -64,6 +66,8 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
     const st = o.stage as Record<string, unknown> | null;
     if (!st || typeof st !== 'object' || !isNum(st.x) || !isNum(st.y) || !isNum(st.w) || !isNum(st.h)) {
       problems.push('Stage must have numeric x, y, w, h');
+    } else if (badOpt(st.label, (x) => typeof x === 'string')) {
+      problems.push('Stage label must be a string');
     }
   }
   if (!Array.isArray(o.sections)) {
@@ -71,7 +75,6 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
     return { ok: false, problems };
   }
   const keys = new Set<string>();
-  const seatKeys = new Set<string>();
   for (const [si, raw] of (o.sections as unknown[]).entries()) {
     const s = raw as Record<string, unknown> | null;
     if (!s || typeof s !== 'object') {
@@ -86,6 +89,10 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
     else keys.add(k);
     if (!isStr(s.name)) problems.push(`${where} needs a name`);
     if (!isNum(s.x) || !isNum(s.y)) problems.push(`${where} needs numeric x and y`);
+    if (badOpt(s.nameMy, (x) => typeof x === 'string')) problems.push(`${where}: nameMy must be a string`);
+    for (const f of ['rotation', 'curve', 'w', 'h'] as const) {
+      if (badOpt(s[f], isNum)) problems.push(`${where}: ${f} must be a number`);
+    }
     if (s.kind === 'STANDING') {
       if (!isNum(s.capacity) || !Number.isInteger(s.capacity) || s.capacity <= 0) {
         problems.push(`${where}: STANDING section needs a positive integer capacity`);
@@ -117,6 +124,9 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
             problems.push(`${where}, row "${rl}": seat needs a numeric n`);
             continue;
           }
+          if (badOpt(seat.dx, isNum) || badOpt(seat.dy, isNum)) {
+            problems.push(`${where}, row "${rl}": seat dx and dy must be numbers`);
+          }
           if (seat.label !== undefined && !isStr(seat.label)) {
             problems.push(`${where}, row "${rl}": seat label must be a non-empty string`);
             continue;
@@ -125,7 +135,6 @@ export function validateLayout(l: unknown): { ok: true; layout: Layout } | { ok:
           if (lab.includes(':')) problems.push(`${where}, row "${rl}": seat label "${lab}" must not contain ":"`);
           if (labels.has(lab)) problems.push(`${where}, row "${rl}": duplicate seat label "${lab}"`);
           labels.add(lab);
-          seatKeys.add(`${k}:${rl}:${lab}`);
           if (seat.gapBefore !== undefined && (!isNum(seat.gapBefore) || seat.gapBefore < 0)) {
             problems.push(`${where}, row "${rl}", seat "${lab}": gapBefore must be >= 0`);
           }

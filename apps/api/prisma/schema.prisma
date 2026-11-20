@@ -337,7 +337,7 @@ model Event {
   promoCodes     PromoCode[]
   dailyStats     EventDailyStat[]
   vodAssets      VodAsset[]
-  seatMapVersion SeatMapVersion?   @relation(fields: [seatMapVersionId], references: [id])
+  seatMapVersion SeatMapVersion?   @relation(fields: [seatMapVersionId], references: [id], onDelete: Restrict)
   eventSections  EventSection[]
   eventSeats     EventSeat[]
 
@@ -1035,7 +1035,7 @@ model SeatMapVersion {
   publishedAt DateTime? @map("published_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  seatMap   SeatMap @relation(fields: [seatMapId], references: [id], onDelete: Cascade)
+  seatMap   SeatMap @relation(fields: [seatMapId], references: [id], onDelete: Restrict)
   createdBy User    @relation("SeatMapVersionCreator", fields: [createdById], references: [id])
   events    Event[]
 

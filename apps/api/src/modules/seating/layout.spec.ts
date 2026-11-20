@@ -141,4 +141,15 @@ describe('validateLayout', () => {
     expect(problems(null).length).toBeGreaterThan(0);
     expect(problems(base({ rows: undefined })).join('\n')).toMatch(/rows/i);
   });
+
+  it('rejects wrongly typed optional fields', () => {
+    const cases: unknown[] = [
+      base({ curve: '0.5' as unknown as number }),
+      base({ rotation: '90' as unknown as number }),
+      base({ nameMy: 5 as unknown as string }),
+      base({ rows: [{ label: '1', seats: [{ n: 1, dx: 'a' as unknown as number }] }] }),
+      { ...base(), stage: { x: 0, y: 0, w: 1, h: 1, label: 3 } },
+    ];
+    for (const c of cases) expect(problems(c).length).toBeGreaterThan(0);
+  });
 });
