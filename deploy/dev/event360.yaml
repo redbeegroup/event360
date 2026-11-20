@@ -158,7 +158,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              value: 5ca06f318ac97875bd08b6478810e1b6a894398d
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -282,7 +282,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              value: 5ca06f318ac97875bd08b6478810e1b6a894398d
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -390,7 +390,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              value: 5ca06f318ac97875bd08b6478810e1b6a894398d
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -508,7 +508,7 @@ spec:
             - name: API_URL
               value: http://api:3000
             - name: APP_VERSION
-              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              value: 5ca06f318ac97875bd08b6478810e1b6a894398d
             - name: CREW_APP_URL
               value: https://app.dev.event360.app/crew/
           readinessProbe:
@@ -580,7 +580,7 @@ spec:
             - name: API_URL
               value: http://api:3000
             - name: APP_VERSION
-              value: d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              value: 5ca06f318ac97875bd08b6478810e1b6a894398d
             - name: SITE_URL
               value: https://dev.event360.app
             - name: APP_URL
@@ -997,7 +997,7 @@ spec:
                   memory: 1Gi
           containers:
             - name: upload
-              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              image: ghcr.io/redbeegroup/event360-api:5ca06f318ac97875bd08b6478810e1b6a894398d
               imagePullPolicy: IfNotPresent
               command:
                 - node
@@ -1060,7 +1060,7 @@ spec:
                 sizeLimit: 10Gi
           initContainers:
             - name: fetch
-              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              image: ghcr.io/redbeegroup/event360-api:5ca06f318ac97875bd08b6478810e1b6a894398d
               imagePullPolicy: IfNotPresent
               command:
                 - node
@@ -1148,7 +1148,7 @@ spec:
                   memory: 1Gi
           containers:
             - name: report
-              image: ghcr.io/redbeegroup/event360-api:d20c76ad7db4cc92cc952e15f570a0d14139ed0b
+              image: ghcr.io/redbeegroup/event360-api:5ca06f318ac97875bd08b6478810e1b6a894398d
               imagePullPolicy: IfNotPresent
               command:
                 - node
