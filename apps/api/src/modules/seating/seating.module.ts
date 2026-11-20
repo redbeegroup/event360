@@ -1,0 +1,102 @@
+import { Body, Controller, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { Allow, IsBoolean, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Auth, AuthUser, CurrentUser } from '../../common/auth';
+import { PrismaService } from '../prisma/prisma.service';
+import { SeatMapsService } from './seat-maps.service';
+
+class SeatMapDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) venueName: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) venueNameMy?: string;
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(100) city: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-90) @Max(90) latitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-180) @Max(180) longitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) mapUrl?: string;
+}
+
+class SeatMapPatchDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(200) venueName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) venueNameMy?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(1) @MaxLength(100) city?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-90) @Max(90) latitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-180) @Max(180) longitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) mapUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+/** `layout` is validated by validateLayout (returns 400 with `problems`), not by class-validator. */
+class LayoutDto {
+  @ApiProperty({ type: 'object', additionalProperties: true }) @Allow() layout: unknown;
+}
+
+@ApiTags('admin')
+@Controller('admin/seat-maps')
+@Auth('PLATFORM_ADMIN')
+export class AdminSeatMapsController {
+  constructor(private readonly maps: SeatMapsService) {}
+
+  @Get() list() {
+    return this.maps.list();
+  }
+
+  @Post() create(@Body() dto: SeatMapDto) {
+    return this.maps.create(dto);
+  }
+
+  @Get(':id') get(@Param('id', ParseUUIDPipe) id: string) {
+    return this.maps.get(id);
+  }
+
+  @Patch(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SeatMapPatchDto) {
+    return this.maps.update(id, dto);
+  }
+
+  @Get(':id/versions/:version') version(@Param('id', ParseUUIDPipe) id: string, @Param('version', ParseIntPipe) version: number) {
+    return this.maps.version(id, version);
+  }
+
+  @Put(':id/draft') draft(@Param('id', ParseUUIDPipe) id: string, @Body() dto: LayoutDto, @CurrentUser() u: AuthUser) {
+    return this.maps.saveDraft(id, dto.layout, u.sub);
+  }
+
+  @Post(':id/import') @HttpCode(200) import(@Param('id', ParseUUIDPipe) id: string, @Body() dto: LayoutDto, @CurrentUser() u: AuthUser) {
+    return this.maps.saveDraft(id, dto.layout, u.sub);
+  }
+
+  @Post(':id/publish') @HttpCode(200) publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: AuthUser) {
+    return this.maps.publish(id, u.sub);
+  }
+}
+
+@Injectable()
+class OrgMemberCheck {
+  constructor(private readonly prisma: PrismaService) {}
+  async assert(u: AuthUser) {
+    if (u.roles?.includes('PLATFORM_ADMIN')) return;
+    if (!(await this.prisma.organizationMember.count({ where: { userId: u.sub } }))) throw new ForbiddenException('Organizer access required');
+  }
+}
+
+@ApiTags('organizer')
+@Controller('seat-maps')
+@Auth()
+export class OrganizerSeatMapsController {
+  constructor(
+    private readonly maps: SeatMapsService,
+    private readonly member: OrgMemberCheck,
+  ) {}
+
+  @Get() async list(@CurrentUser() u: AuthUser) {
+    await this.member.assert(u);
+    return this.maps.listPublished();
+  }
+}
+
+@Module({
+  controllers: [AdminSeatMapsController, OrganizerSeatMapsController],
+  providers: [SeatMapsService, OrgMemberCheck],
+  exports: [SeatMapsService],
+})
+export class SeatingModule {}

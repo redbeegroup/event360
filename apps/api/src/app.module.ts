@@ -16,6 +16,7 @@ import { StreamingModule } from './modules/streaming/streaming.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OrgToolsModule } from './modules/orgtools/orgtools.module';
 import { OpsModule } from './modules/ops/ops.module';
+import { SeatingModule } from './modules/seating/seating.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
@@ -38,6 +39,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     PaymentsModule,
     OrgToolsModule,
     OpsModule,
+    SeatingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
