@@ -84,6 +84,7 @@ export class TicketTypeDto {
   @ApiPropertyOptional({ enum: DeliveryMode }) @IsOptional() @IsEnum(DeliveryMode) deliveryMode?: DeliveryMode;
   @ApiPropertyOptional() @IsOptional() @IsDateString() salesStartAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() salesEndAt?: string;
+  @ApiPropertyOptional({ description: 'Seat-map colour, #rrggbb' }) @IsOptional() @IsString() @Matches(/^#[0-9a-fA-F]{6}$/) color?: string;
 }
 
 export class UpdateTicketTypeDto extends PartialType(TicketTypeDto) {}

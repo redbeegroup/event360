@@ -24,13 +24,19 @@ const REVIEWED_FIELDS: (keyof UpdateEventDto)[] = [
   'dressCode', 'dressCodeMy', 'languages', 'languagesMy', 'parking', 'parkingMy', 'accessibility', 'accessibilityMy',
   'whatToBring', 'whatToBringMy', 'terms', 'termsMy', 'refundPolicy', 'refundPolicyMy', 'ageMin',
 ];
-const EDITABLE: EventStatus[] = ['DRAFT', 'SUBMITTED', 'REJECTED', 'PUBLISHED'];
+export const EDITABLE_STATUSES: EventStatus[] = ['DRAFT', 'SUBMITTED', 'REJECTED', 'PUBLISHED'];
+const EDITABLE = EDITABLE_STATUSES;
+
+/** True when editing `changed` fields of a PUBLISHED event by an unverified organizer must send it back to review. */
+export function needsReReview(status: EventStatus, orgVerified: boolean, changed: readonly string[]): boolean {
+  return status === 'PUBLISHED' && !orgVerified && (REVIEWED_FIELDS as readonly string[]).some((f) => changed.includes(f));
+}
 
 const cardInclude = {
   category: { select: { id: true, slug: true, nameEn: true, nameMy: true, parent: { select: { slug: true, nameEn: true, nameMy: true } } } },
   venue: true,
   organization: { select: { id: true, name: true, slug: true, kycStatus: true, logoUrl: true } },
-  ticketTypes: { orderBy: { priceMmk: 'asc' as const } },
+  ticketTypes: { orderBy: { priceMmk: 'asc' as const }, include: { _count: { select: { eventSeats: true } } } },
 } satisfies Prisma.EventInclude;
 type EventWithRelations = Prisma.EventGetPayload<{ include: typeof cardInclude }>;
 
@@ -73,6 +79,8 @@ export class EventsService implements OnModuleDestroy {
       deliveryMode: t.deliveryMode,
       salesStartAt: t.salesStartAt,
       salesEndAt: t.salesEndAt,
+      color: t.color,
+      seated: t._count.eventSeats > 0,
       ...(opts.full ? { sold: t.sold } : {}),
     }));
     return {
@@ -95,6 +103,7 @@ export class EventsService implements OnModuleDestroy {
       publishedAt: e.publishedAt,
       category: e.category,
       venue: e.venue,
+      seating: e.seatMapVersionId ? { seatMapVersionId: e.seatMapVersionId, venueName: e.venue?.name ?? null } : null,
       organization: { ...e.organization, logoUrl: this.media.url(e.organization.logoUrl) },
       ...(opts.full ? this.details(e) : {}),
       ticketTypes: tickets,
@@ -273,8 +282,11 @@ export class EventsService implements OnModuleDestroy {
     const endsAt = dto.endsAt ? new Date(dto.endsAt) : current.endsAt;
     this.validateDates(startsAt, endsAt);
 
-    const needsReview =
-      current.status === 'PUBLISHED' && !orgVerified && REVIEWED_FIELDS.some((f) => (dto as Record<string, unknown>)[f] !== undefined);
+    const needsReview = needsReReview(
+      current.status,
+      orgVerified,
+      REVIEWED_FIELDS.filter((f) => (dto as Record<string, unknown>)[f] !== undefined),
+    );
     const { venue, coverImageKey, categoryId, startsAt: _s, endsAt: _e, ...rest } = dto;
     const data: Prisma.EventUpdateInput = {
       ...rest,
@@ -326,6 +338,7 @@ export class EventsService implements OnModuleDestroy {
         deliveryMode: dto.deliveryMode ?? 'IN_PERSON',
         salesStartAt: dto.salesStartAt ? new Date(dto.salesStartAt) : null,
         salesEndAt: dto.salesEndAt ? new Date(dto.salesEndAt) : null,
+        color: dto.color ?? null,
       },
     });
     await this.recomputeIsFree(eventId);
@@ -349,6 +362,7 @@ export class EventsService implements OnModuleDestroy {
         deliveryMode: dto.deliveryMode,
         salesStartAt: dto.salesStartAt !== undefined ? new Date(dto.salesStartAt) : undefined,
         salesEndAt: dto.salesEndAt !== undefined ? new Date(dto.salesEndAt) : undefined,
+        color: dto.color,
       },
     });
     await this.recomputeIsFree(eventId);
@@ -360,6 +374,7 @@ export class EventsService implements OnModuleDestroy {
     const t = await this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId } });
     if (!t) throw new NotFoundException('Ticket type not found');
     if (t.sold + t.held > 0) throw new ConflictException('Tickets were already issued for this type');
+    if (await this.prisma.eventSeat.count({ where: { ticketTypeId } })) throw new ConflictException('Seats are assigned to this type; unassign them first');
     await this.prisma.ticketType.delete({ where: { id: ticketTypeId } });
     await this.recomputeIsFree(eventId);
     return { deleted: true };
