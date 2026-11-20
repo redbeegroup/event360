@@ -539,7 +539,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: site
-          image: ghcr.io/redbeegroup/event360-site:9125373a810381c8fd9f9a25fa2b8ebc87ae362a
+          image: ghcr.io/redbeegroup/event360-site:4ddf4a6873dfd9c7110bf3276e349aab773fefdd
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
