@@ -87,7 +87,7 @@ Only do this for real data loss. It replaces the whole environment schema with t
    ```bash
    kubectl -n event360-prod scale deployment api worker realtime --replicas=0
    ```
-2. **Download the dump** you want from SeaweedFS (`event360/prod/backups/daily/<date>.dump`) to a machine that can reach PostgreSQL at 172.16.16.39:5433, with PostgreSQL 16 client tools installed.
+2. **Download the dump** you want from SeaweedFS (`event360/prod/backups/daily/<date>.dump`) to a machine that can reach PostgreSQL at 172.16.16.39:5433, with PostgreSQL 18 client tools installed (the server is 18; older tools refuse to dump it).
 3. **Keep the current state, just in case:**
    ```bash
    pg_dump "postgresql://dbuser_event360@172.16.16.39:5433/event360" -n prod -Fc -f before-restore.dump

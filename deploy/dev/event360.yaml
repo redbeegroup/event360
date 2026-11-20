@@ -970,7 +970,7 @@ spec:
                 sizeLimit: 10Gi
           initContainers:
             - name: dump
-              image: postgres:16-alpine
+              image: postgres:18-alpine
               command:
                 - sh
                 - '-c'
@@ -1085,7 +1085,7 @@ spec:
                 limits:
                   memory: 512Mi
             - name: restore
-              image: postgres:16-alpine
+              image: postgres:18-alpine
               command:
                 - sh
                 - '-c'

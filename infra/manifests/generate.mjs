@@ -149,7 +149,7 @@ const RESTORE_SH = [
 ].join('\n');
 
 function backupJobs({ ns, apiImage, pullPolicy, envFrom, config, backup }) {
-  const pgImage = backup.postgresImage ?? 'postgres:16-alpine';
+  const pgImage = backup.postgresImage ?? 'postgres:18-alpine'; // must match the server's major version (18)
   const secure = { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } };
   const work = [{ name: 'work', mountPath: '/work' }];
   const node = (name, args) => ({
