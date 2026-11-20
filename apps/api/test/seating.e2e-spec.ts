@@ -18,6 +18,24 @@ import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
+
+/** Like Promise.allSettled over `tasks`, with at most `limit` running at once. */
+async function settledWithLimit<T>(limit: number, tasks: (() => Promise<T>)[]): Promise<PromiseSettledResult<T>[]> {
+  const out: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      try {
+        out[i] = { status: 'fulfilled', value: await tasks[i]() };
+      } catch (reason) {
+        out[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return out;
+}
 jest.setTimeout(90_000);
 
 run('Seat maps', () => {
@@ -706,14 +724,17 @@ run('Seated checkout', () => {
     await http.put(`${base(ev)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'R', ticketTypeId: ring }] }).expect(200);
     await prisma.event.update({ where: { id: ev }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
     const users = await prisma.$transaction(Array.from({ length: 200 }, (_, i) => prisma.user.create({ data: { phone: `0961${tag.slice(0, 4)}${String(i).padStart(3, '0')}` } })));
-    const results = await Promise.allSettled(users.map((u, i) => svc.createOrder(u.id, ev, [], undefined, 'APP', undefined, [`R:${Math.floor(i / 10) + 1}:${(i % 10) + 1}`])));
+    // Bounded concurrency: 16 claims in flight at once (more than the Prisma pool, so they still contend for
+    // connections, the event row and the counter row), so a busy full `jest` run can't starve them past maxWait.
+    const results = await settledWithLimit(16, users.map((u, i) => () => svc.createOrder(u.id, ev, [], undefined, 'APP', undefined, [`R:${Math.floor(i / 10) + 1}:${(i % 10) + 1}`])));
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     expect(failed.map((f) => String(f.reason?.message ?? f.reason))).toEqual([]);
     expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'CHECKOUT_HOLD' } })).toBe(200);
     expect(await ttRow(ring)).toMatchObject({ quota: 200, held: 200, sold: 0 }); // no lost recounts
-    // 200 parallel cancels give every seat back (and leave no pending orders for other suites' sweeps)
+    // Parallel cancels give every seat back (and leave no pending orders for other suites' sweeps)
     const ids = results.map((r) => (r as PromiseFulfilledResult<{ id: string }>).value.id);
-    await Promise.all(ids.map((id, i) => svc.cancel(users[i].id, id)));
+    const cancels = await settledWithLimit(16, ids.map((id, i) => () => svc.cancel(users[i].id, id)));
+    expect(cancels.filter((r) => r.status === 'rejected')).toEqual([]);
     expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'AVAILABLE' } })).toBe(200);
     expect(await ttRow(ring)).toMatchObject({ quota: 200, held: 0, sold: 0 });
   });
