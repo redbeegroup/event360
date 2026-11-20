@@ -24,6 +24,9 @@ const PART_OF = 'event360';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 
+// Database connections per pod. PostgreSQL allows 300 in total; prod uses 2 × (15 + 8 + 5) = 56, dev 28.
+const POOL = { api: 15, worker: 8, realtime: 5 };
+
 const labels = (name) => ({ 'app.kubernetes.io/name': name, 'app.kubernetes.io/part-of': PART_OF });
 
 function meta(name, ns, extra = {}) {
@@ -211,7 +214,9 @@ export function buildManifests(envName, config) {
   const envFrom = [{ secretRef: { name: SECRET } }];
   const backendProbes = {
     livenessProbe: { httpGet: { path: '/healthz', port: 'http' }, periodSeconds: 10, failureThreshold: 3 },
-    readinessProbe: { httpGet: { path: '/readyz', port: 'http' }, periodSeconds: 5, failureThreshold: 3 },
+    // Readiness checks the database; give it slack so a busy pod isn't taken out of service (the only
+    // pod on dev) just because its connection pool is momentarily full
+    readinessProbe: { httpGet: { path: '/readyz', port: 'http' }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 6 },
   };
   const small = { requests: { cpu: '100m', memory: '256Mi' }, limits: { memory: '512Mi' } };
   const medium = { requests: { cpu: '200m', memory: '384Mi' }, limits: { memory: '768Mi' } };
@@ -284,7 +289,7 @@ export function buildManifests(envName, config) {
       pullPolicy,
       config,
       replicas: env.replicas.api,
-      env: [...backendEnv(env, config), { name: 'APP_ROLE', value: 'api' }],
+      env: [...backendEnv(env, config), { name: 'APP_ROLE', value: 'api' }, { name: 'DB_CONNECTION_LIMIT', value: String(POOL.api) }],
       envFrom,
       // Starts transcoder Jobs through the Kubernetes API (Role below: jobs in this namespace only)
       serviceAccountName: 'event360-api',
@@ -316,7 +321,7 @@ export function buildManifests(envName, config) {
         pullPolicy,
         config,
         replicas: env.replicas[role],
-        env: [...backendEnv(env, config), { name: 'APP_ROLE', value: role }],
+        env: [...backendEnv(env, config), { name: 'APP_ROLE', value: role }, { name: 'DB_CONNECTION_LIMIT', value: String(POOL[role]) }],
         envFrom,
         runAsUser: 10001,
         probes: backendProbes,

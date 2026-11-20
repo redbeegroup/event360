@@ -69,8 +69,8 @@ run('Operations', () => {
   });
 
   it('API server errors and app reports are grouped; resolving reopens on recurrence', async () => {
-    await http.get('/v1/boom-test').expect(500);
-    await http.get('/v1/boom-test').expect(500);
+    // Two at once: the second must count, not collide with the first creating the group
+    await Promise.all([http.get('/v1/boom-test').expect(500), http.get('/v1/boom-test').expect(500)]);
     await new Promise((r) => setTimeout(r, 300));
     const g = await prisma.errorGroup.findFirstOrThrow({ where: { message: { contains: marker } } });
     expect(g).toMatchObject({ source: 'api', count: 2, path: 'GET /v1/boom-test' });

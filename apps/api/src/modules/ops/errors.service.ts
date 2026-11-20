@@ -59,18 +59,26 @@ export class ErrorsService {
         path: r.path?.slice(0, 300) ?? null,
         stack: r.stack?.slice(0, 8000) ?? null,
       };
+      const bump = async (wasResolved: boolean) => {
+        await this.prisma.errorGroup.update({ where: { fingerprint: fp }, data: { ...data, count: { increment: 1 }, resolvedAt: null } });
+        if (wasResolved) this.queueAlert(`${r.source}: ${r.message} (came back after being marked fixed)`);
+      };
       if (existing) {
-        const reopened = !!existing.resolvedAt;
-        await this.prisma.errorGroup.update({ where: { id: existing.id }, data: { ...data, count: { increment: 1 }, resolvedAt: null } });
-        if (reopened) this.queueAlert(`${r.source}: ${r.message} (came back after being marked fixed)`);
+        await bump(!!existing.resolvedAt);
       } else {
         // Client reports come from an open endpoint: cap how many new groups they can create
         if (r.source !== 'api') {
           const recent = await this.prisma.errorGroup.count({ where: { source: { not: 'api' }, firstSeen: { gt: new Date(now.getTime() - 3600e3) } } });
           if (recent >= MAX_NEW_CLIENT_GROUPS_PER_HOUR) return;
         }
-        await this.prisma.errorGroup.create({ data: { ...data, fingerprint: fp, source: r.source.slice(0, 40), message: r.message.slice(0, 1000), firstSeen: now } });
-        this.queueAlert(`${r.source}: ${r.message}`);
+        try {
+          await this.prisma.errorGroup.create({ data: { ...data, fingerprint: fp, source: r.source.slice(0, 40), message: r.message.slice(0, 1000), firstSeen: now } });
+          this.queueAlert(`${r.source}: ${r.message}`);
+        } catch (e) {
+          // The same new error arrived twice at once: the other request created the group, so count this one
+          if ((e as { code?: string }).code !== 'P2002') throw e;
+          await bump(false);
+        }
       }
     } catch (e) {
       this.logger.warn(`could not record error: ${(e as Error).message}`);

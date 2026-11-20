@@ -8,6 +8,7 @@ import { randomBytes, randomInt } from 'crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/modules/auth/auth.service';
+import { EventsService } from '../src/modules/events/events.service';
 import { NotifyService } from '../src/modules/notifications/notify.service';
 import { PaymentsService } from '../src/modules/payments/payments.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
@@ -194,6 +195,7 @@ run('Organizer tools', () => {
   it('dashboard: totals, daily series with page views, conversion', async () => {
     await http.get(`/v1/events/${slug}`).expect(200);
     await http.get(`/v1/events/${slug}`).expect(200);
+    await app.get(EventsService).flushViews(); // views are written in batches
     const d = await http.get(`${base()}/dashboard`).set(O).expect(200);
     expect(d.body.totals.views).toBeGreaterThanOrEqual(2);
     expect(d.body.totals.orders).toBeGreaterThanOrEqual(4);

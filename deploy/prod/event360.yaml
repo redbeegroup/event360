@@ -195,6 +195,8 @@ spec:
               value: ''
             - name: APP_ROLE
               value: api
+            - name: DB_CONNECTION_LIMIT
+              value: '15'
           envFrom:
             - secretRef:
                 name: event360-secrets
@@ -209,7 +211,8 @@ spec:
               path: /readyz
               port: http
             periodSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 3
+            failureThreshold: 6
           resources:
             requests:
               cpu: 200m
@@ -319,6 +322,8 @@ spec:
               value: ''
             - name: APP_ROLE
               value: realtime
+            - name: DB_CONNECTION_LIMIT
+              value: '5'
           envFrom:
             - secretRef:
                 name: event360-secrets
@@ -333,7 +338,8 @@ spec:
               path: /readyz
               port: http
             periodSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 3
+            failureThreshold: 6
           resources:
             requests:
               cpu: 100m
@@ -427,6 +433,8 @@ spec:
               value: ''
             - name: APP_ROLE
               value: worker
+            - name: DB_CONNECTION_LIMIT
+              value: '8'
           envFrom:
             - secretRef:
                 name: event360-secrets
@@ -441,7 +449,8 @@ spec:
               path: /readyz
               port: http
             periodSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 3
+            failureThreshold: 6
           resources:
             requests:
               cpu: 200m

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import type { Event, EventStatus, Prisma } from '@prisma/client';
 import { makeSlug, mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
@@ -51,7 +51,7 @@ const PRACTICAL = [
 ] as const;
 
 @Injectable()
-export class EventsService {
+export class EventsService implements OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
@@ -162,12 +162,39 @@ export class EventsService {
     return this.toDto(e, { full: true });
   }
 
-  /** Daily page-view counter (Myanmar date) for the organizer dashboard. */
-  private async countView(eventId: string) {
+  /**
+   * Daily page-view counter (Myanmar date) for the organizer dashboard. Views are added up in memory and
+   * written every 10 s: one write per event instead of one per page view, so a popular event's
+   * counter row doesn't become a queue of locked updates during an on-sale rush.
+   */
+  private pendingViews = new Map<string, number>();
+  private viewTimer?: NodeJS.Timeout;
+
+  private countView(eventId: string) {
     const day = new Date(Date.now() + 6.5 * 3600e3).toISOString().slice(0, 10);
-    await this.prisma.$executeRaw`
-      INSERT INTO event_daily_stats (event_id, day, views) VALUES (${eventId}::uuid, ${day}::date, 1)
-      ON CONFLICT (event_id, day) DO UPDATE SET views = event_daily_stats.views + 1`.catch(() => undefined);
+    const key = `${eventId}|${day}`;
+    this.pendingViews.set(key, (this.pendingViews.get(key) ?? 0) + 1);
+    if (!this.viewTimer) {
+      this.viewTimer = setTimeout(() => void this.flushViews(), 10_000);
+      this.viewTimer.unref();
+    }
+  }
+
+  async flushViews() {
+    if (this.viewTimer) clearTimeout(this.viewTimer);
+    this.viewTimer = undefined;
+    const batch = [...this.pendingViews];
+    this.pendingViews.clear();
+    for (const [key, n] of batch) {
+      const [eventId, day] = key.split('|');
+      await this.prisma.$executeRaw`
+        INSERT INTO event_daily_stats (event_id, day, views) VALUES (${eventId}::uuid, ${day}::date, ${n})
+        ON CONFLICT (event_id, day) DO UPDATE SET views = event_daily_stats.views + ${n}`.catch(() => undefined);
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.flushViews();
   }
 
   // ───────────── Organizer ─────────────
