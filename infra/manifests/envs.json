@@ -5,7 +5,7 @@
     "dev": {
       "namespace": "event360-dev",
       "domain": "dev.event360.app",
-      "imageTag": "0873c5dbc4903d9070c6460d77ec30e53aedd504",
+      "imageTag": "13731f9dad82dee16c406c851885258c50a230a3",
       "otpDevEcho": true,
       "paymentsMock": true,
       "replicas": {
