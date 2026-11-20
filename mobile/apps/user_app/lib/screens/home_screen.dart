@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'notifications_screen.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
@@ -31,7 +32,7 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: refresh,
         child: CustomScrollView(slivers: [
-          SliverAppBar.large(title: Text(t.appTitle, style: const TextStyle(fontWeight: FontWeight.w700))),
+          SliverAppBar.large(title: Text(t.appTitle, style: const TextStyle(fontWeight: FontWeight.w700)), actions: const [InboxBell()]),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

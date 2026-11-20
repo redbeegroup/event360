@@ -396,4 +396,14 @@ class L10nEn extends L10n {
   String orderSummary(String qty, String name) {
     return '$qty × $name';
   }
+
+  @override
+  String get notifications => 'Notifications';
+
+  @override
+  String get markAllRead => 'Mark all read';
+
+  @override
+  String get noNotifications =>
+      'No notifications yet. Ticket updates, reminders and organizer announcements will appear here.';
 }

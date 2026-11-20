@@ -16,6 +16,7 @@ import {
   cancelEventAction,
   deleteTicketTypeAction,
   saveListAction,
+  sendAnnouncementAction,
   submitEventAction,
   updateEventAction,
 } from '../../../actions';
@@ -40,6 +41,12 @@ interface Attendee {
   holder: { displayName: string | null; phone: string | null };
 }
 
+interface Announcements {
+  items: { id: string; title: string; titleMy: string | null; body: string; recipients: number; createdAt: string }[];
+  ticketHolders: number;
+  remainingToday: number;
+}
+
 interface Sales {
   ticketTypes: { id: string; name: string; priceMmk: number; quota: number; sold: number; held: number; revenueMmk: number }[];
   paidOrders: number;
@@ -53,7 +60,7 @@ interface Sales {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming, sales] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -62,6 +69,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<CrewCode[]>(`/organizations/${orgId}/events/${id}/crew-codes`).catch(() => null), // null = not an editor
     api<StreamingOverview>(`/organizations/${orgId}/events/${id}/streaming`).catch(() => null),
     api<Sales>(`/organizations/${orgId}/events/${id}/sales`).catch(() => null),
+    api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
   ]);
   const hasPaid = e.ticketTypes.some((tt) => tt.priceMmk > 0);
   const crewAppUrl = process.env.CREW_APP_URL ?? '';
@@ -136,6 +144,42 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
           </>
         )}
       </div>
+
+      {ann && e.publishedAt && !['CANCELLED', 'COMPLETED'].includes(e.status) && (
+        <>
+          <h2>{tr.announceTitle}</h2>
+          <div className="card">
+            <p className="muted">{tr.announceHint}</p>
+            <p>{tr.announceRecipients}: <strong>{ann.ticketHolders}</strong> · {tr.announceRemaining}: <strong>{ann.remainingToday}</strong></p>
+            {ann.remainingToday > 0 && ann.ticketHolders > 0 && codes !== null && (
+              <ActionForm action={sendAnnouncementAction} submitLabel={tr.announceSend} confirm={tr.announceConfirm} okText={{ announced: tr.announceSent }}>
+                <input type="hidden" name="orgId" value={orgId} />
+                <input type="hidden" name="eventId" value={id} />
+                <div className="grid">
+                  <div className="field"><label>{tr.announceHeading} ({tr.en})</label><input name="title" required minLength={3} maxLength={80} /></div>
+                  <div className="field"><label>{tr.announceHeading} ({tr.myLabel})</label><input name="titleMy" lang="my" maxLength={80} /></div>
+                </div>
+                <div className="field"><label>{tr.announceBody} ({tr.en})</label><textarea name="body" required minLength={3} maxLength={500} rows={3} /></div>
+                <div className="field"><label>{tr.announceBody} ({tr.myLabel})</label><textarea name="bodyMy" lang="my" maxLength={500} rows={3} /></div>
+              </ActionForm>
+            )}
+            {ann.items.length > 0 && (
+              <table style={{ marginTop: 12 }}>
+                <thead><tr><th>{tr.sentAt}</th><th>{tr.announceHeading}</th><th>{tr.announceRecipients}</th></tr></thead>
+                <tbody>
+                  {ann.items.map((a) => (
+                    <tr key={a.id}>
+                      <td>{fmtDate(a.createdAt, tr.lang)}</td>
+                      <td><strong>{pick(tr.lang, a.title, a.titleMy)}</strong><div className="muted" style={{ fontSize: 13 }}>{a.body}</div></td>
+                      <td>{a.recipients}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
 
       {sales && hasPaid && (
         <>

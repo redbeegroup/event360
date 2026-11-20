@@ -64,7 +64,7 @@ export class SmsService {
   }
 
   /** Sends one SMS; logs the result (without the text). Throws SmsError on failure. */
-  async send(phone: string, message: string, purpose: 'otp' | 'test', c?: SmsConfig) {
+  async send(phone: string, message: string, purpose: 'otp' | 'test' | 'notify', c?: SmsConfig) {
     const cfg = c ?? (await this.settings.smsConfig());
     if (!cfg) throw new SmsError('SMS is not configured');
     const to = toSmsPohNumber(phone);
@@ -94,6 +94,11 @@ export class SmsService {
     if (!cfg) return null;
     const b = await this.call(cfg, '/account/get-balance', { method: 'GET' });
     return { balance: Number(b?.balance ?? 0), currency: String(b?.currency ?? 'MMK') };
+  }
+
+  /** Decrypted SMS settings (null when not configured). */
+  settingsConfig() {
+    return this.settings.smsConfig();
   }
 
   /** Sends a login code using the admin-defined template. */

@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import type { PaymentProviderCode, Prisma } from '@prisma/client';
 import { createHmac } from 'crypto';
 import { mmk } from '../../common/util';
+import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { commission, pickRule } from './fee';
@@ -44,6 +45,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     settings: PaymentSettingsService,
+    private readonly notify: NotifyService,
   ) {
     const secret = createHmac('sha256', config.get<string>('JWT_ACCESS_SECRET') ?? 'dev-only').update('mock-pay').digest('hex');
     this.mock = new MockProvider(prisma, config.get('PAYMENTS_MOCK') === 'true', secret, this.apiBase);
@@ -157,6 +159,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (!paid) await this.issueTickets(tx, order.id, userId, lines.map(({ tt, quantity }) => ({ ticketTypeId: tt.id, quantity })));
       return order.id;
     });
+    if (!paid) void this.notify.ticketConfirmed(orderId);
     return this.orderView(userId, orderId);
   }
 
@@ -308,7 +311,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
    * If the hold already expired, take free seats if there are any; otherwise flag the order for an admin refund.
    */
   async settle(paymentId: string, amountMmk?: bigint) {
-    return this.prisma.$transaction(async (tx) => {
+    const issuedFor = await this.prisma.$transaction(async (tx) => {
       const pay = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!pay?.orderId) return;
       const won = await tx.payment.updateMany({
@@ -358,7 +361,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         { account: ACC.payable(order.event.organizationId), credit: order.totalMmk - order.commissionMmk },
         { account: ACC.commission, credit: order.commissionMmk },
       ]);
+      return issued ? order.id : null;
     });
+    if (issuedFor) void this.notify.ticketConfirmed(issuedFor);
   }
 
   // ───────────── background: holds + reconciliation ─────────────
@@ -427,6 +432,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       return ids;
     });
     for (const id of refundIds) await this.sendRefund(id);
+    void this.notify.orderRefunded(orderId);
     return this.adminOrder(orderId);
   }
 

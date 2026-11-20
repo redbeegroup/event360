@@ -81,7 +81,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - run: flutter pub get
-      - run: flutter build apk --debug --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
+      # Push: Firebase client config from repository variables (Settings → Secrets and variables → Actions → Variables).
+      # Missing variables → the app is built without push (the in-app inbox still works).
+      - run: >-
+          flutter build apk --debug --dart-define=API_BASE_URL=${{ matrix.api }} --dart-define=WEB_APP_URL=${{ matrix.web }}
+          --dart-define=FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }} --dart-define=FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }}
+          --dart-define=FIREBASE_SENDER_ID=${{ vars.FIREBASE_SENDER_ID }}
+          --dart-define=FIREBASE_APP_ID=${{ matrix.env == 'dev' && vars.FIREBASE_ANDROID_APP_ID_DEV || vars.FIREBASE_ANDROID_APP_ID }}
         env:
           E360_APP_ID_SUFFIX: ${{ matrix.suffix }}
           E360_APP_LABEL: ${{ matrix.label }}

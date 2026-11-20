@@ -397,4 +397,14 @@ class L10nMy extends L10n {
   String orderSummary(String qty, String name) {
     return '$qty × $name';
   }
+
+  @override
+  String get notifications => 'အသိပေးချက်များ';
+
+  @override
+  String get markAllRead => 'အားလုံး ဖတ်ပြီး';
+
+  @override
+  String get noNotifications =>
+      'အသိပေးချက် မရှိသေးပါ။ လက်မှတ်အခြေအနေ၊ သတိပေးချက်နှင့် စီစဉ်သူ ကြေညာချက်များ ဤနေရာတွင် ပေါ်ပါမည်။';
 }

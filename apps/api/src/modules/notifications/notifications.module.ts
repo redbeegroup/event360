@@ -3,11 +3,14 @@ import { ApiPropertyOptional, ApiProperty, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { normalizeMyanmarPhone } from '../auth/phone';
-import { PaymentSettingsService, SettingsService } from './settings.service';
+import { AdminPushController, AnnouncementsController, InboxController } from './inbox.controller';
+import { NotifyService } from './notify.service';
+import { PaymentSettingsService, PushSettingsService, SettingsService } from './settings.service';
 import { SmsError, SmsService } from './sms.service';
 
 export { SmsService } from './sms.service';
-export { SettingsService, PaymentSettingsService } from './settings.service';
+export { SettingsService, PaymentSettingsService, PushSettingsService } from './settings.service';
+export { NotifyService } from './notify.service';
 
 class SmsSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) apiKey?: string;
@@ -80,8 +83,8 @@ export class AdminSettingsController {
 
 @Global()
 @Module({
-  controllers: [AdminSettingsController],
-  providers: [SettingsService, SmsService, PaymentSettingsService],
-  exports: [SettingsService, SmsService, PaymentSettingsService],
+  controllers: [AdminSettingsController, InboxController, AdminPushController, AnnouncementsController],
+  providers: [SettingsService, SmsService, PaymentSettingsService, PushSettingsService, NotifyService],
+  exports: [SettingsService, SmsService, PaymentSettingsService, PushSettingsService, NotifyService],
 })
 export class NotificationsModule {}

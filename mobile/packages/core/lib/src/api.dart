@@ -4,6 +4,7 @@ import 'app_config.dart';
 import 'crew.dart';
 import 'streams.dart';
 import 'models.dart';
+import 'notifications.dart';
 import 'orders.dart';
 import 'token_store.dart';
 
@@ -151,6 +152,22 @@ class Event360Api {
         () => _dio.post('/events/$eventId/registrations', data: {'ticketTypeId': ticketTypeId, 'quantity': quantity}),
         (d) => ((d as Map<String, dynamic>)['ticketIds'] as List).cast<String>(),
       );
+
+  // ───── Notifications ─────
+
+  Future<Inbox> notifications({DateTime? before, int limit = 30}) => _call(
+        () => _dio.get('/me/notifications', queryParameters: {'limit': limit, if (before != null) 'before': before.toIso8601String()}),
+        (d) => Inbox.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// ids empty → mark everything read.
+  Future<void> markNotificationsRead([List<String> ids = const []]) =>
+      _call(() => _dio.post('/me/notifications/read', data: {if (ids.isNotEmpty) 'ids': ids}), (_) {});
+
+  Future<void> registerDevice(String pushToken, String platform, {String appId = 'user_app'}) =>
+      _call(() => _dio.post('/me/devices', data: {'pushToken': pushToken, 'platform': platform, 'appId': appId}), (_) {});
+
+  Future<void> removeDevice(String pushToken) => _call(() => _dio.post('/me/devices/remove', data: {'pushToken': pushToken}), (_) {});
 
   // ───── Paid checkout ─────
 

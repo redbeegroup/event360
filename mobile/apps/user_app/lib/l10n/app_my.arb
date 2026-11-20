@@ -118,5 +118,8 @@
   "pendingPayments": "ငွေပေးရန် ကျန်",
   "ticketRefunded": "ဤလက်မှတ်ကို ငွေပြန်အမ်းပြီးပါပြီ။",
   "choosePayment": "ငွေပေးနည်း ရွေးပါ",
-  "orderSummary": "{qty} × {name}"
+  "orderSummary": "{qty} × {name}",
+  "notifications": "အသိပေးချက်များ",
+  "markAllRead": "အားလုံး ဖတ်ပြီး",
+  "noNotifications": "အသိပေးချက် မရှိသေးပါ။ လက်မှတ်အခြေအနေ၊ သတိပေးချက်နှင့် စီစဉ်သူ ကြေညာချက်များ ဤနေရာတွင် ပေါ်ပါမည်။"
 }

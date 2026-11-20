@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import type { Event, EventStatus, Prisma } from '@prisma/client';
 import { makeSlug, mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
+import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateEventDto,
@@ -54,6 +55,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: MediaService,
+    private readonly notify: NotifyService,
   ) {}
 
   // ───────────── Serialization ─────────────
@@ -234,7 +236,17 @@ export class EventsService {
     if (venue) {
       data.venue = current.venueId ? { update: venue } : { create: venue };
     }
+    const before = current.venueId ? await this.prisma.venue.findUnique({ where: { id: current.venueId } }) : null;
     const e = await this.prisma.event.update({ where: { id }, data, include: fullInclude });
+    // Ticket holders hear about time or place changes of a live listing (push + inbox + SMS)
+    const place = (v: { name?: string | null; address?: string | null; city?: string | null } | null | undefined) => [v?.name, v?.address, v?.city].map((x) => x ?? '').join('|');
+    const moved = startsAt.getTime() !== current.startsAt.getTime() || endsAt.getTime() !== current.endsAt.getTime();
+    const relocated = !!venue && place(before) !== place(e.venue);
+    // (also while a published event is back in review: its ticket holders still need to know)
+    if (current.publishedAt && (moved || relocated)) {
+      void this.notify.eventChanged({ id, title: e.title, titleMy: e.titleMy, startsAt: e.startsAt, venue: e.venue?.name ?? null });
+      if (moved) await this.prisma.event.update({ where: { id }, data: { reminderSentAt: null } }); // remind again for the new date
+    }
     return { ...this.toDto(e, { full: true }), reReviewRequired: needsReview };
   }
 
@@ -327,8 +339,8 @@ export class EventsService {
     const e = await this.prisma.event.findFirst({ where: { id, organizationId } });
     if (!e) throw new NotFoundException('Event not found');
     if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException(`Event is already ${e.status}`);
-    // Ticket holders are notified in a later phase (notifications module).
     const updated = await this.prisma.event.update({ where: { id }, data: { status: 'CANCELLED' }, include: fullInclude });
+    if (['PUBLISHED', 'ONGOING'].includes(e.status)) void this.notify.eventCancelled({ id, title: e.title, titleMy: e.titleMy, startsAt: e.startsAt });
     return this.toDto(updated, { full: true });
   }
 

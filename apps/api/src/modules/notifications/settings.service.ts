@@ -272,3 +272,94 @@ export class PaymentSettingsService {
     return { key, mode: s.mode ?? 'sandbox', enabled: !!s.enabled, values };
   }
 }
+
+// ───────────── push (Firebase Cloud Messaging) ─────────────
+
+interface StoredPush {
+  projectId?: string;
+  clientEmail?: string;
+  privateKeySealed?: string;
+  enabled?: boolean;
+}
+
+export interface PushConfig {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+  enabled: boolean;
+}
+
+@Injectable()
+export class PushSettingsService {
+  private box: SecretBox | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService,
+  ) {
+    try {
+      this.box = new SecretBox(config.get<string>('SETTINGS_KEY'));
+    } catch {
+      this.box = null;
+    }
+  }
+
+  private async stored(): Promise<StoredPush> {
+    const row = await this.prisma.platformSetting.findUnique({ where: { key: 'push' } });
+    return (row?.value as unknown as StoredPush) ?? {};
+  }
+
+  async view() {
+    const s = await this.stored();
+    return {
+      projectId: s.projectId ?? '',
+      clientEmail: s.clientEmail ?? '',
+      privateKeySet: !!s.privateKeySealed,
+      enabled: !!s.enabled,
+      canStoreSecrets: !!this.box,
+    };
+  }
+
+  /** serviceAccountJson: the key file downloaded from Firebase (only project_id, client_email, private_key are kept). */
+  async update(input: { serviceAccountJson?: string; enabled?: boolean }, actorId: string) {
+    if (!this.box) throw new Error('SETTINGS_KEY is not configured on the server');
+    const cur = await this.stored();
+    const next: StoredPush = { ...cur, enabled: input.enabled ?? cur.enabled ?? false };
+    if (input.serviceAccountJson?.trim()) {
+      let j: { type?: string; project_id?: string; client_email?: string; private_key?: string };
+      try {
+        j = JSON.parse(input.serviceAccountJson);
+      } catch {
+        throw new Error('The service account key must be the JSON file downloaded from Firebase');
+      }
+      if (j.type !== 'service_account' || !j.project_id || !j.client_email || !j.private_key?.includes('PRIVATE KEY')) {
+        throw new Error('This is not a Firebase service account key (needs type, project_id, client_email, private_key)');
+      }
+      next.projectId = j.project_id;
+      next.clientEmail = j.client_email;
+      next.privateKeySealed = this.box.seal(j.private_key);
+    }
+    if (next.enabled && !(next.projectId && next.clientEmail && next.privateKeySealed)) throw new Error('Upload the service account key before enabling push');
+    await this.prisma.$transaction([
+      this.prisma.platformSetting.upsert({
+        where: { key: 'push' },
+        create: { key: 'push', value: next as object, updatedById: actorId },
+        update: { value: next as object, updatedById: actorId },
+      }),
+      this.prisma.auditLog.create({
+        data: { actorId, action: 'settings.push.update', entityType: 'platform_setting', entityId: 'push', data: { keyReplaced: !!input.serviceAccountJson?.trim(), enabled: next.enabled } },
+      }),
+    ]);
+    return this.view();
+  }
+
+  async config(): Promise<PushConfig | null> {
+    const s = await this.stored();
+    if (!this.box || !s.projectId || !s.clientEmail || !s.privateKeySealed) return null;
+    try {
+      return { projectId: s.projectId, clientEmail: s.clientEmail, privateKey: this.box.open(s.privateKeySealed), enabled: !!s.enabled };
+    } catch {
+      return null;
+    }
+  }
+}

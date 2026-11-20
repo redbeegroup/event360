@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -16,11 +18,54 @@ Future<void> main() async {
   runApp(ProviderScope(overrides: [prefsProvider.overrideWithValue(prefs)], child: const UserApp()));
 }
 
-class UserApp extends ConsumerWidget {
+class UserApp extends ConsumerStatefulWidget {
   const UserApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UserApp> createState() => _UserAppState();
+}
+
+class _UserAppState extends ConsumerState<UserApp> {
+  final _subs = <StreamSubscription<Object?>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    final push = ref.read(pushProvider);
+    if (!push.supported) return;
+    void register([String? token]) {
+      if (ref.read(sessionProvider).value == null) return;
+      registerPush(push, ref.read(apiProvider), ref.read(prefsProvider), token: token).catchError((_) {});
+    }
+
+    // Register the device whenever someone signs in (and when Firebase rotates the token)
+    ref.listenManual(sessionProvider, (prev, next) {
+      final id = next.value?.id;
+      if (id != null && id.isNotEmpty && prev?.value?.id != id) register();
+    }, fireImmediately: true);
+    _subs.add(push.onTokenRefresh.listen(register));
+    _subs.add(push.onForeground.listen((_) => ref.invalidate(inboxProvider)));
+    _subs.add(push.onOpenLink.listen(_open));
+    push.initialLink().then((l) {
+      if (l != null) _open(l);
+    });
+  }
+
+  void _open(String link) {
+    ref.invalidate(inboxProvider);
+    ref.read(routerProvider).push(link);
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
     return MaterialApp.router(
       title: 'Event 360',

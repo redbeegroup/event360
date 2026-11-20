@@ -5,6 +5,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'push.dart';
+
 /// Overridden in main() / tests.
 final prefsProvider = Provider<SharedPreferences>((ref) => throw UnimplementedError('prefsProvider not overridden'));
 final configProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment(Event360App.user));
@@ -51,6 +53,14 @@ class SessionNotifier extends AsyncNotifier<Me?> {
   Future<void> signedIn() async => ref.invalidateSelf();
 
   Future<void> signOut() async {
+    // Stop this phone getting the user's notifications (needs the session, so before logout)
+    final push = ref.read(pushProvider);
+    final token = ref.read(prefsProvider).getString(pushTokenKey);
+    if (token != null) {
+      await ref.read(apiProvider).removeDevice(token).catchError((_) {});
+      await ref.read(prefsProvider).remove(pushTokenKey);
+      await push.deleteToken().catchError((_) {});
+    }
     await ref.read(apiProvider).logout();
     await ref.read(prefsProvider).remove(MyTicketsNotifier.cacheKey);
     ref.invalidate(myTicketsProvider);
@@ -157,3 +167,24 @@ final pendingOrdersProvider = FutureProvider<List<Order>>((ref) async {
     return const [];
   }
 });
+
+// ───── Notifications ─────
+
+final pushProvider = Provider<PushClient>((ref) => FirebasePush.configured ? FirebasePush() : const NoPush());
+const pushTokenKey = 'push_token';
+
+/// Latest inbox page for the signed-in user (empty when signed out).
+final inboxProvider = FutureProvider<Inbox>((ref) async {
+  final me = await ref.watch(sessionProvider.future);
+  if (me == null) return Inbox(items: const [], unread: 0);
+  return ref.watch(apiProvider).notifications();
+});
+
+/// Registers this phone's push token for the signed-in user (and again when Firebase rotates it).
+Future<void> registerPush(PushClient push, Event360Api api, SharedPreferences prefs, {String? token}) async {
+  if (!push.supported) return;
+  final t = token ?? await push.token();
+  if (t == null) return;
+  await api.registerDevice(t, 'android');
+  await prefs.setString(pushTokenKey, t);
+}

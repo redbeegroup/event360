@@ -173,3 +173,28 @@ export async function savePaymentSettingsAction(_: FormState, fd: FormData): Pro
     return err(e);
   }
 }
+
+export async function savePushSettingsAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    const file = fd.get('keyFile');
+    let json = String(fd.get('serviceAccountJson') ?? '').trim();
+    if (!json && file instanceof File && file.size > 0) {
+      if (file.size > 20_000) return { error: 'File too large for a service account key' };
+      json = (await file.text()).trim();
+    }
+    await api('/admin/settings/push', { method: 'PUT', json: { ...(json ? { serviceAccountJson: json } : {}), enabled: fd.get('enabled') === 'on' } });
+    revalidatePath('/admin/settings');
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function sendTestPushAction(): Promise<FormState> {
+  try {
+    const r = await api<{ devices: number }>('/admin/settings/push/test', { method: 'POST' });
+    return { ok: 'pushTestSent', data: { devices: String(r.devices) } };
+  } catch (e) {
+    return err(e);
+  }
+}

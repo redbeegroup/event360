@@ -810,6 +810,24 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'{qty} × {name}'**
   String orderSummary(String qty, String name);
+
+  /// No description provided for @notifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get notifications;
+
+  /// No description provided for @markAllRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all read'**
+  String get markAllRead;
+
+  /// No description provided for @noNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'No notifications yet. Ticket updates, reminders and organizer announcements will appear here.'**
+  String get noNotifications;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

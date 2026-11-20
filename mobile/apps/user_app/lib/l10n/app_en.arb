@@ -212,5 +212,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "notifications": "Notifications",
+  "markAllRead": "Mark all read",
+  "noNotifications": "No notifications yet. Ticket updates, reminders and organizer announcements will appear here."
 }

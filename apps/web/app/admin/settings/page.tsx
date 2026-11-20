@@ -1,7 +1,7 @@
 import { ActionForm } from '../../components/ActionForm';
 import { api } from '../../lib/api';
 import { fmtDate, t } from '../../lib/i18n';
-import { savePaymentSettingsAction, saveSmsSettingsAction, sendTestSmsAction } from '../actions';
+import { savePaymentSettingsAction, savePushSettingsAction, saveSmsSettingsAction, sendTestPushAction, sendTestSmsAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +30,16 @@ interface SmsLogRow {
   createdAt: string;
 }
 
+interface PushView {
+  projectId: string;
+  clientEmail: string;
+  privateKeySet: boolean;
+  enabled: boolean;
+  canStoreSecrets: boolean;
+  devices: number;
+  myDevices: number;
+}
+
 interface PaymentView {
   provider: 'kbzpay' | 'wavepay';
   plain: Record<string, string>;
@@ -41,11 +51,12 @@ interface PaymentView {
 }
 
 export default async function SettingsPage() {
-  const [tr, sms, log, pays] = await Promise.all([
+  const [tr, sms, log, pays, push] = await Promise.all([
     t(),
     api<SmsView>('/admin/settings/sms'),
     api<SmsLogRow[]>('/admin/sms-log?limit=20'),
     api<PaymentView[]>('/admin/settings/payments'),
+    api<PushView>('/admin/settings/push'),
   ]);
   const label = (k: string) => (tr as unknown as Record<string, string>)[`f_${k}`] ?? k;
   const configured = !!sms.apiKey && sms.apiSecretSet && !!sms.senderId;
@@ -111,6 +122,30 @@ export default async function SettingsPage() {
           </div>
         </>
       )}
+
+      <h2>{tr.pushTitle}</h2>
+      <div className="card" id="push">
+        <p className="muted">{tr.pushHint}</p>
+        <p>
+          {tr.status}:{' '}
+          <span className={`badge ${push.enabled && push.privateKeySet ? 'PUBLISHED' : 'SUBMITTED'}`}>
+            {push.enabled && push.privateKeySet ? tr.providerOn : push.privateKeySet ? tr.providerOff : tr.providerNotConfigured}
+          </span>{' '}
+          · {tr.pushDevices}: <strong>{push.devices}</strong>
+        </p>
+        {push.privateKeySet && <p>{tr.pushKeySet}: <code>{push.projectId}</code> <span className="muted">({push.clientEmail})</span></p>}
+        <ActionForm action={savePushSettingsAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
+          <div className="field">
+            <label>{tr.pushKey}</label>
+            <input name="keyFile" type="file" accept="application/json,.json" />
+            <small className="muted">{tr.pushKeyHint}{push.privateKeySet ? ` ${tr.keepSecretHint}.` : ''}</small>
+          </div>
+          <label className="check"><input type="checkbox" name="enabled" defaultChecked={push.enabled} /> {tr.pushEnabled}</label>
+        </ActionForm>
+        {push.privateKeySet && (
+          <ActionForm action={sendTestPushAction} submitLabel={`${tr.pushTest} (${push.myDevices})`} variant="secondary" okText={{ pushTestSent: tr.pushTestSent }} />
+        )}
+      </div>
 
       <h2>{tr.paymentsTitle}</h2>
       <p className="muted">{tr.paymentsHint}</p>

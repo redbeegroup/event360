@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
+import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from './ticket-token.service';
 
@@ -10,6 +11,7 @@ export class TicketsService {
     private readonly prisma: PrismaService,
     private readonly tokens: TicketTokenService,
     private readonly media: MediaService,
+    private readonly notify: NotifyService,
   ) {}
 
   /**
@@ -28,7 +30,7 @@ export class TicketsService {
     if (tt.priceMmk > 0n) throw new BadRequestException('Paid tickets are not available yet');
     if (quantity > tt.maxPerOrder) throw new BadRequestException(`At most ${tt.maxPerOrder} per person`);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const already = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, status: { in: ['VALID', 'CHECKED_IN'] } } });
       if (already + quantity > tt.maxPerOrder) {
         throw new ConflictException(`You already hold ${already} ticket(s); the limit is ${tt.maxPerOrder} per person`);
@@ -54,6 +56,8 @@ export class TicketsService {
       const tickets = await tx.ticket.findMany({ where: { orderId: order.id }, select: { id: true } });
       return { orderId: order.id, ticketIds: tickets.map((t) => t.id) };
     });
+    void this.notify.ticketConfirmed(result.orderId);
+    return result;
   }
 
   async myTickets(userId: string) {

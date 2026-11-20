@@ -383,3 +383,19 @@ export async function completeUploadAction(orgId: string, eventId: string, asset
 export async function previewTokenAction(kind: 'live' | 'vod', id: string) {
   return wrap(() => api<{ url: string; sessionId: string; watermark: string }>(`/watch/${kind}/${id}/token`, { method: 'POST' }));
 }
+
+export async function sendAnnouncementAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  const s = (k: string) => String(fd.get(k) ?? '').trim();
+  try {
+    const r = await api<{ recipients: number }>(`/organizations/${orgId}/events/${id}/announcements`, {
+      method: 'POST',
+      json: { title: s('title'), body: s('body'), ...(s('titleMy') ? { titleMy: s('titleMy') } : {}), ...(s('bodyMy') ? { bodyMy: s('bodyMy') } : {}) },
+    });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'announced', data: { recipients: String(r.recipients) } };
+  } catch (e) {
+    return err(e);
+  }
+}

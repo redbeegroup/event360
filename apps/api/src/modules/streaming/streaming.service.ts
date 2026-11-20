@@ -25,6 +25,7 @@ import type { LiveChannel, VodAsset } from '@prisma/client';
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { Readable } from 'stream';
 import type { AuthUser } from '../../common/auth';
+import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { liveTranscoderJob, PipelineConfig, playlistDuration, uploadTranscoderJob } from './jobs';
 import { K8sJobsService } from './k8s-jobs.service';
@@ -71,6 +72,7 @@ export class StreamingService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly k8s: K8sJobsService,
+    private readonly notify: NotifyService,
   ) {
     this.s3 = new S3Client({
       endpoint: config.get('S3_ENDPOINT'),
@@ -311,6 +313,15 @@ export class StreamingService implements OnModuleInit, OnModuleDestroy {
       },
     });
     this.channelCache.delete(c.id);
+    // Tell ticket holders once per session window (encoder reconnects don't re-notify)
+    const claim = await this.prisma.liveChannel.updateMany({
+      where: { id: c.id, OR: [{ liveNotifiedAt: null }, { liveNotifiedAt: { lt: new Date(Date.now() - 6 * 3600e3) } }] },
+      data: { liveNotifiedAt: new Date() },
+    });
+    if (claim.count === 1) {
+      const ev = await this.prisma.event.findUnique({ where: { id: c.eventId }, select: { title: true, titleMy: true } });
+      if (ev) void this.notify.liveNow({ eventId: c.eventId, eventTitle: ev.title, eventTitleMy: ev.titleMy, sessionTitle: c.session.title, channelId: c.id });
+    }
     return null;
   }
 

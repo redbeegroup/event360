@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:event360_core/event360_core.dart';
@@ -9,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
+import 'package:user_app/app/push.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
 import 'package:user_app/screens/watch_screen.dart';
@@ -25,6 +27,29 @@ class FakeApi extends Event360Api {
   List<PaymentMethod> methods = [];
   final orders = <String, Map<String, dynamic>>{};
   final paid = <String>[];
+  final readIds = <List<String>>[];
+  final devices = <String>[];
+  List<Map<String, dynamic>> inbox = [
+    {'id': 'n1', 'kind': 'event_changed', 'title': 'Event details changed', 'titleMy': null, 'body': 'Yangon Food Fair e1 is now Sat 16 Jan', 'bodyMy': null, 'link': '/event/e1', 'eventId': 'e1', 'readAt': null, 'createdAt': '2026-11-20T10:00:00.000Z'},
+    {'id': 'n2', 'kind': 'announcement', 'title': 'Gates open at 4', 'titleMy': null, 'body': 'Bring your QR', 'bodyMy': null, 'link': '/event/e1', 'eventId': 'e1', 'readAt': null, 'createdAt': '2026-11-20T09:00:00.000Z'},
+    {'id': 'n3', 'kind': 'ticket_confirmed', 'title': 'Your ticket is ready', 'titleMy': null, 'body': 'Show the QR', 'bodyMy': null, 'link': '/tickets', 'eventId': 'e1', 'readAt': '2026-11-19T09:00:00.000Z', 'createdAt': '2026-11-19T09:00:00.000Z'},
+  ];
+
+  @override
+  Future<Inbox> notifications({DateTime? before, int limit = 30}) async =>
+      Inbox.fromJson({'items': inbox, 'unread': inbox.where((n) => n['readAt'] == null).length});
+
+  @override
+  Future<void> markNotificationsRead([List<String> ids = const []]) async {
+    readIds.add(ids);
+    inbox = [for (final n in inbox) (ids.isEmpty || ids.contains(n['id'])) ? {...n, 'readAt': '2026-11-20T11:00:00.000Z'} : n];
+  }
+
+  @override
+  Future<void> registerDevice(String pushToken, String platform, {String appId = 'user_app'}) async => devices.add('$platform:$pushToken');
+
+  @override
+  Future<void> removeDevice(String pushToken) async => devices.remove('android:$pushToken');
 
   static Map<String, dynamic> orderJson(String id, String status, {int total = 10000, int qty = 2, String? provider, Map<String, dynamic>? action, DateTime? expires}) => {
         'id': id,
@@ -206,7 +231,25 @@ void phoneScreen(WidgetTester tester) {
 
 final openedUrls = <String>[];
 
-Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}, void Function(FakeApi)? setup}) async {
+class FakePush implements PushClient {
+  final links = StreamController<String>.broadcast();
+  @override
+  bool get supported => true;
+  @override
+  Future<String?> token() async => 'fcm-token-1';
+  @override
+  Stream<String> get onTokenRefresh => const Stream.empty();
+  @override
+  Stream<void> get onForeground => const Stream.empty();
+  @override
+  Stream<String> get onOpenLink => links.stream;
+  @override
+  Future<String?> initialLink() async => null;
+  @override
+  Future<void> deleteToken() async {}
+}
+
+Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}, void Function(FakeApi)? setup, PushClient? push}) async {
   phoneScreen(tester);
   SharedPreferences.setMockInitialValues({'lang': lang, ...prefs});
   final sp = await SharedPreferences.getInstance();
@@ -217,6 +260,7 @@ Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang =
   openedUrls.clear();
   await tester.pumpWidget(ProviderScope(overrides: [
     openPaymentUrlProvider.overrideWithValue((url) async => openedUrls.add(url)),
+    pushProvider.overrideWithValue(push ?? const NoPush()),
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
     // No video plugin in tests: show the URL the real player would open
@@ -460,5 +504,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sign in'), findsNothing);
     expect(find.text('Yangon Food Fair e1'), findsWidgets);
+  });
+
+  testWidgets('bell shows unread count; inbox opens the linked page and marks read', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    expect(find.descendant(of: find.byKey(const Key('inboxBell')), matching: find.text('2')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('inboxBell')));
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Event details changed'), findsOneWidget);
+    expect(find.text('Gates open at 4'), findsOneWidget);
+    await tester.tap(find.text('Event details changed'));
+    await tester.pumpAndSettle();
+    expect(api.readIds, [
+      ['n1'],
+    ]);
+    expect(find.text('Yangon Food Fair e1'), findsWidgets); // event page
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mark all read'));
+    await tester.pumpAndSettle();
+    expect(api.readIds.last, isEmpty);
+    expect(find.text('Mark all read'), findsNothing);
+  });
+
+  testWidgets('signed out: no bell', (tester) async {
+    await pumpApp(tester);
+    expect(find.byKey(const Key('inboxBell')), findsNothing);
+  });
+
+  testWidgets('push: device registered after sign-in; tapping a notification opens its page; sign-out removes it', (tester) async {
+    final push = FakePush();
+    final (api, sp) = await pumpApp(tester, signedIn: true, push: push);
+    await tester.pumpAndSettle();
+    expect(api.devices, ['android:fcm-token-1']);
+    expect(sp.getString('push_token'), 'fcm-token-1');
+    push.links.add('/event/e1');
+    await tester.pumpAndSettle();
+    expect(find.text('Yangon Food Fair e1'), findsWidgets);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(api.devices, isEmpty);
+    expect(sp.getString('push_token'), isNull);
   });
 }
