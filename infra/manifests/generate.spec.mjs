@@ -21,7 +21,7 @@ for (const envName of Object.keys(config.environments)) {
   });
 
   test(`${envName}: expected workloads`, () => {
-    const expected = ['api', 'realtime', 'srs', 'web', 'worker', ...(env.userWeb ? ['user-web'] : [])].sort();
+    const expected = ['api', 'realtime', ...(env.site?.enabled ? ['site'] : []), 'srs', 'web', 'worker', ...(env.userWeb ? ['user-web'] : [])].sort();
     assert.deepEqual(byKind('Deployment').map((d) => d.metadata.name).sort(), expected);
     assert.deepEqual(byKind('StatefulSet').map((d) => d.metadata.name), ['redis']);
   });
@@ -31,8 +31,18 @@ for (const envName of Object.keys(config.environments)) {
     assert.equal(ing.spec.ingressClassName, 'traefik');
     assert.deepEqual(
       ing.spec.rules.map((r) => r.host),
-      ['api', 'ws', 'portal', ...(env.userWeb ? ['app'] : [])].map((h) => `${h}.${env.domain}`),
+      [
+        ...['api', 'ws', 'portal', ...(env.userWeb ? ['app'] : [])].map((h) => `${h}.${env.domain}`),
+        ...(env.site?.enabled ? [env.domain] : []),
+        ...(env.site?.enabled && env.site?.www ? [`www.${env.domain}`] : []),
+      ],
     );
+    const site = byKind('Deployment').find((d) => d.metadata.name === 'site');
+    if (env.site?.enabled) {
+      const e = Object.fromEntries(site.spec.template.spec.containers[0].env.map((x) => [x.name, x.value]));
+      assert.equal(e.SITE_URL, `https://${env.domain}`);
+      assert.equal(e.SITE_INDEXABLE, envName === 'prod' ? 'true' : 'false'); // only prod is indexed by search engines
+    } else assert.equal(site, undefined);
   });
 
   test(`${envName}: workloads avoid avoidNodes; storage workloads also avoid storageAvoidNodes`, () => {

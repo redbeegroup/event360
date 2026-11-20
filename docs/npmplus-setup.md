@@ -15,10 +15,15 @@ The ingress routes by `Host` header, so NPMPlus must pass the original host thro
 | `api.event360.app` | off | Payment provider webhooks arrive here |
 | `ws.event360.app` | **on** | Socket.IO: live counts, chat, Q&A |
 | `portal.event360.app` | off | Next.js admin / organizer portal |
+| `app.event360.app` | off | Web app (User app at `/`, Crew at `/crew/`, Organizer at `/organizer/`) |
+| `event360.app` | off | Public website (events, organizers, legal pages) |
+| `www.event360.app` | off | Same target; the site redirects it to `event360.app` |
 | `media.event360.app` | off | HLS playback (Phase 5b). Disable buffering for low latency |
 | `watch.event360.app` | off | Web player (Phase 5b) |
 
-Repeat for the `.dev.` hostnames (`api.dev.`, `ws.dev.`, `portal.dev.event360.app`). See certificates below.
+Repeat for the `.dev.` hostnames (`api.dev.`, `ws.dev.`, `portal.dev.`, `app.dev.event360.app`, and `dev.event360.app` for the dev website — dev has no `www`). See certificates below.
+
+The bare domain `event360.app` needs its own DNS A record (a `*.event360.app` wildcard does not cover the apex) and is included in the certificate below.
 
 ## 2. Certificates
 

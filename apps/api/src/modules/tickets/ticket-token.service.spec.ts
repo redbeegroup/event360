@@ -17,7 +17,10 @@ describe('TicketTokenService', () => {
     const [p, s] = svc.sign(claims).split('.');
     const forged = Buffer.from(JSON.stringify({ ...claims, tid: 't2' })).toString('base64url');
     expect(svc.verify(`${forged}.${s}`)).toBeNull();
-    expect(svc.verify(`${p}.${s.slice(0, -2)}AA`)).toBeNull();
+    // Flip a real byte of the signature (editing the last base64 characters can leave the bytes unchanged)
+    const sig = Buffer.from(s, 'base64url');
+    sig[10] ^= 0x01;
+    expect(svc.verify(`${p}.${sig.toString('base64url')}`)).toBeNull();
     expect(svc.verify('garbage')).toBeNull();
   });
 

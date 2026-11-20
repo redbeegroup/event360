@@ -19,7 +19,9 @@ async function bootstrap() {
   // (used by rate limiting). Never trust arbitrary X-Forwarded-For when exposed directly.
   const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
   if (trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);
-  app.use(helmet());
+  // Images (/v1/media/…) are embedded by our other sites (event360.app, the web app, the portal), so allow
+  // cross-origin embedding; reading API data from other origins is still governed by CORS.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? true, credentials: true });
   app.setGlobalPrefix('v1', { exclude: ['healthz', 'readyz'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

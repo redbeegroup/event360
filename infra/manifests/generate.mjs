@@ -263,6 +263,33 @@ export function buildManifests(envName, config) {
     service('web', ns, 3000),
   );
 
+  // ── Public website (event360.app): server-rendered, no sign-in, reads the public API ──
+  // (switched on per environment once that environment's image tag includes the site image)
+  const site = { ...(config.site ?? {}), ...(env.site ?? {}) };
+  if (site.enabled) objects.push(
+    deployment({
+      name: 'site',
+      ns,
+      image: `${config.registry}/event360-site:${env.imageTag}`,
+      pullPolicy,
+      config,
+      replicas: env.replicas.site ?? 1,
+      env: [
+        { name: 'API_URL', value: 'http://api:3000' },
+        { name: 'SITE_URL', value: `https://${env.domain}` },
+        { name: 'APP_URL', value: `https://app.${env.domain}` },
+        { name: 'PORTAL_URL', value: `https://portal.${env.domain}` },
+        { name: 'CONTACT_EMAIL', value: site.contactEmail ?? '' },
+        { name: 'SITE_OPERATOR', value: site.operator ?? 'Event 360' },
+        { name: 'SITE_INDEXABLE', value: String(!!site.indexable) },
+      ],
+      runAsUser: 1000,
+      probes: { readinessProbe: { httpGet: { path: '/healthz', port: 'http' }, periodSeconds: 10 } },
+      resources: small,
+    }),
+    service('site', ns, 3000),
+  );
+
   // ── User + Crew web apps: Flutter web builds behind unprivileged nginx ──
   if (env.userWeb) {
     objects.push(
@@ -430,10 +457,12 @@ export function buildManifests(envName, config) {
 
   // ── Ingress (Traefik; TLS terminated upstream by NPMPlus) ──
   const routes = [
-    ['api', 'api'],
-    ['ws', 'realtime'],
-    ['portal', 'web'],
-    ...(env.userWeb ? [['app', 'user-web']] : []),
+    [`api.${env.domain}`, 'api'],
+    [`ws.${env.domain}`, 'realtime'],
+    [`portal.${env.domain}`, 'web'],
+    ...(env.userWeb ? [[`app.${env.domain}`, 'user-web']] : []),
+    ...(site.enabled ? [[env.domain, 'site']] : []),
+    ...(site.enabled && site.www ? [[`www.${env.domain}`, 'site']] : []), // the site redirects www → apex
   ];
   objects.push({
     apiVersion: 'networking.k8s.io/v1',
@@ -442,7 +471,7 @@ export function buildManifests(envName, config) {
     spec: {
       ingressClassName: 'traefik',
       rules: routes.map(([host, svc]) => ({
-        host: `${host}.${env.domain}`,
+        host,
         http: {
           paths: [{ path: '/', pathType: 'Prefix', backend: { service: { name: svc, port: { name: 'http' } } } }],
         },

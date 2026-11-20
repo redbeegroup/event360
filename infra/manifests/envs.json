@@ -12,7 +12,8 @@
         "api": 1,
         "realtime": 1,
         "worker": 1,
-        "web": 1
+        "web": 1,
+        "site": 1
       },
       "userWeb": true,
       "userWebTagSuffix": "",
@@ -20,6 +21,11 @@
         "rtmpPort": 1936,
         "srtPort": 8891,
         "maxLiveChannels": 1
+      },
+      "site": {
+        "enabled": true,
+        "indexable": false,
+        "www": false
       }
     },
     "prod": {
@@ -32,7 +38,8 @@
         "api": 2,
         "realtime": 2,
         "worker": 2,
-        "web": 2
+        "web": 2,
+        "site": 2
       },
       "userWeb": true,
       "userWebTagSuffix": "-prod",
@@ -40,6 +47,11 @@
         "rtmpPort": 1935,
         "srtPort": 8890,
         "maxLiveChannels": 2
+      },
+      "site": {
+        "enabled": false,
+        "indexable": true,
+        "www": true
       }
     }
   },
@@ -50,5 +62,9 @@
     "ingestHost": "live.event360.app",
     "srsImage": "ossrs/srs:v6.0-r3",
     "ffmpegImage": "jrottenberg/ffmpeg:7.1-ubuntu"
+  },
+  "site": {
+    "contactEmail": "support@event360.app",
+    "operator": "Event 360"
   }
 }

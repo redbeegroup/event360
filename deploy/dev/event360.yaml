@@ -515,6 +515,86 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: site
+  namespace: event360-dev
+  labels:
+    app.kubernetes.io/name: site
+    app.kubernetes.io/part-of: event360
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: site
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: site
+        app.kubernetes.io/part-of: event360
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: site
+          image: ghcr.io/redbeegroup/event360-site:9125373a810381c8fd9f9a25fa2b8ebc87ae362a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: API_URL
+              value: http://api:3000
+            - name: SITE_URL
+              value: https://dev.event360.app
+            - name: APP_URL
+              value: https://app.dev.event360.app
+            - name: PORTAL_URL
+              value: https://portal.dev.event360.app
+            - name: CONTACT_EMAIL
+              value: support@event360.app
+            - name: SITE_OPERATOR
+              value: Event 360
+            - name: SITE_INDEXABLE
+              value: 'false'
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site
+  namespace: event360-dev
+  labels:
+    app.kubernetes.io/name: site
+    app.kubernetes.io/part-of: event360
+spec:
+  selector:
+    app.kubernetes.io/name: site
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: user-web
   namespace: event360-dev
   labels:
@@ -867,6 +947,16 @@ spec:
             backend:
               service:
                 name: user-web
+                port:
+                  name: http
+    - host: dev.event360.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site
                 port:
                   name: http
 ---
