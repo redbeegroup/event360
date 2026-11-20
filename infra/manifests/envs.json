@@ -31,7 +31,7 @@
     "prod": {
       "namespace": "event360-prod",
       "domain": "event360.app",
-      "imageTag": "d20c76ad7db4cc92cc952e15f570a0d14139ed0b",
+      "imageTag": "cdcb17ebb2241530bc86b743cf561848a7e7ba01",
       "otpDevEcho": false,
       "paymentsMock": false,
       "replicas": {
