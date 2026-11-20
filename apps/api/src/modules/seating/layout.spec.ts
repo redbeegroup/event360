@@ -54,6 +54,15 @@ describe('expandSeats', () => {
     expect(out[8].y).toBeGreaterThan(out[4].y);
   });
 
+  it('curve sag is curve * halfWidth at the row ends', () => {
+    const l = base({ curve: 0.5, rows: [{ label: '1', seats: seats(10) }] });
+    const out = expandSeats(l);
+    const halfWidth = (9 * SEAT_SPACING) / 2;
+    const sag = out[0].y - out[4].y;
+    expect(Math.abs(sag - 0.5 * halfWidth)).toBeLessThan(1);
+    expect(out[9].y).toBeCloseTo(out[0].y, 5);
+  });
+
   it('row y advances by SEAT_SPACING', () => {
     const out = expandSeats(base());
     expect(out[3].y - out[0].y).toBe(SEAT_SPACING);

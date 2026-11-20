@@ -163,11 +163,11 @@ export function expandSeats(l: Layout): ExpandedSeat[] {
       const min = Math.min(...xs);
       const max = Math.max(...xs);
       const centre = (min + max) / 2;
-      const half = (max - min) / 2 || 1;
+      const half = (max - min) / 2 || 1; // row half width in layout units
       row.seats.forEach((s, i) => {
         const lx = xs[i] + (s.dx ?? 0);
         const t = (xs[i] - centre) / half;
-        const ly = ri * SEAT_SPACING + curve * t * t + (s.dy ?? 0);
+        const ly = ri * SEAT_SPACING + curve * half * t * t + (s.dy ?? 0);
         const seatLabel = seatLabelOf(s);
         const name = sec.name;
         out.push({
