@@ -98,7 +98,7 @@ export class EventSeatsService {
         ? (await tx.venue.update({ where: { id: e.venueId }, data: venue })).id
         : (await tx.venue.create({ data: venue })).id;
       await tx.eventSeat.createMany({
-        data: seats.map((s) => ({ eventId, seatKey: s.seatKey, sectionKey: s.sectionKey, rowLabel: s.rowLabel, seatLabel: s.seatLabel, label: this.labelFor(s, layout).label })),
+        data: seats.map((s) => ({ eventId, seatKey: s.seatKey, sectionKey: s.sectionKey, rowLabel: s.rowLabel, seatLabel: s.seatLabel, label: s.label, labelMy: s.labelMy })),
       });
       const reReview = needsReReview(e.status, orgVerified, ['venue']);
       await tx.event.update({ where: { id: eventId }, data: { seatMapVersionId: versionId, venueId, ...(reReview ? { status: 'SUBMITTED', submittedAt: new Date() } : {}) } });
@@ -153,9 +153,17 @@ export class EventSeatsService {
       const e = await this.lockedEvent(tx, orgId, eventId);
       if (!e.seatMapVersionId) throw new ConflictException('This event has no seat map');
       const { layout } = await this.maps.publishedVersion(e.seatMapVersionId);
-      const types = new Set((await tx.ticketType.findMany({ where: { eventId }, select: { id: true } })).map((t) => t.id));
-      this.validateRules(rules, layout, types);
+      const typeRows = await tx.ticketType.findMany({ where: { eventId }, select: { id: true, name: true, sold: true, held: true } });
+      this.validateRules(rules, layout, new Set(typeRows.map((t) => t.id)));
       const before = await tx.ticketType.findMany({ where: { eventId, eventSeats: { some: {} } }, select: { id: true } });
+      // A type that sold tickets without seats would have its counters wiped by the recount
+      const seated = new Set(before.map((t) => t.id));
+      const seatedRule = new Set(rules.filter((r) => layout.sections.find((s) => s.key === r.sectionKey)?.kind === 'SEATED').map((r) => r.ticketTypeId));
+      for (const t of typeRows) {
+        if (seatedRule.has(t.id) && !seated.has(t.id) && t.sold + t.held > 0) {
+          throw new ConflictException(`${t.name} already has tickets sold without seats; create a new ticket type for seats`);
+        }
+      }
       await tx.eventSection.deleteMany({ where: { eventId } });
       await tx.eventSection.createMany({ data: rules.map((r) => ({ eventId, sectionKey: r.sectionKey, rowLabel: r.rowLabel ?? null, ticketTypeId: r.ticketTypeId })) });
       // Only seats nobody holds or owns follow the rules; SOLD and CHECKOUT_HOLD keep their type and price.
@@ -225,9 +233,9 @@ export class EventSeatsService {
   // ───────────── Public availability ─────────────
 
   /** Layout and seat order never change for a version; kept long. */
-  private readonly layouts = new MicroCache<{ layout: Layout; index: Map<string, number> }>(publicCacheMs(3_600_000), 50);
+  private readonly layouts = new MicroCache<{ layout: Layout; index: Map<string, number> }>(process.env.NODE_ENV === 'test' ? 0 : 600_000, 50);
   /** Types and seat status change with every order; kept at most 2 s per pod. */
-  private readonly availability = new MicroCache<{ id: string; versionId: string; types: unknown[]; seatTypes: string; status: string }>(publicCacheMs(2000));
+  private readonly availability = new MicroCache<{ id: string; versionId: string; types: unknown[]; seatTypes: string; status: string }>(Math.min(publicCacheMs(2000), 2000));
 
   async publicSeats(idOrSlug: string) {
     const a = await this.availability.get(idOrSlug, () => this.loadAvailability(idOrSlug));

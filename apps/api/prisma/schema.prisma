@@ -516,6 +516,7 @@ model Ticket {
   transferCount   Int              @default(0) @map("transfer_count")
   seatKey         String?          @map("seat_key")
   seatLabel       String?          @map("seat_label")
+  seatLabelMy     String?          @map("seat_label_my")
   isComplimentary Boolean          @default(false) @map("is_complimentary")
   compLabel       String?          @map("comp_label")
   guestName       String?          @map("guest_name")
@@ -1067,6 +1068,7 @@ model EventSeat {
   rowLabel     String     @map("row_label")
   seatLabel    String     @map("seat_label")
   label        String
+  labelMy      String?    @map("label_my")
   ticketTypeId String?    @map("ticket_type_id") @db.Uuid
   status       SeatStatus @default(UNSOLD)
   orderId      String?    @map("order_id") @db.Uuid

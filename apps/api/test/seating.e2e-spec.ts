@@ -262,8 +262,42 @@ run('Seated events', () => {
     expect(await prisma.eventSeat.count({ where: { eventId: ev.id } })).toBe(8);
     // unpublished or unknown versions are refused
     await http.put(`${base(ev.id)}/seating/map`).set(O).send({ seatMapVersionId: '00000000-0000-4000-8000-000000000000' }).expect(404);
-    // other organizers' viewers cannot
+    // no token
     await http.put(`${base(ev.id)}/seating/map`).send({ seatMapVersionId: versionId }).expect(401);
+  });
+
+  it('another organization cannot touch the event seating', async () => {
+    const ev = await newEvent('Foreign');
+    const org2 = await http.post('/v1/admin/organizations').set(A).send({ name: `Other Org ${tag}`, slug: `other-${tag}`, ownerEmail: `own2-se-${tag}@e2e.test` }).expect(201);
+    const O2 = await acceptInvite(org2.body.inviteUrl);
+    await http.get(`${base(ev.id)}/seating`).set(O2).expect(403);
+    await http.put(`${base(ev.id)}/seating/map`).set(O2).send({ seatMapVersionId: versionId }).expect(403);
+    await http.put(`${base(ev.id)}/seating/assignments`).set(O2).send({ rules: [] }).expect(403);
+    await http.delete(`${base(ev.id)}/seating/map`).set(O2).expect(403);
+  });
+
+  it('seated types cannot be given a quota, and types with sales cannot become seated', async () => {
+    const ev = await newEvent('Guards');
+    const seatedT = await addType(ev.id, { name: 'Seated', priceMmk: 10_000, quota: 5 });
+    const sold = await addType(ev.id, { name: 'Sold', priceMmk: 10_000, quota: 5 });
+    await prisma.ticketType.update({ where: { id: sold }, data: { sold: 2 } });
+    await http.put(`${base(ev.id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    const r = await http.put(`${base(ev.id)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'A', ticketTypeId: sold }] }).expect(409);
+    expect(r.body.message).toBe('Sold already has tickets sold without seats; create a new ticket type for seats');
+    expect(await ttRow(sold)).toMatchObject({ quota: 5, sold: 2 });
+    // standing sections may use a type with sales
+    await http.put(`${base(ev.id)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'F', ticketTypeId: sold }, { sectionKey: 'A', ticketTypeId: seatedT }] }).expect(200);
+    await http.patch(`${base(ev.id)}/ticket-types/${seatedT}`).set(O).send({ quota: 50 }).expect(400);
+    await http.patch(`${base(ev.id)}/ticket-types/${seatedT}`).set(O).send({ name: 'Renamed', color: '#010203' }).expect(200);
+    expect(await ttRow(seatedT)).toMatchObject({ name: 'Renamed', color: '#010203', quota: 6 });
+    await http.patch(`${base(ev.id)}/ticket-types/${sold}`).set(O).send({ quota: 9 }).expect(200);
+  });
+
+  it('seat labels carry Myanmar text', async () => {
+    const ev = await newEvent('LabelMy');
+    await http.put(`${base(ev.id)}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    expect(await seat(ev.id, 'A:1:2')).toMatchObject({ label: 'Stalls · Row 1 · Seat 2', labelMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 2' });
+    expect((await seat(ev.id, 'B:1:1')).labelMy).toBe('Balcony · အတန်း 1 · ခုံ 1');
   });
 
   it('row rule beats section rule', async () => {

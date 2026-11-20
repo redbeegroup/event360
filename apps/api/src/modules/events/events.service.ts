@@ -349,6 +349,7 @@ export class EventsService implements OnModuleDestroy {
     await this.eventOf(organizationId, eventId);
     const t = await this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId } });
     if (!t) throw new NotFoundException('Ticket type not found');
+    if (dto.quota !== undefined && (await this.prisma.eventSeat.count({ where: { ticketTypeId } }))) throw new BadRequestException('Quota of a seated ticket type is computed from its seats');
     if (dto.quota !== undefined && dto.quota < t.sold + t.held) throw new BadRequestException(`Quota cannot be below the ${t.sold + t.held} tickets already issued`);
     if (dto.priceMmk !== undefined && t.sold > 0 && BigInt(dto.priceMmk) !== t.priceMmk) throw new ConflictException('Price cannot change after tickets are issued');
     const updated = await this.prisma.ticketType.update({
