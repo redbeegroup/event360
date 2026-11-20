@@ -21,7 +21,6 @@ import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -78,13 +77,20 @@ class CreateOrderDto {
 
 class PromoCheckDto {
   @ApiProperty() @IsString() @Length(3, 24) code: string;
-  @ApiProperty({ type: [OrderItemDto] })
+  @ApiPropertyOptional({ type: [OrderItemDto], description: 'Required unless `seats` is given' })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items: OrderItemDto[];
+  items?: OrderItemDto[];
+  @ApiPropertyOptional({ type: [String], description: 'Seated events: the chosen seat keys, priced by their ticket type' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  seats?: string[];
 }
 
 class PayDto {
@@ -140,7 +146,7 @@ export class CheckoutController {
   @Auth()
   @HttpCode(200)
   promoCheck(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PromoCheckDto) {
-    return this.payments.previewPromo(id, dto.code, dto.items);
+    return this.payments.previewPromo(id, dto.code, dto.items ?? [], dto.seats);
   }
 
   @Get('me/orders')

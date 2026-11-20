@@ -48,8 +48,22 @@ export class EventSeatsService {
    * their last seat) are touched; standing and unseated types keep the organizer's quota and counters.
    * quota = AVAILABLE + CHECKOUT_HOLD + SOLD seats; comps (SOLD seats whose ticket is complimentary) are
    * excluded from quota and sold; GUEST_HOLD seats are not for sale.
+   *
+   * `onlyTypeIds` limits the recount to those types (checkout paths pass the order's seated types, so checkouts
+   * of other types don't wait on these rows). The rows are locked first, in id order, and counted in a second
+   * statement: under READ COMMITTED that statement's snapshot then includes every concurrent seat change whose
+   * transaction recounted (and so committed) before us, so parallel checkouts cannot overwrite each other's counts.
    */
-  async recountTicketTypes(tx: Db, eventId: string, alsoTypeIds: string[] = []): Promise<void> {
+  async recountTicketTypes(tx: Db, eventId: string, alsoTypeIds: string[] = [], onlyTypeIds?: string[]): Promise<void> {
+    const only = onlyTypeIds ?? null;
+    if (only && !only.length) return;
+    await tx.$queryRaw`
+      SELECT tt.id FROM ticket_types tt
+      WHERE tt.event_id = ${eventId}::uuid
+        AND (${only}::uuid[] IS NULL OR tt.id = ANY(${only}::uuid[]))
+        AND (tt.id = ANY(${alsoTypeIds}::uuid[]) OR EXISTS (SELECT 1 FROM event_seats x WHERE x.ticket_type_id = tt.id))
+      ORDER BY tt.id
+      FOR NO KEY UPDATE`;
     await tx.$executeRaw`
       UPDATE ticket_types tt SET quota = c.quota, held = c.held, sold = c.sold
       FROM (
@@ -61,6 +75,7 @@ export class EventSeatsService {
         LEFT JOIN event_seats s ON s.ticket_type_id = tt2.id
         LEFT JOIN tickets t ON t.id = s.ticket_id
         WHERE tt2.event_id = ${eventId}::uuid
+          AND (${only}::uuid[] IS NULL OR tt2.id = ANY(${only}::uuid[]))
           AND (tt2.id = ANY(${alsoTypeIds}::uuid[]) OR EXISTS (SELECT 1 FROM event_seats x WHERE x.ticket_type_id = tt2.id))
         GROUP BY tt2.id
       ) c

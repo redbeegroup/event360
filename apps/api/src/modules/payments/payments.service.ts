@@ -18,7 +18,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventSeatsService } from '../seating/event-seats.service';
-import { claimSeats, lockEventRow, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
+import { claimSeats, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
 import { commission, pickRule } from './fee';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
@@ -38,6 +38,8 @@ export interface OrderItemInput {
 const maskPhone = (p?: string | null) => (p ? `${p.slice(0, 4)}•••${p.slice(-3)}` : null);
 /** 409 for a seated checkout: the app refreshes the map and keeps the buyer's other seats. */
 const seatsTaken = (takenSeats: string[]) => new ConflictException({ message: 'Some seats were just taken', takenSeats });
+/** A seated on-sale rush queues for pool connections and for the seated types' counter rows: wait, don't fail. */
+const SEATED_TX = { maxWait: 10_000, timeout: 15_000 };
 type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] };
 
 @Injectable()
@@ -181,8 +183,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       // Serialize one buyer's checkouts so the per-person limit can't be raced
       await tx.$executeRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       if (seats.length) {
-        // Serialise with seat assignment changes, then make sure the seats are still sold as the types we priced
-        await lockEventRow(tx, eventId);
+        // Shared lock: excludes seat assignment and map changes (not other checkouts); then make sure the seats are still sold as the types we priced
+        await shareLockEvent(tx, eventId);
         const now2 = await tx.eventSeat.findMany({ where: { eventId, seatKey: { in: seats } }, select: { seatKey: true, ticketTypeId: true } });
         const moved = now2.filter((x) => x.ticketTypeId !== seatType.get(x.seatKey)).map((x) => x.seatKey);
         if (moved.length) throw seatsTaken(moved);
@@ -228,9 +230,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (!c.ok) throw seatsTaken(c.taken);
       }
       if (!paid) await this.issueTickets(tx, order.id, userId, lines.map(({ tt, quantity, seatKeys }) => ({ ticketTypeId: tt.id, quantity, seatKeys })));
-      if (seats.length) await this.seating.recountTicketTypes(tx, eventId);
+      if (seats.length) await this.seating.recountTicketTypes(tx, eventId, [], [...bySeatType.keys()]);
       return order.id;
-    });
+    }, seats.length ? SEATED_TX : undefined);
     if (!paid) {
       void this.notify.ticketConfirmed(orderId);
       void this.notify.checkSales(eventId, false);
@@ -239,9 +241,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** What a code would take off (checkout preview; nothing is reserved). */
-  async previewPromo(eventId: string, code: string, items: OrderItemInput[]) {
-    const types = await this.prisma.ticketType.findMany({ where: { eventId, id: { in: items.map((i) => i.ticketTypeId) } } });
-    const lines = items.map((i) => {
+  async previewPromo(eventId: string, code: string, items: OrderItemInput[], seats: string[] = []) {
+    if (!items.length && !seats.length) throw new BadRequestException('Choose at least one ticket');
+    // Seats count as one ticket each of the type assigned to them, as at checkout
+    const seatTypes = new Map<string, number>();
+    if (seats.length) {
+      const rows = await this.prisma.eventSeat.findMany({ where: { eventId, seatKey: { in: [...new Set(seats)] } }, select: { seatKey: true, ticketTypeId: true } });
+      const found = new Map(rows.map((r) => [r.seatKey, r.ticketTypeId]));
+      for (const k of new Set(seats)) {
+        if (!found.has(k)) throw new BadRequestException(`Unknown seat ${k}`);
+        const t = found.get(k);
+        if (!t) throw new BadRequestException(`Seat ${k} is not on sale`);
+        seatTypes.set(t, (seatTypes.get(t) ?? 0) + 1);
+      }
+    }
+    const wanted = [...items, ...[...seatTypes].map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity }))];
+    const types = await this.prisma.ticketType.findMany({ where: { eventId, id: { in: wanted.map((i) => i.ticketTypeId) } } });
+    const lines = wanted.map((i) => {
       const tt = types.find((t) => t.id === i.ticketTypeId);
       if (!tt) throw new NotFoundException('Ticket type not found');
       return { ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity: i.quantity };
@@ -389,7 +405,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private async releaseHold(orderId: string, to: 'EXPIRED' | 'CANCELLED') {
     return this.prisma.$transaction(async (tx) => {
       const seatedIn = await this.seatedEvent(tx, orderId);
-      if (seatedIn) await lockEventRow(tx, seatedIn);
+      if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
       if (n.count !== 1) return false;
       const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
@@ -401,16 +417,17 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
       if (seatedIn) {
         await releaseSeats(tx, orderId, 'AVAILABLE');
-        await this.seating.recountTicketTypes(tx, seatedIn);
+        await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
       }
       return true;
     });
   }
 
-  /** The order's event id when the order has seats (its seat changes must take the event lock), else null. */
-  private async seatedEvent(tx: Prisma.TransactionClient, orderId: string): Promise<string | null> {
-    const o = await tx.order.findUnique({ where: { id: orderId }, select: { eventId: true, items: { select: { seatKeys: true } } } });
-    return o && o.items.some((i) => i.seatKeys.length) ? o.eventId : null;
+  /** For an order with seats: its event (seat changes take the event share lock) and its seated ticket types; else null. */
+  private async seatedEvent(tx: Prisma.TransactionClient, orderId: string): Promise<{ eventId: string; typeIds: string[] } | null> {
+    const o = await tx.order.findUnique({ where: { id: orderId }, select: { eventId: true, items: { select: { seatKeys: true, ticketTypeId: true } } } });
+    const seated = o?.items.filter((i) => i.seatKeys.length) ?? [];
+    return o && seated.length ? { eventId: o.eventId, typeIds: [...new Set(seated.map((i) => i.ticketTypeId))] } : null;
   }
 
   // ───────────── provider callbacks ─────────────
@@ -452,7 +469,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       const pay = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!pay?.orderId) return;
       const seatedIn = await this.seatedEvent(tx, pay.orderId);
-      if (seatedIn) await lockEventRow(tx, seatedIn);
+      if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const won = await tx.payment.updateMany({
         where: { id: paymentId, status: { in: ['INITIATED', 'PENDING', 'FAILED', 'EXPIRED'] } },
         data: { status: 'SUCCEEDED' },
@@ -486,6 +503,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (seatKeys.length) {
           const c = await claimSeats(tx, order.eventId, seatKeys, order.id, null, true);
           claimed = c.seats.map((s) => s.id);
+          for (const s of c.seats) if (s.ticketTypeId && seatedIn && !seatedIn.typeIds.includes(s.ticketTypeId)) seatedIn.typeIds.push(s.ticketTypeId);
           // A seat now sold as another ticket type is not what was paid for
           const typeOf = new Map(order.items.flatMap((i) => i.seatKeys.map((k) => [k, i.ticketTypeId] as const)));
           seatsOk = c.ok && c.seats.every((s) => s.ticketTypeId === typeOf.get(s.seatKey));
@@ -511,7 +529,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         });
       }
       if (issued) await this.issueTickets(tx, order.id, order.userId, order.items.map((i) => ({ ticketTypeId: i.ticketTypeId, quantity: i.quantity, seatKeys: i.seatKeys })));
-      if (seatedIn) await this.seating.recountTicketTypes(tx, seatedIn);
+      if (seatedIn) await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
       await journal(tx, 'order', order.id, [
         { account: clearing, debit: order.totalMmk },
         { account: ACC.payable(order.event.organizationId), credit: order.totalMmk - order.commissionMmk },
@@ -562,7 +580,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   async refundOrder(orderId: string, reason: string, actorId: string) {
     const refundIds = await this.prisma.$transaction(async (tx) => {
       const seatedIn = await this.seatedEvent(tx, orderId);
-      if (seatedIn) await lockEventRow(tx, seatedIn);
+      if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PAID' }, data: { status: 'REFUNDED', needsReview: false } });
       if (n.count !== 1) throw new ConflictException('Only paid orders can be refunded');
       const order = await tx.order.findUniqueOrThrow({
@@ -577,7 +595,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (seatedIn) {
         // Refunded seats go back on sale; seated counters follow event_seats
         await refundSeats(tx, orderId);
-        await this.seating.recountTicketTypes(tx, seatedIn);
+        await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
       }
 
       // Sale reversed: organizer and platform give back their shares; the buyer is owed the money until it is sent

@@ -669,6 +669,34 @@ run('Seated checkout', () => {
     await expectCountersMatch(ev.free);
   });
 
+  it('200 parallel claims on distinct seats all succeed and counters add up', async () => {
+    const arena = { width: 800, height: 800, sections: [{ key: 'R', name: 'Ring', kind: 'SEATED', x: 10, y: 10, rows: Array.from({ length: 20 }, (_, r) => ({ label: String(r + 1), seats: Array.from({ length: 10 }, (_, i) => ({ n: i + 1 })) })) }] };
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Arena ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: arena }).expect(200);
+    const arenaVersion = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id;
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + 5 * 86400e3);
+    const ev = (await http.post(`/v1/organizations/${orgId}/events`).set(O).send({ categoryId: cats.body[0].children[0].id, title: `Arena ${tag}`, format: 'IN_PERSON', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3 * 3600e3).toISOString() }).expect(201)).body.id as string;
+    const ring = (await http.post(`${base(ev)}/ticket-types`).set(O).send({ name: 'Ring', priceMmk: 10_000, quota: 1, maxPerOrder: 1 }).expect(201)).body.id as string;
+    await http.put(`${base(ev)}/seating/map`).set(O).send({ seatMapVersionId: arenaVersion }).expect(200);
+    await http.put(`${base(ev)}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'R', ticketTypeId: ring }] }).expect(200);
+    await prisma.event.update({ where: { id: ev }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
+    const users = await prisma.$transaction(Array.from({ length: 200 }, (_, i) => prisma.user.create({ data: { phone: `0961${tag.slice(0, 4)}${String(i).padStart(3, '0')}` } })));
+    const t0 = Date.now();
+    const results = await Promise.allSettled(users.map((u, i) => svc.createOrder(u.id, ev, [], undefined, 'APP', undefined, [`R:${Math.floor(i / 10) + 1}:${(i % 10) + 1}`])));
+    const ms = Date.now() - t0;
+    console.log(`200 parallel seated claims on distinct seats: ${ms} ms`);
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(failed.map((f) => String(f.reason?.message ?? f.reason))).toEqual([]);
+    expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'CHECKOUT_HOLD' } })).toBe(200);
+    expect(await ttRow(ring)).toMatchObject({ quota: 200, held: 200, sold: 0 }); // no lost recounts
+    // 200 parallel cancels give every seat back (and leave no pending orders for other suites' sweeps)
+    const ids = results.map((r) => (r as PromiseFulfilledResult<{ id: string }>).value.id);
+    await Promise.all(ids.map((id, i) => svc.cancel(users[i].id, id)));
+    expect(await prisma.eventSeat.count({ where: { eventId: ev, status: 'AVAILABLE' } })).toBe(200);
+    expect(await ttRow(ring)).toMatchObject({ quota: 200, held: 0, sold: 0 });
+  });
+
   it('expired hold frees seats', async () => {
     const ev = await seatedEvent('Expire');
     const B = await consumer();
@@ -783,6 +811,13 @@ run('Seated checkout', () => {
     // promo codes act on seated lines too
     const owner = await prisma.user.findFirstOrThrow({ where: { email: `own-sc-${tag}@e2e.test` } });
     await prisma.promoCode.create({ data: { eventId: ev.id, code: `HALF${tag}`.toUpperCase(), kind: 'PERCENT', value: 5000, createdById: owner.id } });
+    const pre = await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}`, seats: ['A:2:2', 'B:1:1'], items: [{ ticketTypeId: ev.floor, quantity: 1 }] }).expect(200);
+    expect(pre.body).toMatchObject({ valid: true, subtotalMmk: 45_000, discountMmk: 22_500, totalMmk: 22_500 });
+    const seatOnly = await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}`, seats: ['A:2:2'] }).expect(200);
+    expect(seatOnly.body).toMatchObject({ valid: true, subtotalMmk: 10_000, totalMmk: 5_000 });
+    await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}`, seats: ['Z:1:1'] }).expect(400);
+    await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}` }).expect(400);
+    expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'AVAILABLE' }); // preview reserves nothing
     const p = await order(B2, ev.id, { seats: ['A:2:2'], promoCode: `half${tag}` }).expect(201);
     expect(p.body).toMatchObject({ subtotalMmk: 10_000, discountMmk: 5_000, totalMmk: 5_000 });
   });

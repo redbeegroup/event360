@@ -2,18 +2,25 @@ import type { EventSeat, Prisma } from '@prisma/client';
 
 /**
  * Seat state changes for checkout. Every function runs inside the caller's transaction, which must already hold
- * the event row lock (lockEventRow) so claims serialise with assignment and map changes, and must call
- * EventSeatsService.recountTicketTypes afterwards.
+ * the event row share lock (shareLockEvent) so it excludes assignment and map changes (they take FOR UPDATE),
+ * and must call EventSeatsService.recountTicketTypes (for the order's seated types) afterwards.
+ *
+ * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
+ * user row (createOrder only) → event row (shared, never upgraded) → seat rows (claims lock them in seat_key
+ * order; the other functions only touch seats the order already owns) → seated ticket_types rows (in id order,
+ * in the recount, the last step before commit).
  */
 type Tx = Prisma.TransactionClient;
 
-/** Row-level lock on the event: the same lock seat assignments and map changes take. */
-export async function lockEventRow(tx: Tx, eventId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM events WHERE id = ${eventId}::uuid FOR UPDATE`;
+/** Shared lock on the event row: checkouts don't block each other, but wait for (and block) assignment and map changes. */
+export async function shareLockEvent(tx: Tx, eventId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM events WHERE id = ${eventId}::uuid FOR SHARE`;
 }
 
 /**
- * Takes all the seats or none: one conditional UPDATE that only changes seats that are still AVAILABLE.
+ * Takes all the seats or none: one conditional UPDATE that only changes seats that are still AVAILABLE. Its
+ * subquery locks the rows in seat_key order, so two claims over overlapping seats queue instead of deadlocking;
+ * a claim that waited re-checks the status after the other commits and leaves out a seat that was taken.
  * When some are missing from the result the caller must give back what was taken (throwing rolls back the
  * transaction; settle uses unclaimSeats). `final` sells them at once (free orders, late payments).
  */
@@ -28,7 +35,12 @@ export async function claimSeats(
   const status = final ? 'SOLD' : 'CHECKOUT_HOLD';
   const rows = await tx.$queryRaw<{ id: string }[]>`
     UPDATE event_seats SET status = ${status}::"SeatStatus", order_id = ${orderId}::uuid, held_until = ${heldUntil}
-    WHERE event_id = ${eventId}::uuid AND seat_key = ANY(${seatKeys}::text[]) AND status = 'AVAILABLE'
+    WHERE id IN (
+      SELECT id FROM event_seats
+      WHERE event_id = ${eventId}::uuid AND seat_key = ANY(${seatKeys}::text[]) AND status = 'AVAILABLE'
+      ORDER BY seat_key
+      FOR UPDATE
+    ) AND status = 'AVAILABLE'
     RETURNING id`;
   const seats = await tx.eventSeat.findMany({ where: { id: { in: rows.map((r) => r.id) } } });
   if (seats.length === new Set(seatKeys).size) return { ok: true, seats };
