@@ -3,6 +3,7 @@ import type { Event, EventStatus, Prisma } from '@prisma/client';
 import { makeSlug, mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
+import { MicroCache, publicCacheMs } from '../../common/micro-cache';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateEventDto,
@@ -122,7 +123,16 @@ export class EventsService implements OnModuleDestroy {
 
   // ───────────── Public ─────────────
 
-  async listPublic(q: ListEventsQuery) {
+  // Public responses are the same for everyone: keep them briefly per pod (see MicroCache)
+  private readonly publicLists = new MicroCache<unknown>(publicCacheMs());
+  private readonly publicEvents = new MicroCache<{ id: string; dto: unknown }>(publicCacheMs());
+
+  listPublic(q: ListEventsQuery) {
+    const key = JSON.stringify(Object.entries(q ?? {}).sort());
+    return this.publicLists.get(key, () => this.loadPublicList(q)) as ReturnType<EventsService['loadPublicList']>;
+  }
+
+  private async loadPublicList(q: ListEventsQuery) {
     const page = q.page ?? 1;
     const limit = q.limit ?? 20;
     const where: Prisma.EventWhereInput = {
@@ -152,14 +162,17 @@ export class EventsService implements OnModuleDestroy {
 
   /** Detail by id or slug. Private events are reachable by direct link, never listed. */
   async getPublic(idOrSlug: string) {
-    const isUuid = /^[0-9a-f-]{36}$/i.test(idOrSlug);
-    const e = await this.prisma.event.findFirst({
-      where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: { in: ['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'] } },
-      include: fullInclude,
+    const hit = await this.publicEvents.get(idOrSlug, async () => {
+      const isUuid = /^[0-9a-f-]{36}$/i.test(idOrSlug);
+      const e = await this.prisma.event.findFirst({
+        where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: { in: ['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'] } },
+        include: fullInclude,
+      });
+      if (!e) throw new NotFoundException('Event not found');
+      return { id: e.id, dto: this.toDto(e, { full: true }) };
     });
-    if (!e) throw new NotFoundException('Event not found');
-    void this.countView(e.id);
-    return this.toDto(e, { full: true });
+    this.countView(hit.id);
+    return hit.dto as ReturnType<EventsService['toDto']>;
   }
 
   /**
