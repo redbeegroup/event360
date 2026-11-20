@@ -345,7 +345,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     }
     const from = new Date(`${day}T00:00:00.000Z`).getTime() - MMT_MS;
     const orders = await this.prisma.order.findMany({
-      where: { status: { in: ['PAID', 'CONFIRMED'] }, createdAt: { gte: new Date(from), lt: new Date(from + 86400e3) } },
+      where: { status: { in: ['PAID', 'CONFIRMED'] }, channel: { not: 'COMP' }, createdAt: { gte: new Date(from), lt: new Date(from + 86400e3) } },
       select: { totalMmk: true, event: { select: { organizationId: true } }, items: { select: { quantity: true } } },
     });
     const byOrg = new Map<string, { orders: number; tickets: number; revenue: bigint }>();

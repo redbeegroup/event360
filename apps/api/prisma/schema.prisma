@@ -464,7 +464,7 @@ model Order {
   commissionMmk  BigInt      @default(0) @map("commission_mmk") // frozen at checkout
   idempotencyKey String?     @unique @map("idempotency_key")
   holdExpiresAt  DateTime?   @map("hold_expires_at")
-  channel        String      @default("APP") // APP | WEB | POS
+  channel        String      @default("APP") // APP | WEB | POS | COMP (guest tickets: zero total, outside revenue)
   paidAt         DateTime?   @map("paid_at")
   needsReview    Boolean     @default(false) @map("needs_review") // paid after the hold expired with no seats left → refund
   promoCodeId    String?     @map("promo_code_id") @db.Uuid

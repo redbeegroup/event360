@@ -890,3 +890,231 @@ run('Seated checkout', () => {
     expect(p.body).toMatchObject({ subtotalMmk: 10_000, discountMmk: 5_000, totalMmk: 5_000 });
   });
 });
+
+run('Guest seats', () => {
+  let app: INestApplication;
+  let http: ReturnType<typeof request>;
+  let prisma: PrismaService;
+  const tag = randomBytes(4).toString('hex');
+  const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+  // Hall: section A has 2 rows of 5 seats (A:<row>:<n>)
+  const hall = {
+    width: 600,
+    height: 400,
+    sections: [{ key: 'A', name: 'Stalls', nameMy: 'ရှေ့ခန်း', kind: 'SEATED', x: 10, y: 10, rows: [1, 2].map((r) => ({ label: String(r), seats: Array.from({ length: 5 }, (_, i) => ({ n: i + 1 })) })) }],
+  };
+  let A: Record<string, string>, O: Record<string, string>, orgId: string, versionId: string;
+
+  async function acceptInvite(url: string) {
+    const r = await http.post(`/v1/auth/invitations/${url.split('/invite/')[1]}/accept`).send({ password: 'password-12345', displayName: 'T' }).expect(200);
+    return bearer(r.body.accessToken as string);
+  }
+  const newPhone = () => `09${randomInt(700_000_000, 799_999_999)}`;
+  async function login(phone: string) {
+    const r1 = await http.post('/v1/auth/otp/request').send({ phone }).expect(200);
+    const r2 = await http.post('/v1/auth/otp/verify').send({ phone, code: r1.body.devCode }).expect(200);
+    return bearer(r2.body.accessToken as string);
+  }
+  const base = (eventId: string) => `/v1/organizations/${orgId}/events/${eventId}`;
+  const seating = (eventId: string) => `${base(eventId)}/seating`;
+  const seat = (eventId: string, key: string) => prisma.eventSeat.findUniqueOrThrow({ where: { eventId_seatKey: { eventId, seatKey: key } } });
+  const ttRow = (id: string) => prisma.ticketType.findUniqueOrThrow({ where: { id } });
+
+  /** Published event on the hall: all 10 seats are Std (10,000, max 2 per person). */
+  async function guestEvent(title: string) {
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + 5 * 86400e3);
+    const ev = await http
+      .post(`/v1/organizations/${orgId}/events`)
+      .set(O)
+      .send({ categoryId: cats.body[0].children[0].id, title: `${title} ${tag}`, titleMy: 'ဧည့်သည်', format: 'IN_PERSON', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3 * 3600e3).toISOString() })
+      .expect(201);
+    const id = ev.body.id as string;
+    const std = (await http.post(`${base(id)}/ticket-types`).set(O).send({ name: 'Std', priceMmk: 10_000, quota: 1, maxPerOrder: 2 }).expect(201)).body.id as string;
+    await http.put(`${seating(id)}/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    await http.put(`${seating(id)}/assignments`).set(O).send({ rules: [{ sectionKey: 'A', ticketTypeId: std }] }).expect(200);
+    await prisma.event.update({ where: { id }, data: { status: 'PUBLISHED', publishedAt: new Date() } });
+    return { id, std };
+  }
+  const hold = (id: string, seats: string[], label = 'Sponsor') => http.post(`${seating(id)}/hold`).set(O).send({ seats, label });
+  const comps = (id: string, seats: string[], phone: string, extra: object = {}) => http.post(`${seating(id)}/comps`).set(O).send({ seats, guestName: 'Daw Mya', phone, ...extra });
+
+  beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET ??= 'e2e-secret';
+    process.env.OTP_DEV_ECHO = 'true';
+    process.env.PAYMENTS_MOCK = 'true';
+    process.env.SETTINGS_KEY ??= randomBytes(32).toString('base64');
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('v1', { exclude: ['healthz', 'readyz'] });
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    http = new Proxy({} as ReturnType<typeof request>, { get: (_t, m: string) => (request(app.getHttpServer()) as any)[m] });
+    prisma = app.get(PrismaService);
+    const adm = await app.get(AuthService).createInvitation({ email: `adm-g-${tag}@e2e.test`, platformRole: 'PLATFORM_ADMIN' });
+    A = await acceptInvite(adm.url);
+    const org = await http.post('/v1/admin/organizations').set(A).send({ name: `Guest Org ${tag}`, slug: `guest-${tag}`, ownerEmail: `own-g-${tag}@e2e.test` }).expect(201);
+    orgId = org.body.organization.id;
+    O = await acceptInvite(org.body.inviteUrl);
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Guest Hall ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: hall }).expect(200);
+    versionId = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id;
+  });
+  afterAll(async () => {
+    await app.get(NotifyService).idle();
+    await app?.close();
+  });
+
+  it('hold rejects non-available seats', async () => {
+    const ev = await guestEvent('Hold');
+    await hold(ev.id, ['A:1:1']).expect(201);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'GUEST_HOLD', holdLabel: 'Sponsor' });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 9, sold: 0, held: 0 });
+    const r = await hold(ev.id, ['A:1:1', 'A:1:2']).expect(409);
+    expect(r.body.takenSeats).toEqual(['A:1:1']);
+    expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'AVAILABLE' }); // all or none
+    await hold(ev.id, ['Z:9:9']).expect(409).expect((x) => expect(x.body.takenSeats).toEqual(['Z:9:9']));
+    // a buyer cannot take a held seat
+    const B = await login(newPhone());
+    await http.post(`/v1/events/${ev.id}/orders`).set(B).send({ seats: ['A:1:1'] }).expect(409);
+    await hold(ev.id, []).expect(400);
+    // strangers cannot hold
+    await http.post(`${seating(ev.id)}/hold`).set(B).send({ seats: ['A:1:3'], label: 'x' }).expect(403);
+  });
+
+  it('release returns seats to sale', async () => {
+    const ev = await guestEvent('Release');
+    await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
+    await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:1:3'] }).expect(409); // A:1:3 is not held; nothing changes
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'GUEST_HOLD' });
+    await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:1:2'] }).expect(200);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', holdLabel: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 10 });
+    await http.post(`/v1/events/${ev.id}/orders`).set(await login(newPhone())).send({ seats: ['A:1:1'] }).expect(201);
+  });
+
+  it('comps issue tickets to a phone and mark seats sold', async () => {
+    const ev = await guestEvent('Comp');
+    await hold(ev.id, ['A:1:1', 'A:1:2'], 'Press').expect(201);
+    const phone = newPhone();
+    await comps(ev.id, ['A:1:3'], phone).expect(409); // not held
+    await comps(ev.id, ['A:1:1'], '12345').expect(400);
+    const r = await comps(ev.id, ['A:1:1', 'A:1:2'], phone, { label: 'VIP guest' }).expect(201);
+    expect(r.body.tickets).toHaveLength(2);
+    const order = await prisma.order.findFirstOrThrow({ where: { eventId: ev.id, channel: 'COMP' }, include: { items: true, tickets: true } });
+    expect(order).toMatchObject({ status: 'CONFIRMED', subtotalMmk: 0n, totalMmk: 0n, commissionMmk: 0n });
+    expect(order.items).toHaveLength(1);
+    expect(order.items[0]).toMatchObject({ ticketTypeId: ev.std, quantity: 2, unitPriceMmk: 0n });
+    expect(order.tickets.every((t) => t.isComplimentary && t.compLabel === 'VIP guest' && t.guestName === 'Daw Mya')).toBe(true);
+    for (const t of order.tickets) expect(await seat(ev.id, t.seatKey!)).toMatchObject({ status: 'SOLD', ticketId: t.id, orderId: order.id });
+    // comps are outside quota and sold; ledger untouched
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 8, sold: 0, held: 0 });
+    expect(await prisma.ledgerEntry.count({ where: { refId: order.id } })).toBe(0);
+    // the guest signs in with that phone and sees seat + Complimentary
+    const G = await login(phone);
+    const mine = await http.get('/v1/me/tickets').set(G).expect(200);
+    const t1 = mine.body.find((t: any) => t.seatKey === 'A:1:1');
+    expect(t1).toMatchObject({ seatLabel: 'Stalls · Row 1 · Seat 1', seatLabelMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 1', isComplimentary: true, compLabel: 'VIP guest', canTransfer: false });
+    expect(t1.qr).toBeTruthy();
+    expect(await prisma.notification.count({ where: { userId: order.userId, kind: 'ticket_received' } })).toBe(1);
+    // comps do not count toward the per-person limit: the guest can still buy up to maxPerOrder (2)
+    await http.post(`/v1/events/${ev.id}/orders`).set(G).send({ seats: ['A:2:1', 'A:2:2'] }).expect(201);
+    await http.post(`/v1/events/${ev.id}/orders`).set(G).send({ seats: ['A:2:3'] }).expect(409);
+  });
+
+  it('comps excluded from sales, revenue and milestones', async () => {
+    const ev = await guestEvent('Figures');
+    await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
+    const checkSales = jest.spyOn(app.get(NotifyService), 'checkSales');
+    await comps(ev.id, ['A:1:1', 'A:1:2'], newPhone()).expect(201);
+    expect(checkSales).not.toHaveBeenCalled();
+    checkSales.mockRestore();
+    const before = (await http.get(`${base(ev.id)}/dashboard`).set(O).expect(200)).body.totals;
+    expect(before).toMatchObject({ orders: 0, ticketsSold: 0, revenueMmk: 0 });
+    // one real paid order is the only thing counted
+    const real = await prisma.user.create({ data: { phone: newPhone() } });
+    await prisma.order.create({ data: { userId: real.id, eventId: ev.id, status: 'PAID', subtotalMmk: 10_000n, totalMmk: 10_000n, commissionMmk: 500n, paidAt: new Date() } });
+    const after = (await http.get(`${base(ev.id)}/dashboard`).set(O).expect(200)).body;
+    expect(after.totals).toMatchObject({ orders: 1, revenueMmk: 10_000 });
+    expect(after.daily.reduce((s: number, d: any) => s + d.orders, 0)).toBe(1);
+    const sales = await http.get(`${base(ev.id)}/sales`).set(O).expect(200);
+    expect(sales.body.paidOrders).toBe(1);
+    const csv = await http.get(`${base(ev.id)}/attendees.csv`).set(O).expect(200);
+    expect(csv.text.split('\r\n')[0]).toContain('complimentary');
+    expect(csv.text).toContain('"yes"');
+  });
+
+  it('recountTicketTypes excludes comps from quota and sold', async () => {
+    const ev = await guestEvent('Recount');
+    await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
+    await comps(ev.id, ['A:1:1'], newPhone()).expect(201);
+    // a buyer's sold seat
+    const buyer = await prisma.user.create({ data: { phone: newPhone() } });
+    const o = await prisma.order.create({ data: { userId: buyer.id, eventId: ev.id, status: 'PAID', subtotalMmk: 10_000n, totalMmk: 10_000n, paidAt: new Date() } });
+    const t = await prisma.ticket.create({ data: { orderId: o.id, ticketTypeId: ev.std, holderUserId: buyer.id, seatKey: 'A:2:1' } });
+    await prisma.eventSeat.update({ where: { eventId_seatKey: { eventId: ev.id, seatKey: 'A:2:1' } }, data: { status: 'SOLD', orderId: o.id, ticketId: t.id } });
+    await prisma.$transaction((tx) => app.get(EventSeatsService).recountTicketTypes(tx, ev.id));
+    // 10 seats - 1 comp - 1 guest hold = 8 sellable (incl. the buyer's); only the buyer's counts as sold
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 8, sold: 1, held: 0 });
+  });
+
+  it('comp ticket cannot be transferred', async () => {
+    const ev = await guestEvent('Transfer');
+    await hold(ev.id, ['A:1:1']).expect(201);
+    const phone = newPhone();
+    await comps(ev.id, ['A:1:1'], phone).expect(201);
+    const G = await login(phone);
+    const t = (await http.get('/v1/me/tickets').set(G).expect(200)).body.find((x: any) => x.seatKey === 'A:1:1');
+    const r = await http.post(`/v1/me/tickets/${t.id}/transfer`).set(G).send({ phone: newPhone() }).expect(409);
+    expect(r.body.message).toBe("Guest tickets can't be transferred");
+  });
+
+  it('revoking one of several comps returns only that seat to GUEST_HOLD', async () => {
+    const ev = await guestEvent('Revoke');
+    await hold(ev.id, ['A:1:1', 'A:1:2', 'A:1:3'], 'Sponsor').expect(201);
+    await comps(ev.id, ['A:1:1', 'A:1:2', 'A:1:3'], newPhone(), { label: 'Speaker' }).expect(201);
+    const list = await http.get(`${seating(ev.id)}/guests`).set(O).expect(200);
+    expect(list.body).toHaveLength(3);
+    expect(list.body[0]).toMatchObject({ guestName: 'Daw Mya', label: 'Speaker', status: 'VALID', checkedIn: false });
+    expect(list.body[0].phone).toMatch(/•••/);
+    const [first, ...rest] = list.body as { id: string; seatKey: string }[];
+    await http.post(`${seating(ev.id)}/comps/${first.id}/revoke`).set(O).expect(200);
+    const t = await prisma.ticket.findUniqueOrThrow({ where: { id: first.id } });
+    expect(t.status).toBe('VOID');
+    expect(await seat(ev.id, first.seatKey)).toMatchObject({ status: 'GUEST_HOLD', holdLabel: 'Speaker', ticketId: null, orderId: null });
+    for (const r of rest) expect(await seat(ev.id, r.seatKey)).toMatchObject({ status: 'SOLD', ticketId: r.id });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 7, sold: 0 });
+    const order = () => prisma.order.findUniqueOrThrow({ where: { id: t.orderId } });
+    expect((await order()).status).toBe('CONFIRMED');
+    await http.post(`${seating(ev.id)}/comps/${first.id}/revoke`).set(O).expect(409); // already void
+    for (const r of rest) await http.post(`${seating(ev.id)}/comps/${r.id}/revoke`).set(O).expect(200);
+    expect((await order()).status).toBe('CANCELLED');
+    // the freed seat can be issued again from its hold
+    await comps(ev.id, [first.seatKey], newPhone()).expect(201);
+  });
+
+  it('comps.pdf has one page per ticket', async () => {
+    const ev = await guestEvent('Pdf');
+    await hold(ev.id, ['A:1:1', 'A:1:2', 'A:1:3']).expect(201);
+    await comps(ev.id, ['A:1:1', 'A:1:2', 'A:1:3'], newPhone(), { label: 'Press' }).expect(201);
+    const get = (q = '') =>
+      http
+        .get(`${seating(ev.id)}/comps.pdf${q}`)
+        .set(O)
+        .buffer(true)
+        .parse((res: any, cb: any) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+    const pages = (b: Buffer) => (b.toString('latin1').match(/\/Type \/Page(?!s)/g) ?? []).length;
+    const all = await get().expect(200);
+    expect(all.headers['content-type']).toContain('application/pdf');
+    expect((all.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+    expect(pages(all.body)).toBe(3);
+    const ids = (await prisma.ticket.findMany({ where: { order: { eventId: ev.id } }, select: { id: true }, take: 2 })).map((t) => t.id);
+    const two = await get(`?ids=${ids.join(',')}`).expect(200);
+    expect(pages(two.body)).toBe(2);
+    await get('?ids=nope').expect(400);
+  });
+});

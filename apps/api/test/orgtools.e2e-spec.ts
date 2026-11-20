@@ -184,7 +184,7 @@ run('Organizer tools', () => {
     expect(r.headers['content-type']).toContain('text/csv');
     expect(r.headers['content-disposition']).toContain(`${slug}-attendees.csv`);
     const lines = r.text.replace(/^﻿/, '').split('\r\n');
-    expect(lines[0]).toBe('ticket,holder,phone,ticket_type,price_mmk,status,order,order_status,promo_code,purchased_at_mmt,checked_in_at_mmt,gate,transfers');
+    expect(lines[0]).toBe('ticket,holder,phone,ticket_type,price_mmk,status,order,order_status,promo_code,purchased_at_mmt,checked_in_at_mmt,gate,transfers,complimentary');
     expect(lines.length).toBeGreaterThan(5);
     expect(r.text).not.toMatch(/\+959\d{7,9}/); // no full numbers
     expect(r.text).toMatch(/"09\d\d•••\d{3}"/);

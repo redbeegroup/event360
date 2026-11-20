@@ -193,7 +193,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (moved.length) throw seatsTaken(moved);
       }
       for (const { tt, quantity, seatKeys } of lines) {
-        const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId: tt.id, status: { in: ['VALID', 'CHECKED_IN'] } } });
+        const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId: tt.id, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
         const pending = await tx.orderItem.aggregate({
           _sum: { quantity: true },
           where: { ticketTypeId: tt.id, order: { userId, status: 'PENDING_PAYMENT', holdExpiresAt: { gt: now } } },
@@ -767,11 +767,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const orgs = await this.prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } });
     const sales = await this.prisma.order.groupBy({
       by: ['eventId'],
-      where: { status: { in: ['PAID', 'REFUNDED'] }, totalMmk: { gt: 0n } },
+      where: { status: { in: ['PAID', 'REFUNDED'] }, totalMmk: { gt: 0n }, channel: { not: 'COMP' } },
       _sum: { totalMmk: true, commissionMmk: true },
       _count: true,
     });
-    const refunded = await this.prisma.order.groupBy({ by: ['eventId'], where: { status: 'REFUNDED', totalMmk: { gt: 0n } }, _sum: { totalMmk: true, commissionMmk: true } });
+    const refunded = await this.prisma.order.groupBy({ by: ['eventId'], where: { status: 'REFUNDED', totalMmk: { gt: 0n }, channel: { not: 'COMP' } }, _sum: { totalMmk: true, commissionMmk: true } });
     const events = await this.prisma.event.findMany({ where: { id: { in: sales.map((s) => s.eventId) } }, select: { id: true, organizationId: true } });
     const orgOf = new Map(events.map((e) => [e.id, e.organizationId]));
     const agg = new Map<string, { gross: bigint; commission: bigint; refunded: bigint; orders: number }>();
@@ -835,10 +835,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   async eventSales(organizationId: string, eventId: string) {
     const e = await this.prisma.event.findFirst({ where: { id: eventId, organizationId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' } } } });
     if (!e) throw new NotFoundException('Event not found');
-    const paid = await this.prisma.order.aggregate({ where: { eventId, status: 'PAID', totalMmk: { gt: 0n } }, _sum: { totalMmk: true, commissionMmk: true }, _count: true });
-    const refunded = await this.prisma.order.aggregate({ where: { eventId, status: 'REFUNDED' }, _sum: { totalMmk: true }, _count: true });
+    const paid = await this.prisma.order.aggregate({ where: { eventId, status: 'PAID', totalMmk: { gt: 0n }, channel: { not: 'COMP' } }, _sum: { totalMmk: true, commissionMmk: true }, _count: true });
+    const refunded = await this.prisma.order.aggregate({ where: { eventId, status: 'REFUNDED', channel: { not: 'COMP' } }, _sum: { totalMmk: true }, _count: true });
     const recent = await this.prisma.order.findMany({
-      where: { eventId, status: { in: ['PAID', 'REFUNDED', 'PENDING_PAYMENT'] }, totalMmk: { gt: 0n } },
+      where: { eventId, status: { in: ['PAID', 'REFUNDED', 'PENDING_PAYMENT'] }, totalMmk: { gt: 0n }, channel: { not: 'COMP' } },
       orderBy: { createdAt: 'desc' },
       take: 20,
       include: { user: { select: { phone: true, displayName: true } }, items: true },

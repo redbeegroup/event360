@@ -142,14 +142,14 @@ export class OrgToolsService {
       return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const fmt = (d?: Date | null) => (d ? new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ') : '');
-    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers'];
+    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers', 'complimentary'];
     const lines = tickets.map((t) =>
       [
         t.id.slice(0, 8).toUpperCase(),
         t.holder.displayName ?? '',
         maskPhone(t.holder.phone),
         t.ticketType.name,
-        mmk(t.ticketType.priceMmk),
+        t.isComplimentary ? 0 : mmk(t.ticketType.priceMmk),
         t.status,
         t.order.id.slice(0, 8),
         t.order.status,
@@ -158,6 +158,7 @@ export class OrgToolsService {
         fmt(t.checkins[0]?.scannedAt),
         t.checkins[0]?.gate ?? '',
         t.transferCount,
+        t.isComplimentary ? 'yes' : '',
       ]
         .map(esc)
         .join(','),
@@ -170,7 +171,7 @@ export class OrgToolsService {
   async dashboard(orgId: string, eventId: string) {
     const e = await this.event(orgId, eventId);
     const orders = await this.prisma.order.findMany({
-      where: { eventId, status: { in: ['PAID', 'CONFIRMED', 'REFUNDED'] } },
+      where: { eventId, channel: { not: 'COMP' }, status: { in: ['PAID', 'CONFIRMED', 'REFUNDED'] } },
       select: { createdAt: true, paidAt: true, status: true, totalMmk: true, discountMmk: true, items: { select: { quantity: true } } },
     });
     const views = await this.prisma.eventDailyStat.findMany({ where: { eventId }, orderBy: { day: 'asc' } });

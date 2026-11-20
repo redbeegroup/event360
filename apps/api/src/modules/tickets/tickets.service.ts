@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { normalizeMyanmarPhone } from '../auth/phone';
+import { normalizeMyanmarPhone, upsertUserByPhone } from '../auth/phone';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
@@ -37,7 +37,7 @@ export class TicketsService {
     const result = await this.prisma.$transaction(async (tx) => {
       // Seated event: share-lock the event row so seat assignments can't change during this registration
       if (e.seatMapVersionId) await shareLockEvent(tx, eventId);
-      const already = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, status: { in: ['VALID', 'CHECKED_IN'] } } });
+      const already = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
       if (already + quantity > tt.maxPerOrder) {
         throw new ConflictException(`You already hold ${already} ticket(s); the limit is ${tt.maxPerOrder} per person`);
       }
@@ -85,6 +85,11 @@ export class TicketsService {
         id: t.id,
         status: t.status,
         createdAt: t.createdAt,
+        seatKey: t.seatKey,
+        seatLabel: t.seatLabel,
+        seatLabelMy: t.seatLabelMy,
+        isComplimentary: t.isComplimentary,
+        compLabel: t.compLabel,
         ticketType: { id: t.ticketTypeId, name: t.ticketType.name, nameMy: t.ticketType.nameMy, priceMmk: mmk(t.ticketType.priceMmk) },
         event: {
           id: e.id,
@@ -101,6 +106,7 @@ export class TicketsService {
         qr: t.status === 'VALID' ? this.tokens.sign({ tid: t.id, eid: e.id, tt: t.ticketTypeId, v: t.qrVersion }) : null,
         canTransfer:
           t.status === 'VALID' &&
+          !t.isComplimentary &&
           e.transfersEnabled &&
           !['CANCELLED', 'COMPLETED'].includes(e.status) &&
           t.transferCount < TicketsService.MAX_TRANSFERS &&
@@ -124,6 +130,7 @@ export class TicketsService {
     });
     if (!t || t.holderUserId !== userId) throw new NotFoundException('Ticket not found');
     const e = t.ticketType.event;
+    if (t.isComplimentary) throw new ConflictException("Guest tickets can't be transferred");
     if (t.status !== 'VALID') throw new ConflictException(t.status === 'CHECKED_IN' ? 'This ticket has already been used' : 'This ticket can no longer be transferred');
     if (!e.transfersEnabled) throw new ForbiddenException('The organizer does not allow ticket transfers for this event');
     if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException('This event is no longer running');
@@ -133,11 +140,7 @@ export class TicketsService {
     if (t.transferCount >= TicketsService.MAX_TRANSFERS) throw new ConflictException(`A ticket can be transferred at most ${TicketsService.MAX_TRANSFERS} times`);
     if (t.holder.phone === phone) throw new BadRequestException('This ticket is already yours');
 
-    const to = await this.prisma.user.upsert({
-      where: { phone },
-      update: {},
-      create: { phone, identities: { create: { provider: 'PHONE', subject: phone } } },
-    });
+    const to = await upsertUserByPhone(this.prisma, phone);
     await this.prisma.$transaction(async (tx) => {
       // Conditional update: a concurrent check-in or second transfer can't slip through
       const n = await tx.ticket.updateMany({

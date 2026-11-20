@@ -1,11 +1,14 @@
-import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { Allow, ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TicketsModule } from '../tickets/tickets.module';
+import { GuestsService } from './guests.service';
 import { EventSeatsService } from './event-seats.service';
 import { SeatMapsService } from './seat-maps.service';
 
@@ -143,6 +146,65 @@ export class EventSeatingController {
   }
 }
 
+class SeatKeysDto {
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @IsString({ each: true }) @MaxLength(300, { each: true }) seats: string[];
+}
+
+class HoldDto extends SeatKeysDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(100) label: string;
+}
+
+class CompsDto extends SeatKeysDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) guestName: string;
+  @ApiProperty() @IsString() @MinLength(5) @MaxLength(30) phone: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) label?: string;
+}
+
+/** Organizer: hold seats for guests, issue and revoke complimentary tickets, print them. */
+@ApiTags('organizer')
+@Controller('organizations/:orgId/events/:id/seating')
+@Auth()
+export class EventGuestsController {
+  constructor(
+    private readonly guests: GuestsService,
+    private readonly access: OrgAccessService,
+  ) {}
+
+  @Post('hold') async hold(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HoldDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.guests.hold(orgId, id, dto.seats, dto.label.trim());
+  }
+
+  @Post('release') @HttpCode(200) async release(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SeatKeysDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.guests.release(orgId, id, dto.seats);
+  }
+
+  @Post('comps') async issue(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompsDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.guests.issue(orgId, id, dto);
+  }
+
+  @Get('guests') async list(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_VIEWERS);
+    return this.guests.list(orgId, id);
+  }
+
+  @Post('comps/:ticketId/revoke') @HttpCode(200)
+  async revoke(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Param('ticketId', ParseUUIDPipe) ticketId: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.guests.revoke(orgId, id, ticketId);
+  }
+
+  /** Printable guest tickets (the QR codes are live tickets, so editors only). */
+  @Get('comps.pdf') async pdf(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Query('ids') ids: string | undefined, @CurrentUser() u: AuthUser, @Res() res: Response) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    const pdf = await this.guests.pdf(orgId, id, ids);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Length': String(pdf.length), 'Content-Disposition': 'inline; filename="guest-tickets.pdf"', 'Cache-Control': 'no-store' });
+    res.send(pdf);
+  }
+}
+
 class BestSeatsDto {
   @ApiProperty() @IsUUID() ticketTypeId: string;
   @ApiProperty({ minimum: 1, maximum: 20 }) @IsInt() @Min(1) @Max(20) quantity: number;
@@ -168,8 +230,9 @@ export class PublicSeatsController {
 }
 
 @Module({
-  controllers: [AdminSeatMapsController, OrganizerSeatMapsController, EventSeatingController, PublicSeatsController],
-  providers: [SeatMapsService, EventSeatsService, OrgMemberCheck],
+  imports: [TicketsModule],
+  controllers: [AdminSeatMapsController, OrganizerSeatMapsController, EventSeatingController, EventGuestsController, PublicSeatsController],
+  providers: [SeatMapsService, EventSeatsService, GuestsService, OrgMemberCheck],
   exports: [SeatMapsService, EventSeatsService],
 })
 export class SeatingModule {}
