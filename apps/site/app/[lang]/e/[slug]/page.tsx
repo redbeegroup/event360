@@ -233,7 +233,7 @@ export default async function EventPage({ params }: P) {
 
         {shownFacts.length > 0 && (
           <section aria-labelledby="good">
-            <h2 id="good">{t.goodToKnow}</h2>
+            <h2 id="good">{t.practicalInfo}</h2>
             <dl className="facts">
               {shownFacts.map(([k, v]) => (
                 <div className="fact" key={k + v}>
