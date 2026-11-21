@@ -212,10 +212,12 @@ class Event360Api {
   /// Gives back one of the holder's free tickets before the event starts; its seat goes back on sale.
   Future<void> cancelTicket(String ticketId) => _call(() => _dio.post('/me/tickets/$ticketId/cancel'), (_) {});
 
-  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities) => _call(
+  /// Previews a promo code. [seats] (seat keys of a seated order) count as one ticket of their own type each; [quantities] may then be empty.
+  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities, {List<String> seats = const []}) => _call(
         () => _dio.post('/events/$eventId/promo-check', data: {
           'code': code,
           'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
+          if (seats.isNotEmpty) 'seats': seats,
         }),
         (d) => PromoCheck.fromJson(d as Map<String, dynamic>),
       );

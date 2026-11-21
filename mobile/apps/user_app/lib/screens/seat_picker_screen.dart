@@ -45,6 +45,15 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   List<int?> _typeOf = const [];
   List<int> _selected = []; // seat indexes, in the order they were picked
 
+  // Promo: the entered code, the last check for the current seats (null while pending), and a debounce for re-checks
+  final _promoCtl = TextEditingController();
+  bool _promoOpen = false;
+  String _promoCode = ''; // applied code; empty = none
+  PromoCheck? _promo;
+  bool _promoChecking = false;
+  Timer? _promoDebounce;
+  int _promoSeq = 0; // answers to older checks are ignored
+
   Timer? _poll;
   bool _loading = false;
   bool _busy = false;
@@ -72,6 +81,8 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    _promoDebounce?.cancel();
+    _promoCtl.dispose();
     if (_zoomTick != null) _zoomAnim?.removeListener(_zoomTick!);
     _anim.dispose();
     _controller
@@ -169,6 +180,72 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         _notice = L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
       }
     });
+    if (lost.isNotEmpty || (old != null && old.versionId != d.versionId)) _seatsChanged();
+  }
+
+  // ───── Promo ─────
+
+  List<String> get _seatKeys => [for (final i in _selected) _layout!.seats[i].seatKey];
+
+  /// The seats changed: the old discount no longer applies, so hide it and re-check shortly (debounced).
+  void _seatsChanged() {
+    _promoDebounce?.cancel();
+    _promoSeq++;
+    if (_promoCode.isEmpty) return;
+    setState(() {
+      _promo = null;
+      _promoChecking = _selected.isNotEmpty;
+    });
+    if (_selected.isEmpty) return;
+    _promoDebounce = Timer(const Duration(milliseconds: 300), _checkPromo);
+  }
+
+  void _applyPromo() {
+    final code = _promoCtl.text.trim();
+    if (code.isEmpty) return;
+    _promoDebounce?.cancel();
+    setState(() {
+      _promoCode = code;
+      _promo = null;
+      _promoChecking = _selected.isNotEmpty;
+    });
+    if (_selected.isNotEmpty) _checkPromo();
+  }
+
+  void _removePromo() {
+    _promoDebounce?.cancel();
+    _promoSeq++;
+    setState(() {
+      _promoCode = '';
+      _promo = null;
+      _promoChecking = false;
+      _promoOpen = false;
+      _promoCtl.clear();
+    });
+  }
+
+  Future<void> _checkPromo() async {
+    final event = ref.read(eventProvider(widget.idOrSlug)).value;
+    final keys = _seatKeys;
+    final code = _promoCode;
+    if (event == null || code.isEmpty || keys.isEmpty) {
+      if (mounted) setState(() => _promoChecking = false);
+      return;
+    }
+    final seq = ++_promoSeq;
+    PromoCheck r;
+    try {
+      r = await ref.read(apiProvider).checkPromo(event.id, code, const {}, seats: keys);
+    } on ApiException catch (e) {
+      r = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _total);
+    } catch (_) {
+      r = PromoCheck(valid: false, reason: null, discountMmk: 0, totalMmk: _total);
+    }
+    if (!mounted || seq != _promoSeq) return; // seats changed (or code removed) meanwhile
+    setState(() {
+      _promo = r;
+      _promoChecking = false;
+    });
   }
 
   // ───── Selection ─────
@@ -196,6 +273,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     });
     if (_selected.contains(i)) {
       setState(() => _selected = [for (final s in _selected) if (s != i) s]);
+      _seatsChanged();
       return;
     }
     if (_states[i] != SeatState.available || _typeOf[i] == null) {
@@ -208,6 +286,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       return;
     }
     setState(() => _selected = [..._selected, i]);
+    _seatsChanged();
   }
 
   void _snack(String text) {
@@ -292,6 +371,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       _notice = null;
       _error = null;
     });
+    _seatsChanged();
     _zoomTo(picked.map((s) => Rect.fromCircle(center: s.pos, radius: kSeatRadius)).reduce((a, b) => a.expandToInclude(b)).inflate(40));
   }
 
@@ -317,14 +397,16 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       return;
     }
     final keys = [for (final i in _selected) l.seats[i].seatKey];
+    if (_promoCode.isNotEmpty && (_promoChecking || _promo == null)) return; // wait for the re-check
+    final code = _promo?.valid == true ? _promoCode : null;
     setState(() {
       _busy = true;
       _error = null;
       _notice = null;
     });
     try {
-      final key = '$_idempotencyKey-${Object.hashAll([...keys]..sort()).toRadixString(16)}';
-      final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys);
+      final key = '$_idempotencyKey-${Object.hashAll([...([...keys]..sort()), code ?? '']).toRadixString(16)}';
+      final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys, promoCode: code);
       _idempotencyKey = _newSalt();
       ref.invalidate(eventProvider(event.id));
       ref.invalidate(pendingOrdersProvider);
@@ -335,6 +417,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         context.go('/tickets');
       } else {
         setState(() => _selected = []);
+        _seatsChanged();
         await context.push('/checkout/${o.id}');
         if (mounted) _load();
       }
@@ -347,6 +430,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           _selected = [for (final i in _selected) if (!taken.any((s) => s.index == i)) i];
           _notice = t.seatsJustTaken([for (final s in taken) s.labelFor(lang)].join(', '));
         });
+        _seatsChanged();
         await _load(force: true); // the map may look unchanged to us, but those seats are gone
       } else {
         setState(() => _error = e.message);
@@ -441,8 +525,18 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           notice: _notice,
           error: _error,
           busy: _busy,
-          canContinue: event != null,
-          onRemove: (i) => setState(() => _selected = [for (final s in _selected) if (s != i) s]),
+          canContinue: event != null && !(_promoCode.isNotEmpty && (_promoChecking || _promo == null) && _selected.isNotEmpty),
+          onRemove: (i) {
+            setState(() => _selected = [for (final s in _selected) if (s != i) s]);
+            _seatsChanged();
+          },
+          promo: _promo,
+          promoChecking: _promoChecking,
+          promoOpen: _promoOpen,
+          promoController: _promoCtl,
+          onOpenPromo: () => setState(() => _promoOpen = true),
+          onApplyPromo: _applyPromo,
+          onRemovePromo: _removePromo,
           onBest: _best,
           onContinue: _continue,
         ),
@@ -504,6 +598,13 @@ class _BottomBar extends StatelessWidget {
     required this.busy,
     required this.canContinue,
     required this.onRemove,
+    required this.promo,
+    required this.promoChecking,
+    required this.promoOpen,
+    required this.promoController,
+    required this.onOpenPromo,
+    required this.onApplyPromo,
+    required this.onRemovePromo,
     required this.onBest,
     required this.onContinue,
   });
@@ -516,6 +617,13 @@ class _BottomBar extends StatelessWidget {
   final bool busy;
   final bool canContinue;
   final void Function(int seatIndex) onRemove;
+  final PromoCheck? promo; // null while unchecked or being re-checked
+  final bool promoChecking;
+  final bool promoOpen;
+  final TextEditingController promoController;
+  final VoidCallback onOpenPromo;
+  final VoidCallback onApplyPromo;
+  final VoidCallback onRemovePromo;
   final VoidCallback onBest;
   final VoidCallback onContinue;
 
@@ -551,10 +659,44 @@ class _BottomBar extends StatelessWidget {
                   ]),
                 ),
               ),
+            if (!promoOpen)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(key: const Key('addPromo'), style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero), onPressed: onOpenPromo, child: Text(t.addPromoCode)),
+              )
+            else ...[
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key('promoField'),
+                    controller: promoController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(labelText: t.promoCode, isDense: true),
+                    onSubmitted: (_) => onApplyPromo(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(key: const Key('promoApply'), onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
+                const SizedBox(width: 4),
+                TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
+              ]),
+              if (promo != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: promo!.valid
+                      ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                      : Text(promo!.reason ?? t.promoInvalid, key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
+                ),
+            ],
             const SizedBox(height: 6),
             Row(children: [
               Expanded(child: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium)),
-              Text(t.mmk(formatAmount(totalMmk, lang)), key: const Key('seatTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              if (promo?.valid == true)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(t.mmk(formatAmount(totalMmk, lang)), style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough)),
+                ),
+              Text(t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)), key: const Key('seatTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             ]),
             const SizedBox(height: 8),
             Row(children: [

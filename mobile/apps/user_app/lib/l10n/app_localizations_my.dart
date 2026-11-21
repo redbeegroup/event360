@@ -415,6 +415,12 @@ class L10nMy extends L10n {
   String get apply => 'သုံးမည်';
 
   @override
+  String get addPromoCode => 'ပရိုမိုကုဒ် ထည့်ရန်';
+
+  @override
+  String get removePromo => 'ဖယ်ရှားမည်';
+
+  @override
   String get promoInvalid => 'ဤကုဒ် မမှန်ကန်ပါ';
 
   @override

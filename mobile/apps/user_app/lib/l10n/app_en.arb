@@ -218,6 +218,8 @@
   "noNotifications": "No notifications yet. Ticket updates, reminders and organizer announcements will appear here.",
   "promoCode": "Promo code",
   "apply": "Apply",
+  "addPromoCode": "Add promo code",
+  "removePromo": "Remove",
   "promoInvalid": "This code is not valid",
   "promoApplied": "Code applied: {amount} off",
   "@promoApplied": {

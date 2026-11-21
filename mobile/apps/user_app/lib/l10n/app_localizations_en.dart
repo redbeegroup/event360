@@ -414,6 +414,12 @@ class L10nEn extends L10n {
   String get apply => 'Apply';
 
   @override
+  String get addPromoCode => 'Add promo code';
+
+  @override
+  String get removePromo => 'Remove';
+
+  @override
   String get promoInvalid => 'This code is not valid';
 
   @override

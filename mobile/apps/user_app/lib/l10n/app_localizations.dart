@@ -841,6 +841,18 @@ abstract class L10n {
   /// **'Apply'**
   String get apply;
 
+  /// No description provided for @addPromoCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Add promo code'**
+  String get addPromoCode;
+
+  /// No description provided for @removePromo.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get removePromo;
+
   /// No description provided for @promoInvalid.
   ///
   /// In en, this message translates to:

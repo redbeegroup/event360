@@ -96,6 +96,8 @@ class FakeApi extends Event360Api {
   final bestCalls = <String>[];
   final seatOrders = <List<String>>[];
   final seatOrderKeys = <String>[];
+  final seatPromoCodes = <String?>[];
+  final promoSeatChecks = <List<String>>[];
   List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
   final cancelled = <String>[];
   List<Map<String, dynamic>> extraTickets = [];
@@ -154,6 +156,7 @@ class FakeApi extends Event360Api {
       }
       seatOrders.add(seats);
       seatOrderKeys.add(idempotencyKey);
+      seatPromoCodes.add(promoCode);
       final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 20000 * seats.length, qty: seats.length);
       orders['ord-1'] = o;
       return Order.fromJson(o);
@@ -170,7 +173,14 @@ class FakeApi extends Event360Api {
   Future<Order> order(String id) async => Order.fromJson(orders[id]!);
 
   @override
-  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities) async {
+  Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities, {List<String> seats = const []}) async {
+    if (seats.isNotEmpty) {
+      promoSeatChecks.add(seats);
+      final sub = 20000 * seats.length;
+      return code.toUpperCase() == 'SAVE20'
+          ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
+          : PromoCheck(valid: false, reason: 'This code has expired', discountMmk: 0, totalMmk: sub);
+    }
     final sub = 5000 * quantities.values.first;
     return code.toUpperCase() == 'SAVE20'
         ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
@@ -854,6 +864,105 @@ void main() {
     await tapSeat(tester, 1, 2);
     expect(find.text("That seat isn't available"), findsOneWidget);
     expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  Future<void> applyPromo(WidgetTester tester, String code) async {
+    await tester.tap(find.byKey(const Key('addPromo')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('promoField')), code);
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+
+  testWidgets('seat picker applies promo and sends it with the order', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 4);
+    await tapSeat(tester, 1, 5);
+    await applyPromo(tester, 'save20');
+    expect(pickerApi.promoSeatChecks, [
+      ['A:1:4', 'A:1:5']
+    ]);
+    expect(find.text('Code applied: 8,000 MMK off'), findsOneWidget);
+    expect(find.text('32,000 MMK'), findsOneWidget); // discounted total
+    expect(find.text('40,000 MMK'), findsOneWidget); // struck-through original
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(pickerApi.seatPromoCodes, ['save20']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('changing seats re-checks promo', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    await tapSeat(tester, 1, 2);
+    expect(find.textContaining('Code applied'), findsNothing); // old discount hidden until the check returns
+    expect(find.text('40,000 MMK'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(pickerApi.promoSeatChecks, hasLength(1)); // debounced
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(pickerApi.promoSeatChecks, [
+      ['A:1:1'],
+      ['A:1:1', 'A:1:2']
+    ]);
+    expect(find.text('Code applied: 8,000 MMK off'), findsOneWidget);
+    expect(find.text('32,000 MMK'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a 409 that drops seats re-checks promo', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 2);
+    await applyPromo(tester, 'SAVE20');
+    pickerApi.takenOnNextOrder = ['A:1:2'];
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(pickerApi.promoSeatChecks.last, ['A:1:1']);
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('invalid promo shows reason', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'NOPE');
+    expect(find.text('This code has expired'), findsOneWidget);
+    expect(find.byKey(const Key('seatTotal')), findsOneWidget);
+    expect(find.text('20,000 MMK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(pickerApi.seatPromoCodes, [null]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('removing the promo clears the discount', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    await tester.tap(find.byKey(const Key('promoRemove')));
+    await tester.pump();
+    expect(find.textContaining('Code applied'), findsNothing);
+    expect(find.byKey(const Key('addPromo')), findsOneWidget);
+    await tapSeat(tester, 1, 2);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(pickerApi.promoSeatChecks, hasLength(1)); // no re-check without a code
     await tester.pumpWidget(const SizedBox());
   });
 
