@@ -50,6 +50,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   bool _promoOpen = false;
   String _promoCode = ''; // applied code; empty = none
   PromoCheck? _promo;
+  String? _promoError; // the last check failed for a non-validation reason (rate limit, network, 5xx): Continue stays off
   bool _promoChecking = false;
   Timer? _promoDebounce;
   int _promoSeq = 0; // answers to older checks are ignored
@@ -180,7 +181,8 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         _notice = L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
       }
     });
-    if (lost.isNotEmpty || (old != null && old.versionId != d.versionId)) _seatsChanged();
+    final repriced = old != null && old.versionId == d.versionId && (old.seatTypes != d.seatTypes || !_sameTypes(old.types, d.types));
+    if (lost.isNotEmpty || (old != null && old.versionId != d.versionId) || (repriced && _selected.isNotEmpty)) _seatsChanged();
   }
 
   // ───── Promo ─────
@@ -194,6 +196,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     if (_promoCode.isEmpty) return;
     setState(() {
       _promo = null;
+      _promoError = null;
       _promoChecking = _selected.isNotEmpty;
     });
     if (_selected.isEmpty) return;
@@ -207,6 +210,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     setState(() {
       _promoCode = code;
       _promo = null;
+      _promoError = null;
       _promoChecking = _selected.isNotEmpty;
     });
     if (_selected.isNotEmpty) _checkPromo();
@@ -218,6 +222,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     setState(() {
       _promoCode = '';
       _promo = null;
+      _promoError = null;
       _promoChecking = false;
       _promoOpen = false;
       _promoCtl.clear();
@@ -228,22 +233,30 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     final event = ref.read(eventProvider(widget.idOrSlug)).value;
     final keys = _seatKeys;
     final code = _promoCode;
-    if (event == null || code.isEmpty || keys.isEmpty) {
+    if (code.isEmpty || keys.isEmpty) {
       if (mounted) setState(() => _promoChecking = false);
       return;
     }
+    if (event == null) return; // still pending: the event listener in build re-runs this once it loads
     final seq = ++_promoSeq;
-    PromoCheck r;
+    PromoCheck? r;
+    String? failure;
     try {
       r = await ref.read(apiProvider).checkPromo(event.id, code, const {}, seats: keys);
     } on ApiException catch (e) {
-      r = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _total);
+      final status = e.status;
+      if (status != null && status >= 400 && status < 500 && status != 429) {
+        r = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _total); // the server rejected the request itself
+      } else {
+        failure = e.message; // rate limit, network or server error: unknown, so never fall back to full price
+      }
     } catch (_) {
-      r = PromoCheck(valid: false, reason: null, discountMmk: 0, totalMmk: _total);
+      failure = L10n.of(context).loadError;
     }
     if (!mounted || seq != _promoSeq) return; // seats changed (or code removed) meanwhile
     setState(() {
       _promo = r;
+      _promoError = failure;
       _promoChecking = false;
     });
   }
@@ -450,6 +463,9 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     final d = _data;
     final l = _layout;
     final event = ref.watch(eventProvider(widget.idOrSlug)).value;
+    ref.listen(eventProvider(widget.idOrSlug), (_, next) {
+      if (next.value != null && _promoCode.isNotEmpty && _selected.isNotEmpty && _promo == null && _promoError == null) _checkPromo();
+    });
 
     Widget body;
     if (d == null || l == null) {
@@ -532,6 +548,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           },
           promo: _promo,
           promoChecking: _promoChecking,
+          promoError: _promoError,
           promoOpen: _promoOpen,
           promoController: _promoCtl,
           onOpenPromo: () => setState(() => _promoOpen = true),
@@ -600,6 +617,7 @@ class _BottomBar extends StatelessWidget {
     required this.onRemove,
     required this.promo,
     required this.promoChecking,
+    required this.promoError,
     required this.promoOpen,
     required this.promoController,
     required this.onOpenPromo,
@@ -619,6 +637,7 @@ class _BottomBar extends StatelessWidget {
   final void Function(int seatIndex) onRemove;
   final PromoCheck? promo; // null while unchecked or being re-checked
   final bool promoChecking;
+  final String? promoError;
   final bool promoOpen;
   final TextEditingController promoController;
   final VoidCallback onOpenPromo;
@@ -680,6 +699,8 @@ class _BottomBar extends StatelessWidget {
                 const SizedBox(width: 4),
                 TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
               ]),
+              if (promoError != null)
+                Padding(padding: const EdgeInsets.only(top: 6), child: Text(promoError!, key: const Key('promoError'), style: TextStyle(color: theme.colorScheme.error))),
               if (promo != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),

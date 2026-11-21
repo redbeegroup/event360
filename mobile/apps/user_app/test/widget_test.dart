@@ -98,6 +98,7 @@ class FakeApi extends Event360Api {
   final seatOrderKeys = <String>[];
   final seatPromoCodes = <String?>[];
   final promoSeatChecks = <List<String>>[];
+  int? promoError; // checkPromo throws this status
   List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
   final cancelled = <String>[];
   List<Map<String, dynamic>> extraTickets = [];
@@ -176,6 +177,7 @@ class FakeApi extends Event360Api {
   Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities, {List<String> seats = const []}) async {
     if (seats.isNotEmpty) {
       promoSeatChecks.add(seats);
+      if (promoError != null) throw ApiException(promoError, 'Too many attempts, try again in a minute');
       final sub = 20000 * seats.length;
       return code.toUpperCase() == 'SAVE20'
           ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
@@ -963,6 +965,45 @@ void main() {
     await tapSeat(tester, 1, 2);
     await tester.pump(const Duration(milliseconds: 400));
     expect(pickerApi.promoSeatChecks, hasLength(1)); // no re-check without a code
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed promo check (429) keeps the code and blocks Continue until a re-check succeeds', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    pickerApi.promoError = 429;
+    await tapSeat(tester, 1, 2);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(find.text('Too many attempts, try again in a minute'), findsOneWidget);
+    expect(find.textContaining('Code applied'), findsNothing);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('seatContinue'))).onPressed, isNull);
+    expect(pickerApi.seatPromoCodes, isEmpty);
+    pickerApi.promoError = null;
+    await tester.tap(find.byKey(const Key('promoApply'))); // the code is kept: retry
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Code applied: 8,000 MMK off'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('seatContinue'))).onPressed, isNotNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a poll that takes a selected seat re-checks the promo with the remaining seats', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 3);
+    await applyPromo(tester, 'SAVE20');
+    pickerApi.seatStatus = 'AATAAAAAAA';
+    await tester.pump(const Duration(seconds: 5)); // next poll
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(pickerApi.promoSeatChecks.last, ['A:1:1']);
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
