@@ -463,7 +463,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   /** PENDING_PAYMENT → EXPIRED/CANCELLED and give the held seats back (exactly once). */
   private async releaseHold(orderId: string, to: 'EXPIRED' | 'CANCELLED') {
-    return this.prisma.$transaction(async (tx) => {
+    let reopened: string | null = null;
+    const out = await this.prisma.$transaction(async (tx) => {
+      reopened = null;
       const seatedIn = await this.seatedEvent(tx, orderId);
       if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
@@ -492,16 +494,24 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       // Same lock order as createOrder and settle: standing ticket_types rows, then the promo code, then seats
       const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
       if (o.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${o.promoCodeId}::uuid`;
+      const seatedOffer = !!lost && !!seatedIn?.typeIds.includes(lost.ticketTypeId);
       if (seatedIn?.typeIds.length) {
+        // An offered seat the buyer didn't take may still point at the entry: it counts towards what the offer gets back
+        const still = seatedOffer ? await tx.eventSeat.count({ where: { waitlistEntryId: lost!.id, status: 'WAITLIST_HOLD' } }) : 0;
+        const offerTo = seatedOffer && lost!.offeredQty > still ? { entryId: lost!.id, ticketTypeId: lost!.ticketTypeId, max: lost!.offeredQty - still } : undefined;
         // A seat may come back under another type (or none) if the rules changed while it was held
-        const back = await releaseSeats(tx, orderId, lost ? { entryId: lost.id, ticketTypeId: lost.ticketTypeId, max: lost.offeredQty } : undefined);
+        const back = await releaseSeats(tx, orderId, offerTo);
         backToOffer += back.offered;
         await this.seating.recountTicketTypes(tx, seatedIn.eventId, back.typeIds, [...new Set([...seatedIn.typeIds, ...back.typeIds])]);
       }
+      // A seated offer is exactly the WAITLIST_HOLD seats pointing at it
+      if (seatedOffer) backToOffer = await tx.eventSeat.count({ where: { waitlistEntryId: lost!.id, status: 'WAITLIST_HOLD' } });
       // The entry row last. If its time ran out meanwhile, what was set aside for it is the pool (the sweeper offers it on)
-      if (lost && backToOffer) await this.waitlist.reopenOffer(tx, lost.id, orderId, backToOffer);
+      if (lost && backToOffer && (await this.waitlist.reopenOffer(tx, lost.id, orderId, backToOffer))) reopened = lost.id;
       return true;
     }, await this.seatedTx(orderId));
+    if (reopened) void this.waitlist.notifyReopened(reopened);
+    return out;
   }
 
   /** Transaction options for an order: a seated one waits for the pool and counter rows like seated checkout does. */

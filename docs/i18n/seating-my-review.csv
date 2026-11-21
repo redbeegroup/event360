@@ -252,3 +252,5 @@
 "waitlistExpiredTitle","Your offer expired","သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်ပါပြီ","api_inbox"
 "waitlistExpiredBody","Your offer for {event} expired.","{event} အတွက် သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်သွားပါပြီ။","api_inbox"
 "waitlistPaused","The waitlist is paused while the event is being reviewed","ပွဲကို စစ်ဆေးနေစဉ် စောင့်ဆိုင်းစာရင်းကို ခေတ္တရပ်ထားပါသည်","api_error"
+"waitlistReopenedTitle","Your tickets are still reserved","သင့်လက်မှတ်များကို ဆက်လက် ထိန်းထားပါသည်","api_inbox"
+"waitlistReopenedBody","Your tickets for {event} are still reserved until {time}.","{event} အတွက် သင့်လက်မှတ်များကို {time} အထိ ဆက်လက် ထိန်းထားပါသည်။","api_inbox"

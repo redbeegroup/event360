@@ -615,6 +615,7 @@ run('Waitlist', () => {
     await join(X.H, ev.type, 1).expect(409);
     await http.post(`/v1/orders/${h2.body.id}/cancel`).set(H2.H).expect(200);
     expect(await tt(ev.type)).toMatchObject({ held: 0, offered: 2 });
+    expect(await wl.typesToOffer(new Date())).not.toContain(ev.type); // paused: not in the sweeper's batch
     await sweepWaitlist();
     expect(await entry(j1.body.entryId)).toMatchObject({ status: 'OFFERED' });
     expect(await entry(j2.body.entryId)).toMatchObject({ status: 'WAITING' });
@@ -626,8 +627,10 @@ run('Waitlist', () => {
     expect(await entry(j2.body.entryId)).toMatchObject({ status: 'WAITING' });
     expect(await tt(ev.type)).toMatchObject({ offered: 2 });
 
+    expect(await wl.typesToOffer(new Date())).not.toContain(ev.type);
     // Published again: the waiting entry gets its offer, the rest goes back on sale
     await publish(ev.id);
+    expect(await wl.typesToOffer(new Date())).toContain(ev.type);
     await sweepWaitlist();
     expect(await entry(j2.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 1 });
     expect(await tt(ev.type)).toMatchObject({ held: 0, offered: 1 });
@@ -652,10 +655,18 @@ run('Waitlist', () => {
     const co = await order(W.H, ev.id, { ...items(ev.type, 1), waitlistEntryId: j.body.entryId }).expect(201);
     expect(await tt(ev.type)).toMatchObject({ held: 1, offered: 1 });
     await sweepWaitlist(); // the unused one goes to Y
+    smsCalls.length = 0;
     await http.post(`/v1/orders/${co.body.id}/cancel`).set(W.H).expect(200);
+    await app.get(NotifyService).idle();
     const back = await entry(j.body.entryId);
-    expect(back).toMatchObject({ status: 'OFFERED', offeredQty: 1, orderId: null });
+    expect(back).toMatchObject({ status: 'OFFERED', offeredQty: 1, orderId: co.body.id }); // the released order marks a reopened offer
     expect(back.offerExpiresAt!.getTime()).toBe(first.offerExpiresAt!.getTime());
+    // An inbox notice (no SMS) that the tickets are still reserved
+    const kept = await prisma.notification.findMany({ where: { userId: W.id, kind: 'waitlist_offer_reopened' } });
+    expect(kept).toHaveLength(1);
+    expect(kept[0].body).toMatch(new RegExp(`^Your tickets for Lost ${tag} are still reserved until .+\\.$`));
+    expect(kept[0].bodyMy).toBeTruthy();
+    expect(smsCalls.filter((c) => c.to === `95${W.phone.slice(1)}`)).toHaveLength(0);
     expect(await tt(ev.type)).toMatchObject({ held: 0, offered: 2 });
     await sweepWaitlist(); // nothing changes hands
     expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 1 });
@@ -764,5 +775,31 @@ run('Waitlist', () => {
       SELECT indexdef FROM pg_indexes WHERE tablename = 'event_seats' AND indexdef LIKE '%waitlist_entry_id%'`;
     expect(rows).toHaveLength(1);
     expect(rows[0].indexdef).toMatch(/WHERE \(waitlist_entry_id IS NOT NULL\)/);
+  });
+
+  it('a seated restore after a partial purchase gives back exactly the offered seats', async () => {
+    const ev = await seated('Restore');
+    const [H, W] = [await consumer(), await consumer()];
+    const held = await order(H.H, ev.id, { seats: ['V:1:1', 'V:1:2', 'V:1:3', 'V:1:4'] }).expect(201);
+    const j = await join(W.H, ev.vip, 2).expect(201);
+    await http.post(`/v1/orders/${held.body.id}/cancel`).set(H.H).expect(200);
+    await sweepWaitlist();
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 2 });
+    // One offered seat (V:1:1) plus one public seat (V:1:3); V:1:2 stays WAITLIST_HOLD pointing at the entry
+    const co = await order(W.H, ev.id, { seats: ['V:1:1', 'V:1:3'], waitlistEntryId: j.body.entryId }).expect(201);
+    expect(await seat(ev.id, 'V:1:2')).toMatchObject({ status: 'WAITLIST_HOLD', waitlistEntryId: j.body.entryId });
+    await http.post(`/v1/orders/${co.body.id}/cancel`).set(W.H).expect(200);
+    const mine = await prisma.eventSeat.findMany({ where: { waitlistEntryId: j.body.entryId, status: 'WAITLIST_HOLD' }, orderBy: { seatKey: 'asc' } });
+    expect(mine.map((x) => x.seatKey)).toEqual(['V:1:1', 'V:1:2']);
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 2 });
+    expect(await seat(ev.id, 'V:1:3')).toMatchObject({ status: 'AVAILABLE', waitlistEntryId: null });
+    await expectSeatCounters(ev.vip);
+
+    // The line closes while the reopened offer is live: the buyer hears that tickets didn't become available
+    await prisma.ticketType.update({ where: { id: ev.vip }, data: { salesEndAt: new Date(Date.now() - 1000) } });
+    await sweepWaitlist();
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'EXPIRED' });
+    expect(await prisma.notification.count({ where: { userId: W.id, kind: 'waitlist_closed' } })).toBe(1);
+    await expectSeatCounters(ev.vip);
   });
 });

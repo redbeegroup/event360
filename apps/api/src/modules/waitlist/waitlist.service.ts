@@ -68,11 +68,12 @@ export class WaitlistService {
 
   /**
    * releaseHold's last step: the checkout made from this offer was released before the offer's original expiry, and
-   * `qty` was set aside for it again; the entry is OFFERED again until that same expiry.
+   * `qty` was set aside for it again; the entry is OFFERED again until that same expiry. It keeps the released
+   * order's id: an OFFERED entry with an order is a reopened offer (its buyer is told if the line closes).
    */
   async reopenOffer(tx: Tx, entryId: string, orderId: string, qty: number): Promise<boolean> {
     const n = await tx.$executeRaw`
-      UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, order_id = NULL, updated_at = now()
+      UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, updated_at = now()
       WHERE id = ${entryId}::uuid AND status = 'PURCHASED' AND order_id = ${orderId}::uuid AND offer_expires_at > clock_timestamp()`;
     return n === 1;
   }
@@ -229,14 +230,16 @@ export class WaitlistService {
    * a line and nothing free is left alone, so such types can't crowd out the rest of the batch.
    */
   async typesToOffer(now = new Date()): Promise<string[]> {
+    // Open (PUBLISHED) or closed lines (whose reserve must go back); paused ones wait for the event to be published
+    const NOT_PAUSED = Prisma.sql`(e.status IN ('PUBLISHED', 'CANCELLED', 'COMPLETED') OR e.starts_at <= ${now} OR tt.sales_end_at <= ${now})`;
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT tt.id::text AS id FROM ticket_types tt
-      WHERE tt.offered > 0 AND tt.offered > COALESCE((
+      SELECT tt.id::text AS id FROM ticket_types tt JOIN events e ON e.id = tt.event_id
+      WHERE ${NOT_PAUSED} AND tt.offered > 0 AND tt.offered > COALESCE((
         SELECT SUM(w.offered_qty) FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'OFFERED' AND w.offer_expires_at > ${now}
       ), 0)
       UNION
-      SELECT tt.id::text FROM ticket_types tt
-      WHERE EXISTS (SELECT 1 FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'WAITING')
+      SELECT tt.id::text FROM ticket_types tt JOIN events e ON e.id = tt.event_id
+      WHERE ${NOT_PAUSED} AND EXISTS (SELECT 1 FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'WAITING')
         AND (
           EXISTS (SELECT 1 FROM event_seats s WHERE s.ticket_type_id = tt.id AND s.status = 'AVAILABLE')
           OR (tt.quota - tt.sold - tt.held - tt.offered > 0 AND NOT EXISTS (SELECT 1 FROM event_seats s WHERE s.ticket_type_id = tt.id))
@@ -370,7 +373,7 @@ export class WaitlistService {
    * expire, and people still WAITING get an inbox message.
    */
   async expireOffers(now = new Date()) {
-    const closed = await this.prisma.$queryRaw<{ id: string; user_id: string; old: string; ticket_type_id: string }[]>`
+    const closed = await this.prisma.$queryRaw<{ id: string; user_id: string; old: string; ticket_type_id: string; order_id: string | null }[]>`
       WITH c AS (
         SELECT w.id, w.status::text AS old FROM waitlist_entries w
         JOIN ticket_types t ON t.id = w.ticket_type_id JOIN events e ON e.id = t.event_id
@@ -380,7 +383,7 @@ export class WaitlistService {
       )
       UPDATE waitlist_entries w SET status = 'EXPIRED', updated_at = now() FROM c
       WHERE w.id = c.id AND w.status IN ('WAITING', 'OFFERED')
-      RETURNING w.id::text, w.user_id::text, c.old, w.ticket_type_id::text`;
+      RETURNING w.id::text, w.user_id::text, c.old, w.ticket_type_id::text, w.order_id::text`;
     const expired = await this.prisma.$queryRaw<{ id: string }[]>`
       WITH c AS (
         SELECT id FROM waitlist_entries WHERE status = 'OFFERED' AND offer_expires_at <= ${now}
@@ -390,7 +393,8 @@ export class WaitlistService {
       UPDATE waitlist_entries w SET status = 'EXPIRED', updated_at = now() FROM c
       WHERE w.id = c.id AND w.status = 'OFFERED' AND w.offer_expires_at <= ${now}
       RETURNING w.id::text`;
-    const sorry = closed.filter((c) => c.old === 'WAITING');
+    // People still waiting, and buyers whose reopened offer (OFFERED with the released order) the close ends
+    const sorry = closed.filter((c) => c.old === 'WAITING' || (c.old === 'OFFERED' && c.order_id));
     if (sorry.length) await this.notifyClosed(sorry);
     if (expired.length) await this.notifyExpired(expired.map((e) => e.id));
     return { expired: expired.length, closed: closed.length };
@@ -420,6 +424,25 @@ export class WaitlistService {
         ...(sms ? { sms: `Tickets for ${short(ev.title, 60)} are available for you until ${when(until)}. Open Event 360.` } : {}),
       });
     }
+  }
+
+  /** Inbox only (no SMS): a reopened offer's tickets are reserved again, until the offer's original expiry. */
+  async notifyReopened(entryId: string) {
+    const e = await this.prisma.waitlistEntry.findUnique({
+      where: { id: entryId },
+      include: { ticketType: { select: { event: { select: { id: true, title: true, titleMy: true } } } } },
+    });
+    if (!e || e.status !== 'OFFERED' || !e.offerExpiresAt) return;
+    const ev = e.ticketType.event;
+    void this.notify.toUsers([e.userId], {
+      kind: 'waitlist_offer_reopened',
+      title: 'Your tickets are still reserved',
+      titleMy: 'သင့်လက်မှတ်များကို ဆက်လက် ထိန်းထားပါသည်',
+      body: `Your tickets for ${ev.title} are still reserved until ${when(e.offerExpiresAt)}.`,
+      bodyMy: `${ev.titleMy || ev.title} အတွက် သင့်လက်မှတ်များကို ${when(e.offerExpiresAt, 'my')} အထိ ဆက်လက် ထိန်းထားပါသည်။`,
+      link: `/event/${ev.id}`,
+      eventId: ev.id,
+    });
   }
 
   /** Inbox only (no SMS): the offer's time ran out. */
