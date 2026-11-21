@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/format.dart';
+import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
@@ -429,8 +430,8 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     try {
       final r = await ref.read(apiProvider).checkPromo(widget.event.id, code, {_type.id: _qty});
       if (mounted) setState(() => _promoResult = r);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _promoResult = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _type.priceMmk * _qty));
+    } on ApiException {
+      if (mounted) setState(() => _promoResult = PromoCheck(valid: false, discountMmk: 0, totalMmk: _type.priceMmk * _qty));
     } finally {
       if (mounted) setState(() => _checking = false);
     }
@@ -545,7 +546,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                     padding: const EdgeInsets.only(top: 6),
                     child: _promoResult!.valid
                         ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
-                        : Text(_promoResult!.reason ?? t.promoInvalid, style: TextStyle(color: theme.colorScheme.error)),
+                        : Text(promoReasonText(t, _promoResult!.reasonCode), style: TextStyle(color: theme.colorScheme.error)),
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),

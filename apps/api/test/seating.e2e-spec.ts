@@ -951,6 +951,8 @@ run('Seated checkout', () => {
     expect(seatOnly.body).toMatchObject({ valid: true, subtotalMmk: 10_000, totalMmk: 5_000 });
     await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}`, seats: ['Z:1:1'] }).expect(400);
     await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `half${tag}` }).expect(400);
+    const bad = await http.post(`/v1/events/${ev.id}/promo-check`).set(B2).send({ code: `nope${tag}`, seats: ['A:2:2'] }).expect(200);
+    expect(bad.body).toMatchObject({ valid: false, reason: 'This code is not valid', reasonCode: 'INVALID' });
     expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'AVAILABLE' }); // preview reserves nothing
     const p = await order(B2, ev.id, { seats: ['A:2:2'], promoCode: `half${tag}` }).expect(201);
     expect(p.body).toMatchObject({ subtotalMmk: 10_000, discountMmk: 5_000, totalMmk: 5_000 });

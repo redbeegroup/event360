@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/format.dart';
+import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 
@@ -246,7 +247,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     } on ApiException catch (e) {
       final status = e.status;
       if (status != null && status >= 400 && status < 500 && status != 429) {
-        r = PromoCheck(valid: false, reason: e.message, discountMmk: 0, totalMmk: _total); // the server rejected the request itself
+        r = PromoCheck(valid: false, discountMmk: 0, totalMmk: _total); // the server rejected the request itself
       } else {
         failure = e.message; // rate limit, network or server error: unknown, so never fall back to full price
       }
@@ -706,7 +707,7 @@ class _BottomBar extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: promo!.valid
                       ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
-                      : Text(promo!.reason ?? t.promoInvalid, key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
+                      : Text(promoReasonText(t, promo!.reasonCode), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
                 ),
             ],
             const SizedBox(height: 6),

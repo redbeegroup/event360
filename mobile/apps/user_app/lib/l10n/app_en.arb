@@ -221,6 +221,10 @@
   "addPromoCode": "Add promo code",
   "removePromo": "Remove",
   "promoInvalid": "This code is not valid",
+  "promoUsedUp": "This code has been used up",
+  "promoExpired": "This code has expired",
+  "promoNotStarted": "This code is not active yet",
+  "promoNotApplicable": "This code does not apply to these tickets",
   "promoApplied": "Code applied: {amount} off",
   "@promoApplied": {
     "placeholders": {

@@ -859,6 +859,30 @@ abstract class L10n {
   /// **'This code is not valid'**
   String get promoInvalid;
 
+  /// No description provided for @promoUsedUp.
+  ///
+  /// In en, this message translates to:
+  /// **'This code has been used up'**
+  String get promoUsedUp;
+
+  /// No description provided for @promoExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This code has expired'**
+  String get promoExpired;
+
+  /// No description provided for @promoNotStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'This code is not active yet'**
+  String get promoNotStarted;
+
+  /// No description provided for @promoNotApplicable.
+  ///
+  /// In en, this message translates to:
+  /// **'This code does not apply to these tickets'**
+  String get promoNotApplicable;
+
   /// No description provided for @promoApplied.
   ///
   /// In en, this message translates to:

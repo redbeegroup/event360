@@ -272,7 +272,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const subtotal = lines.reduce((s, l) => s + l.unitPriceMmk * BigInt(l.quantity), 0n);
     const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(code) } } });
     const r = applyPromo(p, lines);
-    if (!r.ok) return { valid: false, reason: r.reason, subtotalMmk: mmk(subtotal), discountMmk: 0, totalMmk: mmk(subtotal) };
+    if (!r.ok) return { valid: false, reason: r.reason, reasonCode: r.reasonCode, subtotalMmk: mmk(subtotal), discountMmk: 0, totalMmk: mmk(subtotal) };
     return { valid: true, code: p!.code, subtotalMmk: mmk(subtotal), discountMmk: mmk(r.discountMmk), totalMmk: mmk(subtotal - r.discountMmk) };
   }
 

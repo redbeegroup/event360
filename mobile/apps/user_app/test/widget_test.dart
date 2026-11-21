@@ -181,7 +181,9 @@ class FakeApi extends Event360Api {
       final sub = 20000 * seats.length;
       return code.toUpperCase() == 'SAVE20'
           ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
-          : PromoCheck(valid: false, reason: 'This code has expired', discountMmk: 0, totalMmk: sub);
+          : code.toUpperCase() == 'USEDUP'
+              ? PromoCheck(valid: false, reason: 'This code has been used up', reasonCode: 'USED_UP', discountMmk: 0, totalMmk: sub)
+              : PromoCheck(valid: false, reason: 'This code has expired', reasonCode: 'EXPIRED', discountMmk: 0, totalMmk: sub);
     }
     final sub = 5000 * quantities.values.first;
     return code.toUpperCase() == 'SAVE20'
@@ -934,6 +936,16 @@ void main() {
     await tester.pump();
     expect(pickerApi.promoSeatChecks.last, ['A:1:1']);
     expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('promo rejection is localized from reasonCode (Myanmar), never raw API English', (tester) async {
+    await openPicker(tester, lang: 'my');
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'USEDUP');
+    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
+    expect(find.text('This code has been used up'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

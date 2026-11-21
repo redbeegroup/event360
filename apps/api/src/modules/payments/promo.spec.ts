@@ -22,8 +22,8 @@ describe('promo codes', () => {
     const now = new Date('2026-11-20T00:00:00Z');
     expect(applyPromo(null, lines)).toMatchObject({ ok: false });
     expect(applyPromo(p({ isActive: false }), lines)).toMatchObject({ ok: false });
-    expect(applyPromo(p({ startsAt: new Date('2026-12-01') }), lines, now)).toEqual({ ok: false, reason: 'This code is not active yet' });
-    expect(applyPromo(p({ endsAt: new Date('2026-11-01') }), lines, now)).toEqual({ ok: false, reason: 'This code has expired' });
-    expect(applyPromo(p({ maxUses: 5, used: 5 }), lines)).toEqual({ ok: false, reason: 'This code has been used up' });
+    expect(applyPromo(p({ startsAt: new Date('2026-12-01') }), lines, now)).toEqual({ ok: false, reason: 'This code is not active yet', reasonCode: 'NOT_STARTED' });
+    expect(applyPromo(p({ endsAt: new Date('2026-11-01') }), lines, now)).toEqual({ ok: false, reason: 'This code has expired', reasonCode: 'EXPIRED' });
+    expect(applyPromo(p({ maxUses: 5, used: 5 }), lines)).toEqual({ ok: false, reason: 'This code has been used up', reasonCode: 'USED_UP' });
   });
 });

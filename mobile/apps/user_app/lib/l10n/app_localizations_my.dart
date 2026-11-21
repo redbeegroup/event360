@@ -424,6 +424,18 @@ class L10nMy extends L10n {
   String get promoInvalid => 'ဤကုဒ် မမှန်ကန်ပါ';
 
   @override
+  String get promoUsedUp => 'ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ';
+
+  @override
+  String get promoExpired => 'ဤကုဒ် သက်တမ်းကုန်သွားပါပြီ';
+
+  @override
+  String get promoNotStarted => 'ဤကုဒ်ကို မစတင်သေးပါ';
+
+  @override
+  String get promoNotApplicable => 'ဤကုဒ်သည် ဤလက်မှတ်များနှင့် မသက်ဆိုင်ပါ';
+
+  @override
   String promoApplied(String amount) {
     return 'ကုဒ်သုံးပြီး — $amount လျှော့';
   }

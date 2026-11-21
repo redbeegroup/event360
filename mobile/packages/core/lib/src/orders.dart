@@ -92,14 +92,16 @@ class Order {
 
 /// Result of checking a promo code against the chosen tickets (nothing reserved).
 class PromoCheck {
-  PromoCheck({required this.valid, this.reason, required this.discountMmk, required this.totalMmk});
+  PromoCheck({required this.valid, this.reason, this.reasonCode, required this.discountMmk, required this.totalMmk});
   final bool valid;
-  final String? reason;
+  final String? reason; // English, for old clients
+  final String? reasonCode; // USED_UP | EXPIRED | NOT_STARTED | NOT_APPLICABLE | INVALID
   final int discountMmk;
   final int totalMmk;
   factory PromoCheck.fromJson(Map<String, dynamic> j) => PromoCheck(
         valid: j['valid'] as bool,
         reason: j['reason'] as String?,
+        reasonCode: j['reasonCode'] as String?,
         discountMmk: (j['discountMmk'] as num).toInt(),
         totalMmk: (j['totalMmk'] as num).toInt(),
       );

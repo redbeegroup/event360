@@ -423,6 +423,18 @@ class L10nEn extends L10n {
   String get promoInvalid => 'This code is not valid';
 
   @override
+  String get promoUsedUp => 'This code has been used up';
+
+  @override
+  String get promoExpired => 'This code has expired';
+
+  @override
+  String get promoNotStarted => 'This code is not active yet';
+
+  @override
+  String get promoNotApplicable => 'This code does not apply to these tickets';
+
+  @override
   String promoApplied(String amount) {
     return 'Code applied: $amount off';
   }
