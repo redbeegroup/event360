@@ -24,6 +24,38 @@ class L10nMy extends L10n {
   String get profile => 'ပရိုဖိုင်';
 
   @override
+  String get tabDiscover => 'စူးစမ်းရန်';
+
+  @override
+  String get tabTickets => 'လက်မှတ်များ';
+
+  @override
+  String get tabAccount => 'အကောင့်';
+
+  @override
+  String get findThingsToDo => 'လုပ်စရာများ ရှာဖွေပါ';
+
+  @override
+  String inCity(String city) {
+    return '$city တွင်';
+  }
+
+  @override
+  String get inMyanmar => 'မြန်မာနိုင်ငံတွင်';
+
+  @override
+  String get popular => 'ရေပန်းစား';
+
+  @override
+  String get filters => 'စစ်ထုတ်ရန်';
+
+  @override
+  String get reservedSeating => 'ထိုင်ခုံ ကြိုတင်ရွေးချယ်ရောင်းချမှု';
+
+  @override
+  String get switchLanguage => 'ဘာသာစကား ပြောင်းရန်';
+
+  @override
   String get searchHint => 'ပွဲများ ရှာဖွေရန်';
 
   @override

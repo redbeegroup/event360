@@ -127,6 +127,66 @@ abstract class L10n {
   /// **'Profile'**
   String get profile;
 
+  /// No description provided for @tabDiscover.
+  ///
+  /// In en, this message translates to:
+  /// **'Discover'**
+  String get tabDiscover;
+
+  /// No description provided for @tabTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'Tickets'**
+  String get tabTickets;
+
+  /// No description provided for @tabAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get tabAccount;
+
+  /// No description provided for @findThingsToDo.
+  ///
+  /// In en, this message translates to:
+  /// **'Find things to do'**
+  String get findThingsToDo;
+
+  /// No description provided for @inCity.
+  ///
+  /// In en, this message translates to:
+  /// **'in {city}'**
+  String inCity(String city);
+
+  /// No description provided for @inMyanmar.
+  ///
+  /// In en, this message translates to:
+  /// **'in Myanmar'**
+  String get inMyanmar;
+
+  /// No description provided for @popular.
+  ///
+  /// In en, this message translates to:
+  /// **'Popular'**
+  String get popular;
+
+  /// No description provided for @filters.
+  ///
+  /// In en, this message translates to:
+  /// **'Filters'**
+  String get filters;
+
+  /// No description provided for @reservedSeating.
+  ///
+  /// In en, this message translates to:
+  /// **'Reserved seating'**
+  String get reservedSeating;
+
+  /// No description provided for @switchLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch language'**
+  String get switchLanguage;
+
   /// No description provided for @searchHint.
   ///
   /// In en, this message translates to:

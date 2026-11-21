@@ -7,8 +7,18 @@ import 'package:go_router/go_router.dart';
 import 'notifications_screen.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
-import '../widgets/event_card.dart';
+import '../widgets/event_row.dart';
 import '../widgets/waitlist_offer.dart';
+
+/// The soonest event that has a cover image, or null.
+EventSummary? featuredEvent(List<EventSummary> events) {
+  EventSummary? best;
+  for (final e in events) {
+    if (e.coverImageUrl == null) continue;
+    if (best == null || e.startsAt.isBefore(best.startsAt)) best = e;
+  }
+  return best;
+}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -20,7 +30,9 @@ class HomeScreen extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider);
     final upcoming = ref.watch(upcomingProvider);
     final free = ref.watch(freeEventsProvider);
+    final city = ref.watch(lastCityProvider);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     Future<void> refresh() async {
       ref.invalidate(categoriesProvider);
@@ -30,104 +42,184 @@ class HomeScreen extends ConsumerWidget {
       await ref.read(upcomingProvider.future);
     }
 
+    final otherLang = lang == 'my' ? 'en' : 'my';
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
+      child: Row(children: [
+        const E360Mark(),
+        const SizedBox(width: 8),
+        Expanded(child: Text(t.appTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+        const InboxBell(),
+        const SizedBox(width: 4),
+        Semantics(
+          button: true,
+          label: t.switchLanguage,
+          excludeSemantics: true,
+          child: OutlinedButton(
+            key: const Key('langSwitch'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              foregroundColor: scheme.onSurface,
+              backgroundColor: scheme.surface,
+              side: BorderSide(color: scheme.outlineVariant),
+              textStyle: theme.textTheme.labelLarge?.copyWith(fontSize: 14, color: null),
+            ),
+            onPressed: () => ref.read(localeProvider.notifier).set(otherLang),
+            child: Text(otherLang == 'my' ? 'မြန်မာ' : 'English'),
+          ),
+        ),
+      ]),
+    );
+
+    final chips = SizedBox(
+      height: 44,
+      child: categories.when(
+        data: (cats) => ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          children: [
+            _CategoryChip(label: t.allCategories, selected: true, onTap: () => context.go('/explore')),
+            for (final c in cats) _CategoryChip(label: c.name(lang), onTap: () => context.go('/explore?category=${c.slug}')),
+          ],
+        ),
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const SizedBox.shrink(),
+      ),
+    );
+
+    final events = upcoming.value;
+    final featured = events == null ? null : featuredEvent(events);
+
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: refresh,
-        child: CustomScrollView(slivers: [
-          SliverAppBar.large(title: Text(t.appTitle, style: const TextStyle(fontWeight: FontWeight.w700)), actions: const [InboxBell()]),
-          const SliverToBoxAdapter(child: OfferBanner()),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => context.go('/explore'),
-                child: InputDecorator(
-                  decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: t.searchHint),
-                  child: Text(t.searchHint, style: TextStyle(color: theme.hintColor)),
-                ),
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: refresh,
+          child: CustomScrollView(slivers: [
+            SliverToBoxAdapter(child: header),
+            const SliverToBoxAdapter(child: OfferBanner(padding: EdgeInsets.fromLTRB(20, 12, 20, 0))),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: DiscoverSearchPill(city: city, onTap: () => context.go('/explore'), onFilters: () => context.go('/explore')),
               ),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 52,
-              child: categories.when(
-                data: (cats) => ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  children: [
-                    for (final c in cats)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ActionChip(label: Text(c.name(lang)), onPressed: () => context.go('/explore?category=${c.slug}')),
-                      ),
-                  ],
-                ),
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
-            ),
-          ),
-          ..._section(context, t.freeEvents, free, horizontal: true, onSeeAll: () => context.go('/explore')),
-          ..._section(context, t.upcoming, upcoming, onRetry: refresh),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 12), child: chips)),
+            if (featured != null)
+              SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), child: FeaturedEventCard(event: featured))),
+            ..._popularSection(context, t.popular, upcoming, featured, onRetry: refresh),
+            ..._freeSection(context, t.freeEvents, free, onSeeAll: () => context.go('/explore')),
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _header(BuildContext context, String title, {VoidCallback? onSeeAll}) {
+    final t = L10n.of(context);
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
+        child: Row(children: [
+          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+          if (onSeeAll != null) TextButton(onPressed: onSeeAll, child: Text(t.seeAll)),
         ]),
       ),
     );
   }
 
-  List<Widget> _section(BuildContext context, String title, AsyncValue<List<EventSummary>> value,
-      {bool horizontal = false, VoidCallback? onSeeAll, VoidCallback? onRetry}) {
+  List<Widget> _freeSection(BuildContext context, String title, AsyncValue<List<EventSummary>> value, {VoidCallback? onSeeAll}) {
     final t = L10n.of(context);
-    final header = SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 8, 8),
-        child: Row(children: [
-          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
-          if (onSeeAll != null) TextButton(onPressed: onSeeAll, child: Text(t.seeAll)),
-        ]),
-      ),
+    final header = _header(context, title, onSeeAll: onSeeAll);
+    return value.when(
+      loading: () => [header, const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())))],
+      error: (_, __) => [
+        header,
+        SliverToBoxAdapter(child: MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry)),
+      ],
+      data: (events) {
+        if (events.isEmpty) return [];
+        return [
+          header,
+          SliverToBoxAdapter(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (var i = 0; i < events.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 14),
+                  FeaturedEventCard(event: events[i], width: 280),
+                ],
+              ]),
+            ),
+          ),
+        ];
+      },
     );
+  }
+
+  List<Widget> _popularSection(BuildContext context, String title, AsyncValue<List<EventSummary>> value, EventSummary? featured, {VoidCallback? onRetry}) {
+    final t = L10n.of(context);
+    final header = _header(context, title);
     return value.when(
       loading: () => [header, const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())))],
       error: (_, __) => [
         header,
         SliverToBoxAdapter(child: MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: onRetry)),
       ],
-      data: (events) {
+      data: (all) {
+        final events = [for (final e in all) if (e.id != featured?.id) e];
         if (events.isEmpty) {
-          return horizontal ? [] : [header, SliverToBoxAdapter(child: MessageView(icon: Icons.event_busy, message: t.noEvents))];
-        }
-        if (horizontal) {
-          return [
-            header,
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 350,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: events.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) => EventCard(event: events[i], width: 260),
-                ),
-              ),
-            ),
-          ];
+          return featured != null ? [] : [header, SliverToBoxAdapter(child: MessageView(icon: Icons.event_busy, message: t.noEvents))];
         }
         return [
           header,
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList.separated(
               itemCount: events.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, i) => EventCard(event: events[i]),
+              separatorBuilder: (_, __) => const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Divider()),
+              itemBuilder: (_, i) => EventRow(event: events[i]),
             ),
           ),
         ];
       },
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.label, required this.onTap, this.selected = false});
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final fg = selected ? scheme.onPrimary : scheme.onSurface;
+    // 36 px chip inside a 44 px touch target
+    return InkWell(
+      customBorder: const StadiumBorder(),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 36, minWidth: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            alignment: Alignment.center,
+            decoration: ShapeDecoration(
+              color: selected ? scheme.primary : scheme.surface,
+              shape: StadiumBorder(side: selected ? BorderSide.none : BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: Text(label, style: theme.textTheme.labelLarge?.copyWith(fontSize: 14, color: fg)),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
-import '../widgets/event_card.dart';
+import '../widgets/event_row.dart';
 
 const _cities = ['Yangon', 'Mandalay', 'Naypyidaw', 'Bago', 'Mawlamyine', 'Taunggyi'];
 
@@ -71,7 +71,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
             const SizedBox(width: 8),
             PopupMenuButton<String?>(
-              onSelected: (c) => setState(() => _query = c == null ? _query.copyWith(clearCity: true) : _query.copyWith(city: c)),
+              onSelected: (c) {
+                ref.read(lastCityProvider.notifier).set(c);
+                setState(() => _query = c == null ? _query.copyWith(clearCity: true) : _query.copyWith(city: c));
+              },
               itemBuilder: (_) => [
                 PopupMenuItem(value: null, child: Text(t.anyCity)),
                 for (final c in _cities) PopupMenuItem(value: c, child: Text(c)),
@@ -110,8 +113,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     child: ListView.separated(
                       padding: const EdgeInsets.all(16),
                       itemCount: page.items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (_, i) => EventCard(event: page.items[i]),
+                      separatorBuilder: (_, __) => const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
+                      itemBuilder: (_, i) => EventRow(event: page.items[i]),
                     ),
                   ),
           ),

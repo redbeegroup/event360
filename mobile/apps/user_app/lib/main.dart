@@ -75,12 +75,14 @@ class _UserAppState extends ConsumerState<UserApp> {
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
+    // Myanmar type rules (Noto Sans Myanmar, weights, line heights) follow the app language, not the phone's.
+    final themeLocale = locale ?? const Locale('my');
     return MaterialApp.router(
       title: 'Event 360',
       debugShowCheckedModeBanner: false,
-      theme: Event360Theme.light(),
-      darkTheme: Event360Theme.dark(),
-      locale: locale ?? const Locale('my'),
+      theme: Event360Theme.light(locale: themeLocale),
+      darkTheme: Event360Theme.dark(locale: themeLocale),
+      locale: themeLocale,
       supportedLocales: L10n.supportedLocales,
       localizationsDelegates: const [
         L10n.delegate,

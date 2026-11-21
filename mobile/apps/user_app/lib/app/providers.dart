@@ -106,6 +106,15 @@ class SearchQuery {
   int get hashCode => Object.hash(q, category, city, freeOnly);
 }
 
+/// The city the buyer last picked in Explore (null = any). Only kept in memory; Discover shows it as "in <city>".
+class LastCityNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+  void set(String? city) => state = city;
+}
+
+final lastCityProvider = NotifierProvider<LastCityNotifier, String?>(LastCityNotifier.new);
+
 final searchResultsProvider = FutureProvider.family<EventPage, SearchQuery>((ref, s) =>
     ref.watch(apiProvider).events(q: s.q, category: s.category, city: s.city, free: s.freeOnly ? true : null, limit: 50));
 

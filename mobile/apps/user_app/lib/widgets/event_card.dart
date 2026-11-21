@@ -89,8 +89,8 @@ class EventCard extends ConsumerWidget {
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: [
-                  if (event.soldOut) Pill(t.soldOut, color: theme.colorScheme.error) else Pill(priceLabel(t, lang, event)),
-                  Pill(pickLang(lang, event.categoryName, event.categoryNameMy), color: theme.colorScheme.secondary),
+                  if (event.soldOut) E360Badge(t.soldOut, kind: E360BadgeKind.dark) else E360Badge(priceLabel(t, lang, event), kind: event.isFree || event.minPriceMmk == 0 ? E360BadgeKind.success : E360BadgeKind.neutral),
+                  E360Badge(pickLang(lang, event.categoryName, event.categoryNameMy)),
                 ]),
               ]),
             ),

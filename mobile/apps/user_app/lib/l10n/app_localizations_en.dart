@@ -24,6 +24,38 @@ class L10nEn extends L10n {
   String get profile => 'Profile';
 
   @override
+  String get tabDiscover => 'Discover';
+
+  @override
+  String get tabTickets => 'Tickets';
+
+  @override
+  String get tabAccount => 'Account';
+
+  @override
+  String get findThingsToDo => 'Find things to do';
+
+  @override
+  String inCity(String city) {
+    return 'in $city';
+  }
+
+  @override
+  String get inMyanmar => 'in Myanmar';
+
+  @override
+  String get popular => 'Popular';
+
+  @override
+  String get filters => 'Filters';
+
+  @override
+  String get reservedSeating => 'Reserved seating';
+
+  @override
+  String get switchLanguage => 'Switch language';
+
+  @override
   String get searchHint => 'Search events';
 
   @override

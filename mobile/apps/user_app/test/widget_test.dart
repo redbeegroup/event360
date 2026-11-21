@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
 import 'package:user_app/app/push.dart';
+import 'package:user_app/l10n/app_localizations.dart';
+import 'package:user_app/widgets/event_row.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
 import 'package:user_app/screens/watch_screen.dart';
@@ -319,9 +323,16 @@ class FakeApi extends Event360Api {
   @override
   Future<List<Category>> categories() async => [Category.fromJson({'id': 'c1', 'slug': 'lifestyle-social', 'nameEn': 'Lifestyle & Social'})];
 
+  /// When set, the unfiltered event list (Discover's "upcoming") returns these.
+  List<Map<String, dynamic>>? homeEvents;
+  final eventQueries = <String>[]; // 'category:city' of each filtered list call
+
   @override
-  Future<EventPage> events({String? q, String? category, String? city, bool? free, DateTime? from, DateTime? to, int page = 1, int limit = 20}) async =>
-      EventPage.fromJson({'items': [eventJson('e1'), eventJson('e2', free: false)], 'page': 1, 'limit': 20, 'total': 2});
+  Future<EventPage> events({String? q, String? category, String? city, bool? free, DateTime? from, DateTime? to, int page = 1, int limit = 20}) async {
+    if (category != null || city != null) eventQueries.add('$category:$city');
+    final items = (free == null && category == null && city == null ? homeEvents : null) ?? [eventJson('e1'), eventJson('e2', free: false)];
+    return EventPage.fromJson({'items': items, 'page': 1, 'limit': 20, 'total': items.length});
+  }
 
   static Map<String, dynamic> richEventJson(String id) => {
         ...eventJson(id),
@@ -529,7 +540,7 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(sp.getString('lang'), 'en');
-    expect(find.text('Upcoming events'), findsOneWidget);
+    expect(find.text('Popular'), findsOneWidget);
   });
 
   testWidgets('home lists events with free / price labels (English)', (tester) async {
@@ -539,10 +550,120 @@ void main() {
     expect(find.text('From 5,000 MMK'), findsWidgets);
   });
 
+  testWidgets('tabs read Discover, Explore, Tickets, Account', (tester) async {
+    await pumpApp(tester);
+    for (final l in ['Discover', 'Explore', 'Tickets', 'Account']) {
+      expect(find.text(l), findsOneWidget);
+    }
+    await tester.tap(find.text('Explore'));
+    await tester.pumpAndSettle();
+    expect(find.text('Explore'), findsWidgets);
+  });
+
+  testWidgets('tabs read the same four names in Myanmar', (tester) async {
+    await pumpApp(tester, lang: 'my');
+    for (final l in ['စူးစမ်းရန်', 'ရှာဖွေ', 'လက်မှတ်များ', 'အကောင့်']) {
+      expect(find.text(l), findsOneWidget);
+    }
+  });
+
+  Future<void> tallScreen(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1236, 9000);
+    await tester.pumpAndSettle();
+  }
+
+  Map<String, dynamic> withCover(String id, String startsAt, {bool seated = false}) => {
+        ...FakeApi.eventJson(id),
+        'coverImageUrl': 'http://fake/$id.jpg',
+        'startsAt': startsAt,
+        if (seated) 'seating': {'seatMapVersionId': 'v1', 'venueName': 'National Theatre'},
+      };
+
+  testWidgets('discover shows search pill, category chips, a featured event and popular rows', (tester) async {
+    await pumpApp(tester, setup: (api) {
+      api.homeEvents = [
+        FakeApi.eventJson('plain'),
+        withCover('later', '2027-03-01T10:00:00.000Z'),
+        withCover('soon', '2027-02-01T10:00:00.000Z', seated: true),
+      ];
+    });
+    await tallScreen(tester);
+    expect(find.text('Find things to do'), findsOneWidget);
+    expect(find.text('in Myanmar'), findsOneWidget);
+    expect(find.byKey(const Key('discoverFilters')), findsOneWidget);
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Lifestyle & Social'), findsOneWidget);
+    expect(find.byType(FeaturedEventCard), findsWidgets);
+    // the featured card is the soonest event with a cover
+    final featured = tester.widgetList<FeaturedEventCard>(find.byType(FeaturedEventCard)).map((w) => w.event.id);
+    expect(featured, contains('soon'));
+    expect(find.text('RESERVED SEATING'), findsOneWidget);
+    expect(find.text('Popular'), findsOneWidget);
+    expect(find.byType(EventRow), findsWidgets);
+  });
+
+  testWidgets('featured event is not repeated in popular', (tester) async {
+    await pumpApp(tester, setup: (api) {
+      api.homeEvents = [FakeApi.eventJson('plain'), withCover('soon', '2027-02-01T10:00:00.000Z'), withCover('later', '2027-03-01T10:00:00.000Z')];
+    });
+    await tallScreen(tester);
+    final rows = tester.widgetList<EventRow>(find.byType(EventRow)).map((w) => w.event.id).toList();
+    expect(rows, isNot(contains('soon')));
+    expect(rows, containsAll(['plain', 'later']));
+  });
+
+  testWidgets('tapping a category chip opens Explore filtered to it', (tester) async {
+    final (api, _) = await pumpApp(tester);
+    await tester.tap(find.text('Lifestyle & Social'));
+    await tester.pumpAndSettle();
+    expect(api.eventQueries, contains('lifestyle-social:null'));
+    // the Explore chip for that category is the selected one
+    final chip = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Lifestyle & Social'));
+    expect(chip.selected, isTrue);
+  });
+
+  testWidgets('the city picked in Explore shows on the Discover search pill', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(find.byKey(const Key('discoverSearch')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('City'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mandalay'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discover'));
+    await tester.pumpAndSettle();
+    expect(find.text('in Mandalay'), findsOneWidget);
+  });
+
+  testWidgets('event row lays out with no cover image, a very long title and no venue at 360 dp in EN and MY', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 800 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final long = 'A very long event title that keeps going and going so that it has to wrap and then be cut off ' * 3;
+    final longMy = 'ရန်ကုန်မြို့ကြီး၏ အလွန်ရှည်လျားသော ပွဲတော်ခေါင်းစဉ်တစ်ခုသည် ဆက်လက်ရှည်လျားနေပါသဖြင့် ' * 3;
+    for (final lang in ['en', 'my']) {
+      final json = {...FakeApi.eventJson('x', free: false), 'title': long, 'titleMy': longMy, 'venue': null, 'coverImageUrl': null};
+      final e = EventSummary.fromJson(json);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [langProvider.overrideWithValue(lang)],
+        child: MaterialApp(
+          theme: Event360Theme.light(locale: Locale(lang)),
+          locale: Locale(lang),
+          supportedLocales: L10n.supportedLocales,
+          localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+          home: Scaffold(body: ListView(padding: const EdgeInsets.all(20), children: [EventRow(event: e), FeaturedEventCard(event: e)])),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: lang);
+      expect(find.byType(EventRow), findsOneWidget);
+    }
+  });
+
   testWidgets('Myanmar UI shows Myanmar titles', (tester) async {
     await pumpApp(tester, lang: 'my');
     expect(find.text('ရန်ကုန် စားသောက်ပွဲ e1'), findsWidgets);
-    expect(find.text('လာမည့်ပွဲများ'), findsOneWidget);
+    expect(find.text('ရေပန်းစား'), findsOneWidget);
   });
 
   testWidgets('register requires sign-in, then registers after phone login', (tester) async {
@@ -577,7 +698,7 @@ void main() {
 
   testWidgets('tickets show a QR and stay available offline from the cache', (tester) async {
     final (api, sp) = await pumpApp(tester, signedIn: true);
-    await tester.tap(find.text('My tickets'));
+    await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     expect(find.text('Yangon Food Fair e1'), findsOneWidget);
     expect(sp.getString(MyTicketsNotifier.cacheKey), isNotNull);
@@ -721,7 +842,7 @@ void main() {
       a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
       a.orders['ord-2'] = FakeApi.orderJson('ord-2', 'EXPIRED', expires: DateTime.now().toUtc().subtract(const Duration(minutes: 1)));
     });
-    await tester.tap(find.text('My tickets'));
+    await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     expect(find.text('Awaiting payment'), findsOneWidget);
     expect(find.text('Continue payment'), findsOneWidget);
@@ -785,7 +906,7 @@ void main() {
     expect(find.text('Yangon Food Fair e1'), findsWidgets);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Account'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
@@ -930,7 +1051,7 @@ void main() {
 
   testWidgets('send a ticket to someone: bad number shown, then the ticket leaves my list', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true);
-    await tester.tap(find.text('My tickets'));
+    await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yangon Food Fair e1').first);
     await tester.pumpAndSettle();
@@ -1516,7 +1637,7 @@ void main() {
 
   testWidgets('ticket shows seat label and complimentary', (tester) async {
     await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket, compTicket]);
-    await tester.tap(find.text('My tickets'));
+    await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     expect(find.text('Stalls · Row 1 · Seat 1'), findsOneWidget);
     expect(find.text('Complimentary · Press'), findsOneWidget);
@@ -1538,7 +1659,7 @@ void main() {
 
   testWidgets('cancel button only when canCancel', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket, compTicket]);
-    await tester.tap(find.text('My tickets'));
+    await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     // A comp ticket and the plain default ticket can't be cancelled
     await tester.tap(find.text('Gala Dinner'));
