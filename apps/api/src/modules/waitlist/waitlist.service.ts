@@ -11,6 +11,17 @@ export { OFFER_MINUTES, reserveFreed, reserveFreedSeats } from './waitlist-stock
 
 type Tx = Prisma.TransactionClient;
 const ACTIVE = ['WAITING', 'OFFERED'] as const;
+
+/**
+ * A type's line is closed once its sales end, its event starts, or the event is cancelled or completed: entries
+ * expire and the reserve goes back. While the event is otherwise not PUBLISHED (DRAFT/SUBMITTED during a re-review)
+ * the line is paused: no joins and no new offers, nothing given back; WAITING entries keep their place and live
+ * offers run to their normal expiry.
+ */
+export function lineState(t: { salesEndAt: Date | null; event: { status: string; startsAt: Date } }, now: Date): 'open' | 'paused' | 'closed' {
+  if (['CANCELLED', 'COMPLETED'].includes(t.event.status) || t.event.startsAt <= now || (t.salesEndAt && t.salesEndAt <= now)) return 'closed';
+  return t.event.status === 'PUBLISHED' ? 'open' : 'paused';
+}
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
@@ -55,13 +66,26 @@ export class WaitlistService {
     return n === 1;
   }
 
+  /**
+   * releaseHold's last step: the checkout made from this offer was released before the offer's original expiry, and
+   * `qty` was set aside for it again; the entry is OFFERED again until that same expiry.
+   */
+  async reopenOffer(tx: Tx, entryId: string, orderId: string, qty: number): Promise<boolean> {
+    const n = await tx.$executeRaw`
+      UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, order_id = NULL, updated_at = now()
+      WHERE id = ${entryId}::uuid AND status = 'PURCHASED' AND order_id = ${orderId}::uuid AND offer_expires_at > clock_timestamp()`;
+    return n === 1;
+  }
+
   // ───────────── buyers ─────────────
 
   async join(userId: string, ticketTypeId: string, quantity: number) {
     const t = await this.prisma.ticketType.findUnique({ where: { id: ticketTypeId }, include: { event: true, _count: { select: { eventSeats: true } } } });
-    if (!t || !['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'].includes(t.event.status)) throw new NotFoundException('Ticket type not found');
+    if (!t || !t.event.publishedAt) throw new NotFoundException('Ticket type not found'); // never listed: unknown
     const now = new Date();
-    if (t.event.status !== 'PUBLISHED' || t.event.startsAt <= now || (t.salesEndAt && t.salesEndAt <= now)) throw new ConflictException('The waitlist is closed');
+    const state = lineState(t, now);
+    if (state === 'closed') throw new ConflictException('The waitlist is closed');
+    if (state === 'paused') throw new ConflictException('The waitlist is paused while the event is being reviewed');
     if (t.salesStartAt && t.salesStartAt > now) throw new ConflictException('Sales have not opened yet');
     if (quantity < 1 || quantity > t.maxPerOrder) throw new BadRequestException(`Join for 1 to ${t.maxPerOrder} tickets`);
     const seated = t._count.eventSeats > 0;
@@ -76,6 +100,16 @@ export class WaitlistService {
         ? await tx.eventSeat.count({ where: { ticketTypeId, status: 'AVAILABLE' } })
         : c.quota - c.sold - c.held - c.offered;
       if (open > 0) throw new ConflictException('These tickets are not sold out: you can buy them now');
+      // The per-person limit, as at checkout: what the buyer holds or is paying for, plus what they wait for
+      const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
+      const pending = await tx.orderItem.aggregate({
+        _sum: { quantity: true },
+        where: { ticketTypeId, order: { userId, status: 'PENDING_PAYMENT', holdExpiresAt: { gt: now } } },
+      });
+      const already = held + (pending._sum.quantity ?? 0);
+      if (already + quantity > t.maxPerOrder) {
+        throw new ConflictException(`You already have ${already} ${t.name} ticket(s); the limit is ${t.maxPerOrder} per person`);
+      }
       if (await tx.waitlistEntry.findFirst({ where: { ticketTypeId, userId, status: { in: [...ACTIVE] } }, select: { id: true } })) {
         throw new ConflictException('You are already on this waitlist');
       }
@@ -86,7 +120,22 @@ export class WaitlistService {
         throw e;
       }
     });
+    if (seated) await this.reserveAfterJoin(t.eventId, ticketTypeId);
     return { entryId, position: await this.position(entryId) };
+  }
+
+  /**
+   * After a seated join commits: a release that read the line just before the join committed may have put seats on
+   * sale. Reserve them now (event share → AVAILABLE seats, SKIP LOCKED → recount) rather than at the next sweep.
+   */
+  private async reserveAfterJoin(eventId: string, ticketTypeId: string) {
+    if (!(await this.prisma.eventSeat.count({ where: { ticketTypeId, status: 'AVAILABLE' } }))) return;
+    await this.prisma
+      .$transaction(async (tx) => {
+        await shareLockEvent(tx, eventId);
+        if (await reserveAvailableSeats(tx, ticketTypeId)) await this.seating.recountTicketTypes(tx, eventId, [], [ticketTypeId]);
+      }, SEATED_TX)
+      .catch((e) => this.logger.warn(`waitlist join reserve for ${ticketTypeId}: ${(e as Error).message}`)); // the sweeper retries
   }
 
   /** 1-based place among the WAITING entries of its type, in (createdAt, id) order; null once offered or done. */
@@ -175,22 +224,36 @@ export class WaitlistService {
   // ───────────── sweeper ─────────────
 
   /**
+   * Types the sweeper must look at: stock reserved but not promised to a live offer (to offer it or give it back),
+   * or a line with public stock it could take (AVAILABLE seats; a standing type's free quota). A sold-out type with
+   * a line and nothing free is left alone, so such types can't crowd out the rest of the batch.
+   */
+  async typesToOffer(now = new Date()): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT tt.id::text AS id FROM ticket_types tt
+      WHERE tt.offered > 0 AND tt.offered > COALESCE((
+        SELECT SUM(w.offered_qty) FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'OFFERED' AND w.offer_expires_at > ${now}
+      ), 0)
+      UNION
+      SELECT tt.id::text FROM ticket_types tt
+      WHERE EXISTS (SELECT 1 FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'WAITING')
+        AND (
+          EXISTS (SELECT 1 FROM event_seats s WHERE s.ticket_type_id = tt.id AND s.status = 'AVAILABLE')
+          OR (tt.quota - tt.sold - tt.held - tt.offered > 0 AND NOT EXISTS (SELECT 1 FROM event_seats s WHERE s.ticket_type_id = tt.id))
+        )
+      ORDER BY 1 LIMIT 500`;
+    return rows.map((r) => r.id);
+  }
+
+  /**
    * Offers reserved stock to WAITING entries, in line order, type by type (one transaction each), then sends the
    * offers. Also gives back stock nobody is waiting for, and reserves public stock a type's line still wants (seats
    * newly free after a join raced a release).
    */
   async assignOffers(now = new Date()) {
-    const types = await this.prisma.$queryRaw<{ id: string }[]>`
-      SELECT ticket_type_id::text AS id FROM waitlist_entries WHERE status = 'WAITING'
-      UNION
-      SELECT tt.id::text FROM ticket_types tt
-      WHERE tt.offered > 0 AND tt.offered > COALESCE((
-        SELECT SUM(w.offered_qty) FROM waitlist_entries w WHERE w.ticket_type_id = tt.id AND w.status = 'OFFERED' AND w.offer_expires_at > ${now}
-      ), 0)
-      ORDER BY 1 LIMIT 500`;
     const offers: string[] = [];
     let released = 0;
-    for (const { id } of types) {
+    for (const id of await this.typesToOffer(now)) {
       try {
         const r = await this.assignType(id, now);
         offers.push(...r.offers);
@@ -211,8 +274,11 @@ export class WaitlistService {
     });
     if (!t) return none;
     const seated = t._count.eventSeats > 0;
-    // A closed line (expireOffers ends its entries) gets no new offers; its reserve only goes back
-    const open = t.event.status === 'PUBLISHED' && t.event.startsAt > now && !(t.salesEndAt && t.salesEndAt <= now);
+    // A closed line (expireOffers ends its entries) gets no new offers; its reserve only goes back. A paused one is
+    // left exactly as it is until the event is published again.
+    const state = lineState(t, now);
+    if (state === 'paused') return none;
+    const open = state === 'open';
     // Unlocked look first: most sold-out types with a line have nothing to offer, and must not lock their counters
     const waiting = open ? ((await this.prisma.waitlistEntry.aggregate({ where: { ticketTypeId, status: 'WAITING' }, _sum: { quantity: true } }))._sum.quantity ?? 0) : 0;
     const pool = seated ? await poolSeatCount(this.prisma, ticketTypeId, now) : t.offered - (await liveOfferedQty(this.prisma, ticketTypeId, now));
@@ -241,13 +307,18 @@ export class WaitlistService {
     const [c] = await tx.$queryRaw<{ quota: number; sold: number; held: number; offered: number }[]>`
       SELECT quota, sold, held, offered FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR NO KEY UPDATE`;
     let pool = c.offered - (await liveOfferedQty(tx, ticketTypeId, now));
+    if (pool < 0) {
+      // offered below what live offers hold: a counter went wrong somewhere. Never give back (or offer) from it.
+      this.logger.warn(`waitlist: negative pool ${pool} for ticket type ${ticketTypeId} (offered ${c.offered})`);
+      pool = 0;
+    }
     const waiting = await this.waitingIn(tx, ticketTypeId, open);
     // Public stock the line still wants (normally none: freeing paths reserve as they go)
     const add = Math.max(0, Math.min(waiting - pool, c.quota - c.sold - c.held - c.offered));
     pool += add;
     const offers = pool > 0 && waiting > 0 ? await this.offerInOrder(tx, ticketTypeId, pool, now) : [];
     const given = offers.reduce((s, o) => s + o.qty, 0);
-    const released = pool - given; // nobody left waiting for it: back on sale
+    const released = Math.max(0, pool - given); // nobody left waiting for it: back on sale
     if (add || released) await tx.$executeRaw`UPDATE ticket_types SET offered = offered + ${add - released} WHERE id = ${ticketTypeId}::uuid`;
     return { offers: offers.map((o) => o.id), released };
   }
@@ -303,7 +374,7 @@ export class WaitlistService {
       WITH c AS (
         SELECT w.id, w.status::text AS old FROM waitlist_entries w
         JOIN ticket_types t ON t.id = w.ticket_type_id JOIN events e ON e.id = t.event_id
-        WHERE w.status IN ('WAITING', 'OFFERED') AND (t.sales_end_at <= ${now} OR e.starts_at <= ${now} OR e.status <> 'PUBLISHED')
+        WHERE w.status IN ('WAITING', 'OFFERED') AND (t.sales_end_at <= ${now} OR e.starts_at <= ${now} OR e.status IN ('CANCELLED', 'COMPLETED'))
         ORDER BY w.created_at, w.id
         FOR NO KEY UPDATE OF w
       )
@@ -321,6 +392,7 @@ export class WaitlistService {
       RETURNING w.id::text`;
     const sorry = closed.filter((c) => c.old === 'WAITING');
     if (sorry.length) await this.notifyClosed(sorry);
+    if (expired.length) await this.notifyExpired(expired.map((e) => e.id));
     return { expired: expired.length, closed: closed.length };
   }
 
@@ -346,6 +418,26 @@ export class WaitlistService {
         link: `/event/${ev.id}`,
         eventId: ev.id,
         ...(sms ? { sms: `Tickets for ${short(ev.title, 60)} are available for you until ${when(until)}. Open Event 360.` } : {}),
+      });
+    }
+  }
+
+  /** Inbox only (no SMS): the offer's time ran out. */
+  private async notifyExpired(entryIds: string[]) {
+    const rows = await this.prisma.waitlistEntry.findMany({
+      where: { id: { in: entryIds } },
+      include: { ticketType: { select: { event: { select: { id: true, title: true, titleMy: true } } } } },
+    });
+    for (const e of rows) {
+      const ev = e.ticketType.event;
+      void this.notify.toUsers([e.userId], {
+        kind: 'waitlist_offer_expired',
+        title: 'Your offer expired',
+        titleMy: 'သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်ပါပြီ',
+        body: `Your offer for ${ev.title} expired.`,
+        bodyMy: `${ev.titleMy || ev.title} အတွက် သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်သွားပါပြီ။`,
+        link: `/event/${ev.id}`,
+        eventId: ev.id,
       });
     }
   }

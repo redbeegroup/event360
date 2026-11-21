@@ -433,7 +433,16 @@ export class EventsService implements OnModuleDestroy {
     if (!t) throw new NotFoundException('Ticket type not found');
     if (t.sold + t.held > 0) throw new ConflictException('Tickets were already issued for this type');
     if (await this.prisma.eventSeat.count({ where: { ticketTypeId } })) throw new ConflictException('Seats are assigned to this type; unassign them first');
-    await this.prisma.ticketType.delete({ where: { id: ticketTypeId } });
+    await this.prisma.$transaction(async (tx) => {
+      // The counter row serialises the delete with joins and with paths that reserve stock for the line
+      const [c] = await tx.$queryRaw<{ sold: number; held: number; offered: number }[]>`SELECT sold, held, offered FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR UPDATE`;
+      if (!c) throw new NotFoundException('Ticket type not found');
+      if (c.sold + c.held > 0) throw new ConflictException('Tickets were already issued for this type');
+      if (c.offered > 0 || (await tx.waitlistEntry.count({ where: { ticketTypeId, status: { in: ['WAITING', 'OFFERED'] } } }))) {
+        throw new ConflictException('People are on the waitlist for this type; it cannot be deleted');
+      }
+      await tx.ticketType.delete({ where: { id: ticketTypeId } });
+    });
     await this.recomputeIsFree(eventId);
     return { deleted: true };
   }

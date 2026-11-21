@@ -1120,6 +1120,9 @@ model EventSeat {
   @@index([eventId, status])
   @@index([ticketTypeId])
   @@index([orderId])
+  // waitlist_entry_id has a partial index (WHERE waitlist_entry_id IS NOT NULL) in migration
+  // 20261128031000_waitlist_seat_index. It is not declared here: Prisma ignores partial indexes, so an @@index
+  // would read as missing and show drift.
   @@map("event_seats")
 }
 

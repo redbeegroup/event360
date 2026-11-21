@@ -469,8 +469,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
       if (n.count !== 1) return false;
       const items = byTypeId(await tx.orderItem.findMany({ where: { orderId } }), (i) => i.ticketTypeId);
+      // A checkout made from a waitlist offer, released before the offer's own time ran out: the offer gets back what
+      // is released (read without a lock: a PURCHASED entry only changes in a release of its order, and this order's
+      // row is ours now)
+      const lost = await tx.waitlistEntry.findFirst({
+        where: { orderId, status: 'PURCHASED', offerExpiresAt: { gt: new Date() } },
+        select: { id: true, ticketTypeId: true, offeredQty: true },
+      });
+      let backToOffer = 0;
       for (const i of items) {
         if (i.seatKeys.length) continue;
+        if (lost?.ticketTypeId === i.ticketTypeId) {
+          const q = Math.min(i.quantity, lost.offeredQty);
+          await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0), offered = offered + ${q} WHERE id = ${i.ticketTypeId}::uuid`;
+          backToOffer += q;
+          if (i.quantity > q) await reserveFreed(tx, i.ticketTypeId, i.quantity - q);
+          continue;
+        }
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
         await reserveFreed(tx, i.ticketTypeId, i.quantity); // people waiting get it first (row still locked)
       }
@@ -479,9 +494,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (o.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${o.promoCodeId}::uuid`;
       if (seatedIn?.typeIds.length) {
         // A seat may come back under another type (or none) if the rules changed while it was held
-        const back = await releaseSeats(tx, orderId);
+        const back = await releaseSeats(tx, orderId, lost ? { entryId: lost.id, ticketTypeId: lost.ticketTypeId, max: lost.offeredQty } : undefined);
+        backToOffer += back.offered;
         await this.seating.recountTicketTypes(tx, seatedIn.eventId, back.typeIds, [...new Set([...seatedIn.typeIds, ...back.typeIds])]);
       }
+      // The entry row last. If its time ran out meanwhile, what was set aside for it is the pool (the sweeper offers it on)
+      if (lost && backToOffer) await this.waitlist.reopenOffer(tx, lost.id, orderId, backToOffer);
       return true;
     }, await this.seatedTx(orderId));
   }

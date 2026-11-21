@@ -249,3 +249,6 @@
 "waitlistOfferBody","{qty} {type} ticket(s) for {event} are held for you until {time}. Buy them before then.","{event} အတွက် {type} လက်မှတ် {qty} စောင်ကို {time} အထိ သင့်အတွက် ထိန်းထားပါသည်။ ထိုအချိန်မတိုင်မီ ဝယ်ယူပါ။","api_inbox"
 "waitlistClosedTitle","Tickets didn't become available","လက်မှတ် ပြန်မရနိုင်ခဲ့ပါ","api_inbox"
 "waitlistClosedBody","The waitlist for {type} at {event} has closed. Tickets didn't become available.","{event} ၏ {type} စောင့်ဆိုင်းစာရင်း ပိတ်သွားပါပြီ။ လက်မှတ် ပြန်မရနိုင်ခဲ့ပါ။","api_inbox"
+"waitlistExpiredTitle","Your offer expired","သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်ပါပြီ","api_inbox"
+"waitlistExpiredBody","Your offer for {event} expired.","{event} အတွက် သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်သွားပါပြီ။","api_inbox"
+"waitlistPaused","The waitlist is paused while the event is being reviewed","ပွဲကို စစ်ဆေးနေစဉ် စောင့်ဆိုင်းစာရင်းကို ခေတ္တရပ်ထားပါသည်","api_error"

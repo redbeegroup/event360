@@ -26,8 +26,13 @@ export { CURRENT_RULE_TYPE } from './seat-rules';
  *    waitlist sweeper locks a type's WAITLIST_HOLD seats in seat_key order;
  * 9. seated ticket_types rows, in id order, in the recount (the waitlist join takes a seated type's row here);
  * 10. waitlist_entries rows, in (created_at, id) order, always last: createOrder marks the offer it used PURCHASED
- *    (conditional update); the sweeper locks WAITING entries to offer them, or OFFERED ones to expire them; leave.
- *    Freeing paths only read entries (an unlocked read can only over-reserve; the sweeper gives the excess back).
+ *    and releaseHold reopens it (conditional updates); the sweeper locks WAITING entries to offer them, or OFFERED
+ *    ones to expire them; leave. Freeing paths only read entries (an unlocked read can only over-reserve; the
+ *    sweeper gives the excess back). Pointing a seat at an entry (sweeper, releaseHold's offerTo) takes a KEY SHARE
+ *    lock on the entry row through the foreign key; nothing locks entries FOR UPDATE, so it never waits.
+ *    The ticket type delete takes its counter row FOR UPDATE (step 6) before counting entries.
+ *    A seated join commits, then reserves AVAILABLE seats in a new transaction (event share → seats SKIP LOCKED →
+ *    recount), so it never holds its counter row while waiting for seats.
  * Two exceptions, both safe:
  * - TicketsService.cancel takes its (free) order's row last, after the recount, only to serialise cancels within
  *   that order; no other path holds a free order's row while waiting for a counter or seat.
@@ -89,6 +94,15 @@ export async function unclaimSeats(tx: Tx, seatIds: string[]): Promise<void> {
 export interface ReturnedSeats {
   seatKeys: string[];
   typeIds: string[];
+  /** Seats given back to `offerTo`'s entry. */
+  offered: number;
+}
+
+/** A waitlist offer that gets released seats of its type back (a checkout made from it was released in time). */
+export interface OfferTo {
+  entryId: string;
+  ticketTypeId: string;
+  max: number;
 }
 
 /**
@@ -96,21 +110,32 @@ export interface ReturnedSeats {
  * sale under the event's current assignment rules, which may have changed while they were held or sold: a row rule
  * wins over a whole-section rule, and with no rule the seat is UNSOLD with no type. Locks the seats in seat_key order.
  * While people are waiting for a seat's (new) type, reserveFreedSeats keeps it for them as WAITLIST_HOLD instead
- * (`reserve: false` skips that: the waitlist sweeper giving back seats nobody is waiting for).
+ * (`reserve: false` skips that: the waitlist sweeper giving back seats nobody is waiting for). With `offerTo`, up to
+ * `max` seats the rules still give that type go first to that entry as its WAITLIST_HOLD seats (setting their
+ * waitlist_entry_id takes a KEY SHARE lock on the entry row, which no path takes FOR UPDATE).
  * The caller must hold the event row lock (shared or exclusive) so the rules can't change meanwhile, and must then
  * recount `typeIds` (the old and the new types) with EventSeatsService.recountTicketTypes(tx, eventId, typeIds, ...),
  * which locks those ticket_types rows in id order, after the seats.
  */
-export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql, opts: { reserve?: boolean } = {}): Promise<ReturnedSeats> {
+export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql, opts: { reserve?: boolean; offerTo?: OfferTo } = {}): Promise<ReturnedSeats> {
   const locked = await tx.$queryRaw<{ id: string; seat_key: string; old_type: string | null; new_type: string | null }[]>`
     SELECT seat.id, seat.seat_key, seat.ticket_type_id::text AS old_type, ${CURRENT_RULE_TYPE}::text AS new_type
     FROM event_seats seat
     WHERE ${where}
     ORDER BY seat.seat_key
     FOR UPDATE OF seat`;
-  if (!locked.length) return { seatKeys: [], typeIds: [] };
-  const kept = new Set(opts.reserve === false ? [] : await reserveFreedSeats(tx, locked.map((r) => r.id)));
-  const onSale = locked.filter((r) => !kept.has(r.id)).map((r) => r.id);
+  if (!locked.length) return { seatKeys: [], typeIds: [], offered: 0 };
+  const o = opts.offerTo;
+  const forEntry = o ? locked.filter((r) => r.new_type === o.ticketTypeId).slice(0, o.max).map((r) => r.id) : [];
+  if (o && forEntry.length) {
+    await tx.$executeRaw`
+      UPDATE event_seats SET status = 'WAITLIST_HOLD', ticket_type_id = ${o.ticketTypeId}::uuid, order_id = NULL, ticket_id = NULL, held_until = NULL,
+        hold_label = NULL, waitlist_entry_id = ${o.entryId}::uuid
+      WHERE id = ANY(${forEntry}::uuid[])`;
+  }
+  const rest = locked.filter((r) => !forEntry.includes(r.id));
+  const kept = new Set(opts.reserve === false || !rest.length ? [] : await reserveFreedSeats(tx, rest.map((r) => r.id)));
+  const onSale = rest.filter((r) => !kept.has(r.id)).map((r) => r.id);
   if (onSale.length) {
     await tx.$executeRaw`
       UPDATE event_seats seat SET
@@ -121,12 +146,15 @@ export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql, opts: { reser
   }
   const types = new Set<string>();
   for (const r of locked) for (const t of [r.old_type, r.new_type]) if (t) types.add(t);
-  return { seatKeys: locked.map((r) => r.seat_key), typeIds: [...types] };
+  return { seatKeys: locked.map((r) => r.seat_key), typeIds: [...types], offered: forEntry.length };
 }
 
-/** Hold expired or cancelled: the order's CHECKOUT_HOLD seats go back on sale (under the current rules). */
-export async function releaseSeats(tx: Tx, orderId: string): Promise<ReturnedSeats> {
-  return returnSeatsToSale(tx, Prisma.sql`order_id = ${orderId}::uuid AND status = 'CHECKOUT_HOLD'`);
+/**
+ * Hold expired or cancelled: the order's CHECKOUT_HOLD seats go back on sale (under the current rules), or back to
+ * the waitlist offer the checkout was made from (`offerTo`).
+ */
+export async function releaseSeats(tx: Tx, orderId: string, offerTo?: OfferTo): Promise<ReturnedSeats> {
+  return returnSeatsToSale(tx, Prisma.sql`order_id = ${orderId}::uuid AND status = 'CHECKOUT_HOLD'`, { offerTo });
 }
 
 /**

@@ -14,6 +14,7 @@ export type NotificationKind =
   | 'announcement'
   | 'ticket_received'
   | 'waitlist_offer'
+  | 'waitlist_offer_expired'
   | 'waitlist_closed'
   | 'test'
   | 'org_event_approved'
