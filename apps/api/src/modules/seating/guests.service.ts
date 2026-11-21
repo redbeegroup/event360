@@ -85,7 +85,7 @@ export class GuestsService {
       // The guest's user row before the event row, as in checkout (user → event): the guest may be buying a
       // ticket for this event right now, and their order row references the same user
       const guest = await upsertUserByPhone(tx, phone);
-      await tx.$queryRaw`SELECT id FROM users WHERE id = ${guest.id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${guest.id}::uuid FOR NO KEY UPDATE`;
       const e = await this.lockedEvent(tx, orgId, eventId);
       const rows = await tx.eventSeat.findMany({ where: { eventId, seatKey: { in: keys } }, orderBy: { seatKey: 'asc' } });
       const ok = rows.filter((s) => s.status === 'GUEST_HOLD' && s.ticketTypeId);

@@ -48,6 +48,9 @@ type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] }
  */
 const byTypeId = <T>(rows: T[], id: (r: T) => string): T[] => [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
 
+/** How long the sweeper leaves out an expired hold whose release threw. */
+const HOLD_SKIP_MS = 10 * 60e3;
+
 /** Flags an order for admin review, keeping any earlier note (one line per reason) so no refund reason is lost. */
 async function flagForReview(tx: Prisma.TransactionClient, orderId: string, note: string) {
   await tx.$executeRaw`UPDATE orders SET needs_review = true, review_note = CASE WHEN review_note IS NULL OR review_note = '' THEN ${note} ELSE review_note || E'\n' || ${note} END WHERE id = ${orderId}::uuid`;
@@ -57,6 +60,8 @@ async function flagForReview(tx: Prisma.TransactionClient, orderId: string, note
 export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PaymentsService.name);
   private timer?: NodeJS.Timeout;
+  /** Expired holds whose release threw, and until when (ms) the sweeper leaves them out. In memory, per pod. */
+  private readonly skippedHolds = new Map<string, number>();
   readonly mock: MockProvider;
   private readonly providers: Map<PaymentProviderCode, PaymentProvider>;
 
@@ -214,8 +219,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     );
 
     const orderId = await this.prisma.$transaction(async (tx) => {
-      // Serialize one buyer's checkouts so the per-person limit can't be raced
-      await tx.$executeRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      // Serialize one buyer's checkouts so the per-person limit can't be raced. NO KEY UPDATE: inserts referencing the
+      // user (KEY SHARE through the foreign key, e.g. a settle's tickets) don't wait for it (lock order step 1)
+      await tx.$executeRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR NO KEY UPDATE`;
       if (event.seatMapVersionId) {
         // Shared lock: excludes seat assignment and map changes (not other checkouts) for the rest of the checkout
         await shareLockEvent(tx, eventId);
@@ -719,10 +725,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async sweep(now = new Date()) {
-    const expired = await this.prisma.order.findMany({ where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now } }, select: { id: true }, take: 200 });
+    // Oldest holds first, so none waits forever behind newer ones. An order whose release throws is left out for
+    // HOLD_SKIP_MS (on this pod) so a few poisoned orders can't fill every batch and starve the rest.
+    for (const [id, until] of this.skippedHolds) if (until <= now.getTime()) this.skippedHolds.delete(id);
+    const expired = await this.prisma.order.findMany({
+      where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now }, ...(this.skippedHolds.size ? { id: { notIn: [...this.skippedHolds.keys()] } } : {}) },
+      orderBy: { holdExpiresAt: 'asc' },
+      select: { id: true },
+      take: 200,
+    });
     // One order (or payment) that fails must never stop the rest: every hold and payment is its own step
     for (const o of expired) {
-      await this.releaseHold(o.id, 'EXPIRED').catch((e) => this.logger.warn(`hold expiry ${o.id}: ${(e as Error).message}`));
+      await this.releaseHold(o.id, 'EXPIRED').catch((e) => {
+        this.skippedHolds.set(o.id, now.getTime() + HOLD_SKIP_MS);
+        this.logger.warn(`hold expiry ${o.id}: ${(e as Error).message} (skipped for ${HOLD_SKIP_MS / 60e3} min)`);
+      });
     }
 
     const due = await this.prisma.payment.findMany({
@@ -735,8 +752,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
     for (const p of due) {
       const tooOld = p.createdAt < new Date(now.getTime() - 2 * 3600e3);
+      let st: ProviderStatus | undefined; // what the provider said; undefined if the query itself failed
       try {
-        const st = await this.provider(p.provider).query({ paymentId: p.id, providerRef: p.providerRef, createdAt: p.createdAt });
+        st = await this.provider(p.provider).query({ paymentId: p.id, providerRef: p.providerRef, createdAt: p.createdAt });
         await this.prisma.payment.update({ where: { id: p.id }, data: { lastCheckedAt: now } });
         if (st !== 'PENDING') await this.applyStatus(p.id, st);
         else if (tooOld) await this.applyStatus(p.id, 'EXPIRED');
@@ -744,13 +762,26 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`query ${p.provider} ${p.id}: ${(e as Error).message}`);
         try {
           await this.prisma.payment.update({ where: { id: p.id }, data: { lastCheckedAt: now } });
-          if (tooOld) await this.applyStatus(p.id, 'EXPIRED');
+          // Expire only what the provider says is unpaid, or can't be asked about. Paid (or failed) but not applied:
+          // retried on later passes; a paid one that is still stuck after 2 h goes to an admin as well.
+          if (tooOld && (st === undefined || st === 'PENDING')) await this.applyStatus(p.id, 'EXPIRED');
+          else if (tooOld && st === 'SUCCEEDED' && p.orderId) await this.flagStuckPaid(p.orderId, p.providerRef ?? p.id);
         } catch (e2) {
           this.logger.warn(`reconcile ${p.provider} ${p.id}: ${(e2 as Error).message}`);
         }
       }
     }
     return { expired: expired.length, checked: due.length };
+  }
+
+  /** Flags (once) an order whose payment the provider reports as paid but which this side failed to settle. */
+  private async flagStuckPaid(orderId: string, ref: string) {
+    const note = `Provider reports paid (ref ${ref}) but settling failed: check`;
+    await this.prisma.$transaction(async (tx) => {
+      const [o] = await tx.$queryRaw<{ note: string | null }[]>`SELECT review_note AS note FROM orders WHERE id = ${orderId}::uuid FOR UPDATE`;
+      if (!o || o.note?.split('\n').includes(note)) return;
+      await flagForReview(tx, orderId, note);
+    });
   }
 
   // ───────────── admin: refunds ─────────────

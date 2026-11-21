@@ -12,7 +12,10 @@ export { CURRENT_RULE_TYPE } from './seat-rules';
  * back on sale left or joined) afterwards.
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
- * 1. user row: createOrder and the waitlist join (the buyer), GuestsService.issue (the guest);
+ * 1. user row, FOR NO KEY UPDATE: createOrder and the waitlist join (the buyer), GuestsService.issue (the guest).
+ *    It serialises one person's own actions but not inserts that reference the user: their foreign key takes a
+ *    KEY SHARE lock on the row (a settle's or a comp's ticket insert, after its counter rows), which never
+ *    conflicts with NO KEY UPDATE, so those inserts never wait for it. No checkout path takes it FOR UPDATE;
  * 2. event row: shared by checkouts and the waitlist sweeper (never upgraded), FOR UPDATE by organizer seat/map changes;
  * 3. payment row: settle (its conditional status update);
  * 4. order row: settle (SELECT … FOR UPDATE), releaseHold and refundOrder (conditional status update);

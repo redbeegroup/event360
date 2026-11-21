@@ -100,9 +100,9 @@ export class WaitlistService {
     const seated = t._count.eventSeats > 0;
     const entryId = await this.prisma.$transaction(async (tx) => {
       // The buyer's row first, as at checkout (lock order step 1): serialises one buyer's joins and checkouts, so the
-      // per-person limit can't be raced, and the entry insert's foreign-key lock on the user row never waits while
-      // this holds the counter row (a checkout holds the user row, then waits for that counter row: a deadlock).
-      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      // per-person limit can't be raced. FOR NO KEY UPDATE, not FOR UPDATE: it must not conflict with the KEY SHARE
+      // that inserts referencing the user (a settle's tickets) take while holding this type's counter row.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR NO KEY UPDATE`;
       // The type's counter row serialises the join with every path that frees or reserves this type's stock (they
       // hold it while reading the line), so a standing type can't be freed unseen by a joiner. Seated: event (share)
       // then the seated counter row, as in the recount; a release that races a join is caught by the sweeper.

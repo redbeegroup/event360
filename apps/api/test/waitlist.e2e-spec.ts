@@ -882,7 +882,110 @@ run('Waitlist', () => {
     expect(warn.mock.calls.some(([m]) => /poisoned order/.test(String(m)))).toBe(true);
     expect(warn.mock.calls.some(([m]) => /poisoned payment/.test(String(m)))).toBe(true);
     warn.mockRestore();
+    (pay as any).skippedHolds.clear(); // its 10-minute skip, so it can expire now
     await expireHold(prisma, pay, bad.body.id); // not poisoned any more
+  });
+
+  it('a poisoned expired hold is skipped for a while and never starves the others', async () => {
+    const ev = await standing('Starve', 2, 1);
+    const [P, Q] = [await consumer(), await consumer()];
+    const bad = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const good = await order(Q.H, ev.id, items(ev.type, 1)).expect(201);
+    // Both long expired, the poisoned one first: oldest holds are swept first
+    await prisma.order.update({ where: { id: bad.body.id }, data: { holdExpiresAt: new Date(Date.now() - 3600e3 - 1000) } });
+    await prisma.order.update({ where: { id: good.body.id }, data: { holdExpiresAt: new Date(Date.now() - 3600e3) } });
+    const svc = pay as any;
+    const release = svc.releaseHold.bind(pay);
+    const r1 = jest.spyOn(svc, 'releaseHold').mockImplementation((id: unknown, to: unknown) => (id === bad.body.id ? Promise.reject(new Error('poisoned order')) : release(id, to)));
+    const warn = jest.spyOn(svc.logger, 'warn');
+    const triesOfBad = () => r1.mock.calls.filter(([id]) => id === bad.body.id).length;
+    try {
+      for (let i = 0; i < 50; i++) {
+        await pay.sweep();
+        if ((await prisma.order.findUniqueOrThrow({ where: { id: good.body.id } })).status !== 'PENDING_PAYMENT') break;
+      }
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: good.body.id } })).toMatchObject({ status: 'EXPIRED' });
+      expect(triesOfBad()).toBe(1);
+      expect(warn.mock.calls.some(([m]) => /poisoned order/.test(String(m)))).toBe(true);
+      // The next pass skips it
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: bad.body.id } })).toMatchObject({ status: 'PENDING_PAYMENT' });
+      await pay.sweep();
+      expect(triesOfBad()).toBe(1);
+      // ...for 10 minutes, then it is tried again (its skip moved back rather than sweeping with a future clock,
+      // which would expire other suites' holds running in parallel)
+      expect(svc.skippedHolds.get(bad.body.id)).toBeGreaterThan(Date.now() + 9 * 60e3);
+      svc.skippedHolds.set(bad.body.id, Date.now() - 1);
+      await pay.sweep();
+      expect(triesOfBad()).toBe(2);
+    } finally {
+      r1.mockRestore();
+      warn.mockRestore();
+    }
+    svc.skippedHolds.clear();
+    await expireHold(prisma, pay, bad.body.id);
+  });
+
+  it('a payment the provider reports as paid is never expired, even when settling it keeps failing', async () => {
+    const ev = await standing('PaidStuck', 2, 1);
+    const P = await consumer();
+    const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const payId = await payFor(P.H, o.body.id);
+    await expireHold(prisma, pay, o.body.id);
+    // The wallet took the money but the callback was lost, long ago; the order already has an unrelated note
+    await pay.mock.recordState(payId, 'SUCCEEDED');
+    await prisma.order.update({ where: { id: o.body.id }, data: { reviewNote: 'Earlier note' } });
+    await prisma.payment.update({ where: { id: payId }, data: { status: 'PENDING', createdAt: new Date(Date.now() - 3 * 3600e3), lastCheckedAt: null } });
+    const svc = pay as any;
+    const apply = svc.applyStatus.bind(pay);
+    const r = jest.spyOn(svc, 'applyStatus').mockImplementation((id: unknown, st: unknown, ...rest: unknown[]) =>
+      id === payId && st === 'SUCCEEDED' ? Promise.reject(new Error('settle broke')) : apply(id, st, ...rest),
+    );
+    const checkedPass = async () => {
+      await prisma.payment.update({ where: { id: payId }, data: { lastCheckedAt: null } });
+      for (let i = 0; i < 50; i++) {
+        await pay.sweep();
+        if ((await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).lastCheckedAt) return;
+      }
+      throw new Error('payment was never checked');
+    };
+    const note = `Provider reports paid (ref mock_${payId}) but settling failed: check`;
+    try {
+      await checkedPass();
+      expect(await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).toMatchObject({ status: 'PENDING' });
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).toMatchObject({ needsReview: true, reviewNote: `Earlier note\n${note}` });
+      // Retried on a later pass: still not expired, and the note is not repeated
+      await checkedPass();
+      expect(await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).toMatchObject({ status: 'PENDING' });
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).toMatchObject({ needsReview: true, reviewNote: `Earlier note\n${note}` });
+    } finally {
+      r.mockRestore();
+    }
+    // Once settling works again, a later pass settles it
+    await checkedPass();
+    expect(await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).toMatchObject({ status: 'SUCCEEDED' });
+    const paid = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
+    expect(paid.status).toBe('PAID');
+    expect(paid.tickets).toHaveLength(1);
+  });
+
+  it('a join and a settle for the same buyer in parallel do not deadlock', async () => {
+    const ev = await standing('JoinSettle', 1, 2);
+    const U = await consumer();
+    const o = await order(U.H, ev.id, items(ev.type, 1)).expect(201);
+    const payId = await payFor(U.H, o.body.id);
+    const cb = pay.mock.callbackFor(payId, 'SUCCEEDED', 5_000n);
+    // The join takes the buyer row, then waits for the counter row the settle holds; the settle's ticket insert
+    // takes a KEY SHARE on the same buyer row through the foreign key
+    const [j, s] = await gated(
+      prisma,
+      (tx) => tx.$queryRaw`SELECT id FROM users WHERE id = ${U.id}::uuid FOR UPDATE`,
+      () => join(U.H, ev.type, 1).then((r) => r),
+      () => http.post('/v1/payments/webhook/mock').set('x-mock-signature', cb.signature).send(cb.body).then((r) => r),
+    );
+    expect(s.status).toBe(200);
+    expect(j.status).toBe(201);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).toMatchObject({ status: 'PAID' });
+    expect(await tt(ev.type)).toMatchObject({ sold: 1, held: 0 });
   });
 
   it('a join waits for the buyer row (as checkout does) before the counter row', async () => {
