@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { expandSeats, type Layout } from '../lib/seat-layout';
 
 export const SEAT_RADIUS = 9;
+const MAX_ZOOM = 8;
 export const DEFAULT_SEAT_COLORS = ['#6c2bd9', '#0e8a6a', '#c2410c', '#1d6fd8', '#b4236b', '#8a6d00'];
 const UNAVAILABLE = new Set(['TAKEN', 'SOLD', 'UNSOLD', 'BLOCKED', 'UNAVAILABLE']);
 const ATTR_STROKE = { RESTRICTED_VIEW: '#d97706', WHEELCHAIR: '#1d6fd8' } as const;
@@ -22,8 +23,14 @@ export interface SeatMapViewProps {
   onToggle?: (seatKey: string) => void;
   onSectionClick?: (sectionKey: string) => void;
   onRowClick?: (sectionKey: string, rowLabel: string) => void;
-  /** Rubber-band selection (mouse / pen drag across empty space or seats). `add` is true with Shift/Ctrl/Cmd held. */
+  /** Rubber-band selection result. `add` is true with Shift/Ctrl/Cmd held. Needs `boxSelect` other than 'off'. */
   onSelectMany?: (seatKeys: string[], add: boolean) => void;
+  /** Zoom (+ / - / Fit, wheel, pinch) and drag-to-pan. Default true; false draws the plain static map. */
+  zoomable?: boolean;
+  /** When a drag draws a selection box: 'shift' = with Shift held, 'always' = every drag (touch toggle), 'off' = never (drag pans). */
+  boxSelect?: 'shift' | 'always' | 'off';
+  /** Viewport height in px (default: follows the map's aspect ratio). */
+  height?: number;
   /** Draw row labels next to the first seat of each row. Default: when onRowClick is given. */
   showRowLabels?: boolean;
   /** Outline restricted-view / wheelchair seats. Default true. */
@@ -47,6 +54,9 @@ export function SeatMapView({
   onSectionClick,
   onRowClick,
   onSelectMany,
+  zoomable = true,
+  boxSelect = 'off',
+  height,
   showRowLabels,
   showAttrs = true,
   lang = 'en',
@@ -85,8 +95,24 @@ export function SeatMapView({
   onSelectManyRef.current = onSelectMany;
   const seatsRef = useRef(seats);
   seatsRef.current = seats;
-  const dragCleanup = useRef<(() => void) | null>(null);
-  useEffect(() => () => dragCleanup.current?.(), []);
+
+  // Zoom state: k = scale (1 = Fit), (x, y) = top-left of the visible window in layout coordinates.
+  const W = layout.width;
+  const H = layout.height;
+  const [view, setView] = useState({ k: 1, x: 0, y: 0 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const dimsRef = useRef({ W, H });
+  dimsRef.current = { W, H };
+  const clampView = (k: number, x: number, y: number) => {
+    const { W: w0, H: h0 } = dimsRef.current;
+    const kk = Math.min(MAX_ZOOM, Math.max(1, k));
+    return { k: kk, x: Math.min(Math.max(0, x), w0 - w0 / kk), y: Math.min(Math.max(0, y), h0 - h0 / kk) };
+  };
+  const setViewClamped = (k: number, x: number, y: number) => setView(clampView(k, x, y));
+  const eff = zoomable ? clampView(view.k, view.x, view.y) : { k: 1, x: 0, y: 0 };
+  const vbW = W / eff.k;
+  const vbH = H / eff.k;
 
   const toLocal = (cx: number, cy: number) => {
     const svg = svgRef.current;
@@ -98,56 +124,134 @@ export function SeatMapView({
     const r = pt.matrixTransform(m.inverse());
     return { x: r.x, y: r.y };
   };
+  /** Screen pixels per layout unit under the current viewBox. */
+  const pxPerUnit = () => svgRef.current?.getScreenCTM()?.a || 1;
 
-  const startDrag = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!onSelectMany || e.button !== 0 || e.pointerType === 'touch') return;
-    const start = { cx: e.clientX, cy: e.clientY, ...toLocal(e.clientX, e.clientY), add: e.shiftKey || e.ctrlKey || e.metaKey };
-    let moved = false;
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - start.cx, ev.clientY - start.cy) < 6) return;
-      moved = true;
-      const p = toLocal(ev.clientX, ev.clientY);
-      setBand({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
+  /** Zoom by `factor`, keeping the layout point under screen (cx, cy) fixed. */
+  const zoomAt = (factor: number, cx?: number, cy?: number) => {
+    const cur = clampView(viewRef.current.k, viewRef.current.x, viewRef.current.y);
+    const nk = Math.min(MAX_ZOOM, Math.max(1, cur.k * factor));
+    if (nk === cur.k) return;
+    const p = cx == null || cy == null ? { x: cur.x + W / cur.k / 2, y: cur.y + H / cur.k / 2 } : toLocal(cx, cy);
+    const fx = (p.x - cur.x) / (W / cur.k);
+    const fy = (p.y - cur.y) / (H / cur.k);
+    setViewClamped(nk, p.x - fx * (W / nk), p.y - fy * (H / nk));
+  };
+  const zoomAtRef = useRef(zoomAt);
+  zoomAtRef.current = zoomAt;
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !zoomable) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomAtRef.current(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)), e.clientX, e.clientY);
     };
-    const up = (ev: PointerEvent) => {
-      cleanup();
-      setBand(null);
-      if (!moved) return;
-      const p = toLocal(ev.clientX, ev.clientY);
-      const [xa, xb] = [Math.min(start.x, p.x), Math.max(start.x, p.x)];
-      const [ya, yb] = [Math.min(start.y, p.y), Math.max(start.y, p.y)];
-      const keys = seatsRef.current.filter((s) => s.x >= xa && s.x <= xb && s.y >= ya && s.y <= yb).map((s) => s.seatKey);
-      suppressClick.current = true;
-      setTimeout(() => (suppressClick.current = false), 60);
-      onSelectManyRef.current?.(keys, start.add);
-    };
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
-      dragCleanup.current = null;
-    };
-    const cancel = () => {
-      cleanup();
-      setBand(null);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancel);
-    dragCleanup.current = cleanup;
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [zoomable]);
+
+  type Gesture =
+    | { kind: 'none' }
+    | { kind: 'pan'; cx: number; cy: number; vx: number; vy: number; moved: boolean }
+    | { kind: 'box'; cx: number; cy: number; x: number; y: number; add: boolean; moved: boolean }
+    | { kind: 'pinch'; dist: number; k: number };
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<Gesture>({ kind: 'none' });
+
+  const pinchDist = () => {
+    const [a, b] = [...pointers.current.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
   };
 
-  return (
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== 'touch' && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (zoomable && pointers.current.size === 2) {
+      setBand(null);
+      gesture.current = { kind: 'pinch', dist: pinchDist().d, k: clampView(viewRef.current.k, 0, 0).k };
+      suppressClick.current = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      return;
+    }
+    if (pointers.current.size > 1) return;
+    const boxOk = !!onSelectMany && (boxSelect === 'always' || (boxSelect === 'shift' && e.shiftKey));
+    if (boxOk) {
+      const p = toLocal(e.clientX, e.clientY);
+      gesture.current = { kind: 'box', cx: e.clientX, cy: e.clientY, x: p.x, y: p.y, add: e.shiftKey || e.ctrlKey || e.metaKey, moved: false };
+    } else if (zoomable) {
+      const cur = clampView(viewRef.current.k, viewRef.current.x, viewRef.current.y);
+      gesture.current = { kind: 'pan', cx: e.clientX, cy: e.clientY, vx: cur.x, vy: cur.y, moved: false };
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gesture.current;
+    if (g.kind === 'pinch') {
+      if (pointers.current.size < 2) return;
+      const { d, mx, my } = pinchDist();
+      const cur = clampView(viewRef.current.k, viewRef.current.x, viewRef.current.y);
+      zoomAtRef.current((g.k * d) / g.dist / cur.k, mx, my);
+      return;
+    }
+    if (g.kind === 'none') return;
+    if (!g.moved) {
+      if (Math.hypot(e.clientX - g.cx, e.clientY - g.cy) < 6) return;
+      g.moved = true;
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
+    if (g.kind === 'pan') {
+      const ppu = pxPerUnit();
+      setViewClamped(viewRef.current.k, g.vx - (e.clientX - g.cx) / ppu, g.vy - (e.clientY - g.cy) / ppu);
+    } else {
+      const p = toLocal(e.clientX, e.clientY);
+      setBand({ x1: g.x, y1: g.y, x2: p.x, y2: p.y });
+    }
+  };
+
+  const endPointer = (e: React.PointerEvent<SVGSVGElement>, cancelled: boolean) => {
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    if (g.kind === 'pinch') {
+      if (pointers.current.size < 2) gesture.current = { kind: 'none' };
+      if (pointers.current.size === 0) setTimeout(() => (suppressClick.current = false), 60);
+      return;
+    }
+    gesture.current = { kind: 'none' };
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (g.kind === 'none') return;
+    setBand(null);
+    if (!g.moved) return;
+    suppressClick.current = true;
+    setTimeout(() => (suppressClick.current = false), 60);
+    if (g.kind === 'box' && !cancelled) {
+      const p = toLocal(e.clientX, e.clientY);
+      const [xa, xb] = [Math.min(g.x, p.x), Math.max(g.x, p.x)];
+      const [ya, yb] = [Math.min(g.y, p.y), Math.max(g.y, p.y)];
+      const keys = seatsRef.current.filter((s) => s.x >= xa && s.x <= xb && s.y >= ya && s.y <= yb).map((s) => s.seatKey);
+      onSelectManyRef.current?.(keys, g.add);
+    }
+  };
+
+  const T = lang === 'my'
+    ? { in: 'ချဲ့ရန်', out: 'ချုံ့ရန်', fit: 'အားလုံးကြည့်ရန်', fitText: 'အားလုံး' }
+    : { in: 'Zoom in', out: 'Zoom out', fit: 'Fit whole map', fitText: 'Fit' };
+  const btn: React.CSSProperties = { background: 'var(--surface, #fff)', minWidth: 32, height: 32, padding: '0 8px', lineHeight: 1, fontSize: 16, fontWeight: 600, cursor: 'pointer' };
+
+  const svg = (
     <svg
       ref={svgRef}
-      onPointerDown={startDrag}
+      {...(zoomable || (onSelectMany && boxSelect !== 'off')
+        ? { onPointerDown, onPointerMove, onPointerUp: (e: React.PointerEvent<SVGSVGElement>) => endPointer(e, false), onPointerCancel: (e: React.PointerEvent<SVGSVGElement>) => endPointer(e, true) }
+        : {})}
       onClickCapture={(e) => {
         if (suppressClick.current) e.stopPropagation();
       }}
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      viewBox={`${eff.x} ${eff.y} ${vbW} ${vbH}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ width: '100%', height: 'auto', userSelect: 'none', background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
+      style={{ width: '100%', height: height ?? 'auto', userSelect: 'none', ...(zoomable ? { touchAction: 'none', cursor: eff.k > 1 ? 'grab' : undefined } : {}), background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
     >
       <defs>
         <pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -257,5 +361,17 @@ export function SeatMapView({
         />
       )}
     </svg>
+  );
+
+  if (!zoomable) return svg;
+  return (
+    <div style={{ position: 'relative' }}>
+      {svg}
+      <div role="group" style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+        <button type="button" className="secondary" style={btn} aria-label={T.in} title={T.in} disabled={eff.k >= MAX_ZOOM} onClick={() => zoomAt(1.6)}>+</button>
+        <button type="button" className="secondary" style={btn} aria-label={T.out} title={T.out} disabled={eff.k <= 1} onClick={() => zoomAt(1 / 1.6)}>−</button>
+        <button type="button" className="secondary" style={btn} aria-label={T.fit} title={T.fit} disabled={eff.k === 1} onClick={() => setView({ k: 1, x: 0, y: 0 })}>{T.fitText}</button>
+      </div>
+    </div>
   );
 }

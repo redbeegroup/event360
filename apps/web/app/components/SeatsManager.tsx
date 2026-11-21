@@ -102,6 +102,7 @@ export function SeatsManager({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<'assign' | 'guests'>('assign');
+  const [areaMode, setAreaMode] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
   const [standing, setStanding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -243,6 +244,12 @@ export function SeatsManager({
 
       <div className="seats-grid">
         <div className="seats-map">
+          {mode === 'guests' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+              <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={areaMode} onChange={(e) => setAreaMode(e.target.checked)} />
+              <span>{L.stSelectArea}</span>
+            </label>
+          )}
           <SeatMapView
             layout={layout}
             seatTypes={seatTypes}
@@ -252,6 +259,7 @@ export function SeatsManager({
             selected={mode === 'guests' ? selected : undefined}
             onToggle={mode === 'guests' ? toggle : undefined}
             onSelectMany={mode === 'guests' ? selectMany : undefined}
+            boxSelect={mode === 'guests' ? (areaMode ? 'always' : 'shift') : 'off'}
             onSectionClick={mode === 'assign' && canEdit ? (k) => openTarget({ sectionKey: k }) : undefined}
             onRowClick={mode === 'assign' && canEdit ? (k, r) => openTarget({ sectionKey: k, rowLabel: r }) : undefined}
             showRowLabels
