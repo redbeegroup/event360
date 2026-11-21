@@ -171,7 +171,9 @@ export function SeatMapView({
       setBand(null);
       gesture.current = { kind: 'pinch', dist: pinchDist().d, k: clampView(viewRef.current.k, 0, 0).k };
       suppressClick.current = true;
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      for (const id of pointers.current.keys()) {
+        try { e.currentTarget.setPointerCapture(id); } catch { /* ignore */ }
+      }
       return;
     }
     if (pointers.current.size > 1) return;
@@ -211,11 +213,15 @@ export function SeatMapView({
   };
 
   const endPointer = (e: React.PointerEvent<SVGSVGElement>, cancelled: boolean) => {
+    if (!pointers.current.has(e.pointerId)) return;
     pointers.current.delete(e.pointerId);
     const g = gesture.current;
     if (g.kind === 'pinch') {
-      if (pointers.current.size < 2) gesture.current = { kind: 'none' };
-      if (pointers.current.size === 0) setTimeout(() => (suppressClick.current = false), 60);
+      // Stay in 'pinch' until every finger is up, so the trailing lift cannot start a pan or a click.
+      if (pointers.current.size === 0) {
+        gesture.current = { kind: 'none' };
+        setTimeout(() => (suppressClick.current = false), 60);
+      }
       return;
     }
     gesture.current = { kind: 'none' };
@@ -251,7 +257,7 @@ export function SeatMapView({
       viewBox={`${eff.x} ${eff.y} ${vbW} ${vbH}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ width: '100%', height: height ?? 'auto', userSelect: 'none', ...(zoomable ? { touchAction: 'none', cursor: eff.k > 1 ? 'grab' : undefined } : {}), background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
+      style={{ width: '100%', height: height ?? 'auto', userSelect: 'none', ...(zoomable ? { touchAction: eff.k === 1 && boxSelect !== 'always' ? 'pan-y' : 'none', cursor: eff.k > 1 ? 'grab' : undefined } : {}), background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
     >
       <defs>
         <pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
