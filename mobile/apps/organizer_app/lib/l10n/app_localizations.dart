@@ -229,6 +229,48 @@ abstract class L10n {
   /// **'Rejected'**
   String get status_REJECTED;
 
+  /// No description provided for @orderStatus_PENDING_PAYMENT.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting payment'**
+  String get orderStatus_PENDING_PAYMENT;
+
+  /// No description provided for @orderStatus_PAID.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get orderStatus_PAID;
+
+  /// No description provided for @orderStatus_CONFIRMED.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get orderStatus_CONFIRMED;
+
+  /// No description provided for @orderStatus_EXPIRED.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get orderStatus_EXPIRED;
+
+  /// No description provided for @orderStatus_CANCELLED.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get orderStatus_CANCELLED;
+
+  /// No description provided for @orderStatus_REFUNDED.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get orderStatus_REFUNDED;
+
+  /// No description provided for @orderStatus_FAILED.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get orderStatus_FAILED;
+
   /// No description provided for @tabOverview.
   ///
   /// In en, this message translates to:

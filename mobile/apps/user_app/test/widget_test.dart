@@ -15,6 +15,7 @@ import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
 import 'package:user_app/app/push.dart';
 import 'package:user_app/l10n/app_localizations.dart';
+import 'package:user_app/widgets/event_card.dart';
 import 'package:user_app/widgets/event_row.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
@@ -130,6 +131,16 @@ class FakeApi extends Event360Api {
           {'id': 'tt-mix-a', 'name': 'Standing', 'nameMy': 'ရပ်ကြည့်', 'priceMmk': 5000, 'quota': 100, 'remaining': 8, 'maxPerOrder': 4, 'color': '#2563eb'},
           {'id': 'tt-mix-b', 'name': 'VIP deck', 'nameMy': null, 'priceMmk': 35000, 'quota': 100, 'remaining': 60, 'maxPerOrder': 2, 'color': '#c2410c'},
           {'id': 'tt-mix-c', 'name': 'Early bird', 'nameMy': null, 'priceMmk': 10000, 'quota': 50, 'remaining': 0, 'maxPerOrder': 2, 'color': '#16a34a'},
+        ],
+      };
+
+  /// One free type and one paid type.
+  static Map<String, dynamic> freePaidEventJson() => {
+        ...eventJson('freepaid', free: false),
+        'minPriceMmk': 0,
+        'ticketTypes': [
+          {'id': 'tt-fp-a', 'name': 'Community', 'nameMy': null, 'priceMmk': 0, 'quota': 100, 'remaining': 50, 'maxPerOrder': 4},
+          {'id': 'tt-fp-b', 'name': 'Patron', 'nameMy': null, 'priceMmk': 35000, 'quota': 100, 'remaining': 60, 'maxPerOrder': 2},
         ],
       };
 
@@ -396,7 +407,7 @@ class FakeApi extends Event360Api {
               {'id': 'tt-soldout', 'name': 'General', 'nameMy': 'အထွေထွေ', 'priceMmk': 5000, 'quota': 100, 'remaining': 0, 'maxPerOrder': 4},
             ],
           }
-        : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'both' ? bothEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+        : idOrSlug == 'freepaid' ? freePaidEventJson() : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'both' ? bothEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
@@ -683,6 +694,33 @@ void main() {
     }
   });
 
+  testWidgets('mixed free and paid event says "Free tickets available" in row, featured card and card badge; sold-out row uses the dark badge', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 1400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final mixed = EventSummary.fromJson({...FakeApi.eventJson('m', free: false), 'minPriceMmk': 0});
+    final soldOut = EventSummary.fromJson({...FakeApi.eventJson('s', free: false), 'soldOut': true});
+    for (final (lang, text, soldText) in [('en', 'Free tickets available', 'Sold out'), ('my', 'အခမဲ့လက်မှတ် ရနိုင်သည်', 'ကုန်သွားပါပြီ')]) {
+      await tester.pumpWidget(ProviderScope(
+        overrides: [langProvider.overrideWithValue(lang)],
+        child: MaterialApp(
+          theme: Event360Theme.light(locale: Locale(lang)),
+          locale: Locale(lang),
+          supportedLocales: L10n.supportedLocales,
+          localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+          home: Scaffold(body: ListView(padding: const EdgeInsets.all(20), children: [EventRow(event: mixed), FeaturedEventCard(event: mixed), EventCard(event: mixed), EventRow(event: soldOut)])),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: lang);
+      // Row, featured card (Text) and card badge (E360Badge, which may upper-case).
+      expect(find.text(text), findsAtLeastNWidgets(2), reason: lang);
+      expect(find.byWidgetPredicate((w) => w is E360Badge && w.label.toLowerCase() == text.toLowerCase()), findsOneWidget, reason: lang);
+      expect(find.text('Free'), findsNothing, reason: lang);
+      expect(find.byWidgetPredicate((w) => w is E360Badge && w.kind == E360BadgeKind.dark && w.label == soldText), findsOneWidget, reason: lang);
+    }
+  });
+
   testWidgets('search pill grows with large text in Myanmar at 360 dp without overflow', (tester) async {
     tester.view.physicalSize = const Size(360 * 3, 800 * 3);
     tester.view.devicePixelRatio = 3;
@@ -700,6 +738,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(tester.getSize(find.byType(DiscoverSearchPill)).height, greaterThanOrEqualTo(56));
+  });
+
+  testWidgets('home category chip strip is at least 44 dp and grows with large Myanmar text without overflow', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpApp(tester, lang: 'my');
+    expect(tester.takeException(), isNull);
+    final all = find.text('အားလုံး');
+    expect(all, findsWidgets);
+    final chipText = tester.getRect(all.first);
+    final strip = tester.getRect(find.ancestor(of: all.first, matching: find.byType(IntrinsicHeight)).first);
+    expect(strip.height, greaterThanOrEqualTo(44));
+    expect(strip.top, lessThanOrEqualTo(chipText.top));
+    expect(strip.bottom, greaterThanOrEqualTo(chipText.bottom));
   });
 
   testWidgets('Myanmar UI shows Myanmar titles', (tester) async {
@@ -791,7 +843,9 @@ void main() {
     await tester.tap(find.text('Can I bring kids?'));
     await tester.pumpAndSettle();
     expect(find.text('Yes, under 12 free'), findsOneWidget);
-    await see(find.text('Refund policy'));
+    // The refund policy lives in the Good-to-know card only; there is no second tile further down
+    expect(find.text('Refund policy', skipOffstage: false), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('goodToKnow'), skipOffstage: false), matching: find.text('Refund policy', skipOffstage: false), skipOffstage: false), findsOneWidget);
 
     await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 3000); // back to the top
     await tester.pumpAndSettle();
@@ -2156,6 +2210,18 @@ void main() {
       expect(goldButtons(tester, within: find.byType(PrimaryActionBar)), hasLength(1), reason: id);
       await tester.pumpWidget(const SizedBox());
     }
+    // Paid types that cannot be sold yet stay out of the range: a free type beside them reads "Free", not "Free – 35,000 MMK"
+    await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/freepaid');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('barPrice'))).data, 'Free');
+    expect(find.descendant(of: find.byKey(const Key('getTickets')), matching: find.text('Register for free')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = methods);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/freepaid');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('barPrice'))).data, 'Free – 35,000 MMK');
+    await tester.pumpWidget(const SizedBox());
     // Paid tickets with no payment method yet: "on sale soon", no bar at all
     await pumpApp(tester, signedIn: true);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');

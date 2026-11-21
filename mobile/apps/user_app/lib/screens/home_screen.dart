@@ -86,24 +86,30 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
 
-    final chips = SizedBox(
-      height: 44,
+    // At least 44 px (the touch target) and taller when large Myanmar text needs it, so nothing clips.
+    final chips = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
       child: categories.when(
-        data: (cats) => ListView(
+        data: (cats) => SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          children: [
-            _CategoryChip(
-              label: t.allCategories,
-              selected: true,
-              onTap: () => context.go('/explore'),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CategoryChip(
+                  label: t.allCategories,
+                  selected: true,
+                  onTap: () => context.go('/explore'),
+                ),
+                for (final c in cats)
+                  _CategoryChip(
+                    label: c.name(lang),
+                    onTap: () => context.go('/explore?category=${c.slug}'),
+                  ),
+              ],
             ),
-            for (final c in cats)
-              _CategoryChip(
-                label: c.name(lang),
-                onTap: () => context.go('/explore?category=${c.slug}'),
-              ),
-          ],
+          ),
         ),
         loading: () => const SizedBox.shrink(),
         error: (_, __) => const SizedBox.shrink(),

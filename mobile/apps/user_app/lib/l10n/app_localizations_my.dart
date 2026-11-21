@@ -83,6 +83,9 @@ class L10nMy extends L10n {
   String get free => 'အခမဲ့';
 
   @override
+  String get freeTicketsAvailable => 'အခမဲ့လက်မှတ် ရနိုင်သည်';
+
+  @override
   String get soldOut => 'ကုန်သွားပါပြီ';
 
   @override
@@ -689,10 +692,10 @@ class L10nMy extends L10n {
   String get offerTotalEstimate => 'ခန့်မှန်း စုစုပေါင်း';
 
   @override
-  String get overview => 'အကျဉ်းချုပ်';
+  String get overview => 'အနှစ်ချုပ်';
 
   @override
-  String get goodToKnow => 'သိထားသင့်သည်များ';
+  String get goodToKnow => 'သိထားသင့်သည်';
 
   @override
   String get readMore => 'ဆက်ဖတ်ရန်';

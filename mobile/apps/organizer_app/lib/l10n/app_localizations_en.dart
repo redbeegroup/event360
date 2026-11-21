@@ -76,6 +76,27 @@ class L10nEn extends L10n {
   String get status_REJECTED => 'Rejected';
 
   @override
+  String get orderStatus_PENDING_PAYMENT => 'Awaiting payment';
+
+  @override
+  String get orderStatus_PAID => 'Paid';
+
+  @override
+  String get orderStatus_CONFIRMED => 'Confirmed';
+
+  @override
+  String get orderStatus_EXPIRED => 'Expired';
+
+  @override
+  String get orderStatus_CANCELLED => 'Cancelled';
+
+  @override
+  String get orderStatus_REFUNDED => 'Refunded';
+
+  @override
+  String get orderStatus_FAILED => 'Failed';
+
+  @override
   String get tabOverview => 'Overview';
 
   @override

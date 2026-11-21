@@ -71,7 +71,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final dark = theme.brightness == Brightness.dark;
     final success = dark ? E360DarkColors.success : E360Colors.success;
     final warnInk = dark ? E360DarkColors.amberInk : E360Colors.amberInk;
-    final warnBg = dark ? const Color(0xFF3A3017) : const Color(0xFFFCEFCB);
+    final warnBg = dark ? E360DarkColors.amberBg : E360Colors.amberBg;
 
     return Scaffold(
       appBar: AppBar(

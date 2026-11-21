@@ -241,6 +241,12 @@ abstract class L10n {
   /// **'Free'**
   String get free;
 
+  /// No description provided for @freeTicketsAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Free tickets available'**
+  String get freeTicketsAvailable;
+
   /// No description provided for @soldOut.
   ///
   /// In en, this message translates to:

@@ -113,6 +113,7 @@ void main() {
       (E360Colors.success, E360Colors.paper, 4.5),
       (E360Colors.successBadgeInk, E360Colors.successBadgeBg, 4.5),
       (E360Colors.amberInk, E360Colors.paper, 4.5),
+      (E360Colors.amberInk, E360Colors.amberBg, 4.5),
       (E360Colors.danger, E360Colors.paper, 4.5),
       (E360Colors.danger, E360Colors.dangerBg, 4.5),
     ];
@@ -129,6 +130,7 @@ void main() {
       (E360DarkColors.success, E360DarkColors.card, 4.5),
       (E360DarkColors.successBadgeInk, E360DarkColors.successBadgeBg, 4.5),
       (E360DarkColors.amberInk, E360DarkColors.card, 4.5),
+      (E360DarkColors.amberInk, E360DarkColors.amberBg, 4.5),
       (E360DarkColors.danger, E360DarkColors.card, 4.5),
       (E360DarkColors.danger, E360DarkColors.dangerBg, 4.5),
     ];

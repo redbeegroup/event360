@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -290,6 +291,24 @@ void main() {
     expect(find.byKey(const Key('createCode')), findsNothing);
     expect(find.text("View only: your role can't change this."), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('recent order badge shows a localized status, never the raw API value', (tester) async {
+    for (final (lang, label) in [('en', 'Paid'), ('my', 'ငွေပေးချေပြီး')]) {
+      await pumpApp(tester, lang: lang);
+      await tester.tap(find.byKey(const Key('orgPicker')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mandalay Arts').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inya Lake Live o2'));
+      await tester.pumpAndSettle();
+      final badge = find.byWidgetPredicate((w) => w is E360Badge && w.label == label, skipOffstage: false);
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(badge, findsOneWidget, reason: lang);
+      expect(find.byWidgetPredicate((w) => w is E360Badge && w.label == 'PAID', skipOffstage: false), findsNothing, reason: lang);
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   testWidgets('inbox: unread badge, open the linked event, push registered as organizer app', (tester) async {

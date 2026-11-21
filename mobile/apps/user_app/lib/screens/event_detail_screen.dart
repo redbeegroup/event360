@@ -106,7 +106,9 @@ class _Detail extends ConsumerWidget {
       if (!e.refundPolicy.isEmpty) (t.refundPolicy, e.refundPolicy.of(lang), true),
     ];
 
-    final priceRange = _priceRange(t, lang, e.ticketTypes);
+    // Only what the buyer can actually buy; if nothing is on sale, the whole list.
+    final sellableTypes = e.ticketTypes.where(sellable).toList();
+    final priceRange = _priceRange(t, lang, sellableTypes.isEmpty ? e.ticketTypes : sellableTypes);
     final day = dateBadge(e.startsAt, lang);
     final dateLine = '${day.day} ${day.month} · ${formatTime(e.startsAt, lang)}';
 
@@ -407,19 +409,10 @@ class _Detail extends ConsumerWidget {
                     children: [Text(pickLang(lang, f.answer, f.answerMy), style: theme.textTheme.bodyMedium)],
                   ),
               ]),
-            if (!e.refundPolicy.isEmpty || !e.terms.isEmpty)
+            if (!e.terms.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Column(children: [
-                  if (!e.refundPolicy.isEmpty)
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.undo),
-                      title: Text(t.refundPolicy),
-                      expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                      childrenPadding: const EdgeInsets.only(bottom: 12),
-                      children: [Text(e.refundPolicy.of(lang), style: theme.textTheme.bodyMedium)],
-                    ),
                   if (!e.terms.isEmpty)
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,

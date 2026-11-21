@@ -76,6 +76,27 @@ class L10nMy extends L10n {
   String get status_REJECTED => 'ငြင်းပယ်';
 
   @override
+  String get orderStatus_PENDING_PAYMENT => 'ငွေပေးချေရန် စောင့်နေ';
+
+  @override
+  String get orderStatus_PAID => 'ငွေပေးချေပြီး';
+
+  @override
+  String get orderStatus_CONFIRMED => 'အတည်ပြုပြီး';
+
+  @override
+  String get orderStatus_EXPIRED => 'သက်တမ်းကုန်';
+
+  @override
+  String get orderStatus_CANCELLED => 'ဖျက်သိမ်း';
+
+  @override
+  String get orderStatus_REFUNDED => 'ငွေပြန်အမ်းပြီး';
+
+  @override
+  String get orderStatus_FAILED => 'မအောင်မြင်';
+
+  @override
   String get tabOverview => 'အကျဉ်း';
 
   @override

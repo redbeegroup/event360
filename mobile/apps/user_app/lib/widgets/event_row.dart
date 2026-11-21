@@ -15,7 +15,7 @@ String eventMeta(L10n t, String lang, EventSummary e) {
   return [formatDay(e.startsAt, lang), formatTime(e.startsAt, lang), if (place != null && place.isNotEmpty) place].join(' · ');
 }
 
-/// Price line: "Free" in green, "Sold out" in the danger colour, else "From 5,000 MMK".
+/// Price line: "Free" in green, "Sold out" as the dark badge, else "From 5,000 MMK".
 class _PriceLine extends StatelessWidget {
   const _PriceLine(this.e, this.lang, {this.size = 13});
   final EventSummary e;
@@ -28,13 +28,10 @@ class _PriceLine extends StatelessWidget {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     final free = e.isFree || e.minPriceMmk == 0;
-    final label = e.soldOut ? t.soldOut : priceLabel(t, lang, e);
+    if (e.soldOut) return Align(alignment: AlignmentDirectional.centerStart, child: E360Badge(t.soldOut, kind: E360BadgeKind.dark));
+    final label = priceLabel(t, lang, e);
     if (label.isEmpty) return const SizedBox.shrink();
-    final color = e.soldOut
-        ? (dark ? E360DarkColors.danger : E360Colors.danger)
-        : free
-            ? (dark ? E360DarkColors.success : E360Colors.success)
-            : theme.colorScheme.onSurface;
+    final color = free ? (dark ? E360DarkColors.success : E360Colors.success) : theme.colorScheme.onSurface;
     return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontSize: size, color: color));
   }
 }

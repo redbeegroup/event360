@@ -10,8 +10,9 @@ import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 
 String priceLabel(L10n t, String lang, EventSummary e) {
-  // Free when everything is free, or when the cheapest option is free.
-  if (e.isFree || e.minPriceMmk == 0) return t.free;
+  // Free only when everything is free; a free option next to paid ones says so.
+  if (e.isFree) return t.free;
+  if (e.minPriceMmk == 0) return t.freeTicketsAvailable;
   if (e.minPriceMmk == null) return '';
   return t.fromPrice(t.mmk(formatAmount(e.minPriceMmk!, lang)));
 }

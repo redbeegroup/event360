@@ -14,6 +14,18 @@ import '../l10n/app_localizations.dart';
 import '../widgets/lang_button.dart' show compactFilled;
 
 /// One event: live overview, door codes, announcements and promo codes.
+/// Localized order status; an unknown value from a newer API shows as it is.
+String orderStatusLabel(L10n t, String s) => switch (s) {
+      'PENDING_PAYMENT' => t.orderStatus_PENDING_PAYMENT,
+      'PAID' => t.orderStatus_PAID,
+      'CONFIRMED' => t.orderStatus_CONFIRMED,
+      'EXPIRED' => t.orderStatus_EXPIRED,
+      'CANCELLED' => t.orderStatus_CANCELLED,
+      'REFUNDED' => t.orderStatus_REFUNDED,
+      'FAILED' => t.orderStatus_FAILED,
+      _ => s,
+    };
+
 class EventScreen extends ConsumerWidget {
   const EventScreen({super.key, required this.eventId});
   final String eventId;
@@ -165,7 +177,7 @@ class _OverviewState extends ConsumerState<_Overview> {
                 contentPadding: EdgeInsets.zero,
                 title: Text('${o.quantity} × · ${formatMmk(o.totalMmk, lang)}'),
                 subtitle: Text([o.buyer ?? '', formatDayTime(o.createdAt, lang)].where((s) => s.isNotEmpty).join(' · ')),
-                trailing: E360Badge(o.status, kind: o.status == 'PAID' ? E360BadgeKind.success : E360BadgeKind.neutral),
+                trailing: E360Badge(orderStatusLabel(t, o.status), kind: o.status == 'PAID' ? E360BadgeKind.success : E360BadgeKind.neutral),
               ),
             const SizedBox(height: 8),
             Text(t.updatedAt(formatTime(_updated, lang)), textAlign: TextAlign.center, style: theme.textTheme.bodySmall),

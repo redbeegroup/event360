@@ -44,6 +44,9 @@ class E360Colors {
   /// Scarcity lines such as "48 tickets left".
   static const Color amberInk = Color(0xFF8A4B00);
 
+  /// Light tint behind [amberInk] text, e.g. the crew "offline" banner.
+  static const Color amberBg = Color(0xFFFCEFCB);
+
   /// Errors.
   static const Color danger = Color(0xFFB42318);
 
@@ -77,6 +80,7 @@ class E360DarkColors {
   static const Color successBadgeInk = Color(0xFFA7ECD6);
   static const Color successBadgeBg = Color(0xFF123D33);
   static const Color amberInk = Color(0xFFF2B632);
+  static const Color amberBg = Color(0xFF3A3017);
   static const Color danger = Color(0xFFFF8A80);
   static const Color dangerBg = Color(0xFF3A1F26);
   static const Color disabledLine = Color(0xFF3F4470);

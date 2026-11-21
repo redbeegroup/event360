@@ -24,6 +24,7 @@
   "loadError": "Couldn't load. Check your connection.",
   "retry": "Retry",
   "free": "Free",
+  "freeTicketsAvailable": "Free tickets available",
   "soldOut": "Sold out",
   "fromPrice": "From {price}",
   "@fromPrice": {

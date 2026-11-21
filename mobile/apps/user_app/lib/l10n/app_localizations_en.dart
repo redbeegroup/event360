@@ -83,6 +83,9 @@ class L10nEn extends L10n {
   String get free => 'Free';
 
   @override
+  String get freeTicketsAvailable => 'Free tickets available';
+
+  @override
   String get soldOut => 'Sold out';
 
   @override
