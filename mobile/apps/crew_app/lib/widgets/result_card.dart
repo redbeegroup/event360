@@ -60,7 +60,7 @@ class ResultCard extends StatelessWidget {
         onTap: onClose,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-          child: DefaultTextStyle(
+          child: DefaultTextStyle.merge(
             style: TextStyle(color: ink),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [

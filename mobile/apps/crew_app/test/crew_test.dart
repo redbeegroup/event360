@@ -404,6 +404,34 @@ void main() {
     addTearDown(tester.view.reset);
   });
 
+  testWidgets('result card text keeps the theme font, the Myanmar fallback and the line height', (tester) async {
+    final o = ScanOutcome.fromJson({
+      'result': 'ALREADY_CHECKED_IN',
+      'ticket': {
+        ...ticketJson('cccccccc-0000-0000-0000-000000000004', status: 'CHECKED_IN', checkedIn: {'at': '2027-01-15T11:00:00.000Z', 'gate': 'Side door', 'by': 'Door'}),
+        'holderName': 'Daw Khin Aye',
+      },
+    });
+    const locale = Locale('my');
+    await tester.pumpWidget(MaterialApp(
+      theme: Event360Theme.light(locale: locale),
+      locale: locale,
+      supportedLocales: L10n.supportedLocales,
+      localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+      home: Scaffold(body: SingleChildScrollView(child: ResultCard(outcome: o, lang: 'my'))),
+    ));
+    await tester.pumpAndSettle();
+    final holder = find.text('Daw Khin Aye');
+    final ticketLine = find.textContaining('#CCCCCCCC');
+    final detail = find.textContaining('Side door');
+    for (final f in [holder, ticketLine, detail]) {
+      expect(f, findsOneWidget);
+      final style = DefaultTextStyle.of(tester.element(f)).style.merge(tester.widget<Text>(f).style);
+      expect(style.fontFamilyFallback, contains(Event360Theme.myanmarFont));
+      expect(style.height, 1.55);
+    }
+  });
+
   testWidgets('result colours follow the tokens and each result has its own icon and headline', (tester) async {
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('en'),
