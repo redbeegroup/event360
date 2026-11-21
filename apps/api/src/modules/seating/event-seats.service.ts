@@ -20,6 +20,8 @@ const TYPE_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX
 export const MAX_SEATED_TYPES = TYPE_CHARS.length;
 /** Used when a ticket type has no colour of its own, by price order. */
 export const SEAT_PALETTE = ['#f2b632', '#1f8a70', '#3b6fd8', '#c2410c', '#7c3aed', '#0891b2', '#be185d', '#4d7c0f'];
+/** A seated type's map colour: its own, or the palette by its place in price order (then id) among the seated types. */
+export const seatTypeColor = (t: { color: string | null }, i: number) => t.color ?? SEAT_PALETTE[i % SEAT_PALETTE.length];
 const STATUS_CHAR: Record<string, string> = { AVAILABLE: 'A', CHECKOUT_HOLD: 'T', SOLD: 'T', GUEST_HOLD: 'G', UNSOLD: 'U' };
 const VISIBLE = ['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'] as const;
 
@@ -39,7 +41,7 @@ export class EventSeatsService {
     const name = sec?.name ?? seat.sectionKey;
     return {
       label: `${name} · Row ${seat.rowLabel} · Seat ${seat.seatLabel}`,
-      labelMy: `${sec?.nameMy ?? name} · အတန်း ${seat.rowLabel} · ခုံ ${seat.seatLabel}`,
+      labelMy: `${sec?.nameMy || name} · အတန်း ${seat.rowLabel} · ခုံ ${seat.seatLabel}`,
     };
   }
 
@@ -223,9 +225,9 @@ export class EventSeatsService {
   async overview(orgId: string, eventId: string) {
     const e = await this.prisma.event.findFirst({ where: { id: eventId, organizationId: orgId } });
     if (!e) throw new NotFoundException('Event not found');
-    if (!e.seatMapVersionId) return { layout: null, versionId: null, rules: [], counts: {}, seats: [] };
+    if (!e.seatMapVersionId) return { layout: null, versionId: null, rules: [], counts: {}, colors: {}, seats: [] };
     const { layout } = await this.maps.publishedVersion(e.seatMapVersionId);
-    const [rules, seats, counted] = await Promise.all([
+    const [rules, seats, counted, types] = await Promise.all([
       this.prisma.eventSection.findMany({ where: { eventId }, select: { sectionKey: true, rowLabel: true, ticketTypeId: true }, orderBy: [{ sectionKey: 'asc' }, { rowLabel: 'asc' }] }),
       this.prisma.eventSeat.findMany({ where: { eventId }, select: { seatKey: true, status: true, ticketTypeId: true, holdLabel: true } }),
       this.prisma.$queryRaw<{ ticket_type_id: string; available: number; held: number; guest: number; sold: number; comp: number }[]>`
@@ -238,12 +240,17 @@ export class EventSeatsService {
         FROM event_seats s LEFT JOIN tickets t ON t.id = s.ticket_id
         WHERE s.event_id = ${eventId}::uuid AND s.ticket_type_id IS NOT NULL
         GROUP BY s.ticket_type_id`,
+      this.prisma.ticketType.findMany({ where: { eventId }, orderBy: [{ priceMmk: 'asc' }, { id: 'asc' }], select: { id: true, color: true, _count: { select: { eventSeats: true } } } }),
     ]);
+    // The buyer apps' colours (loadAvailability); types without seats yet continue the palette after them
+    const colors: Record<string, string> = {};
+    const seatedTypes = types.filter((t) => t._count.eventSeats > 0);
+    [...seatedTypes, ...types.filter((t) => t._count.eventSeats === 0)].forEach((t, i) => (colors[t.id] = seatTypeColor(t, i)));
     const order = new Map(expandSeats(layout).map((s, i) => [s.seatKey, i]));
     seats.sort((a, b) => (order.get(a.seatKey) ?? 0) - (order.get(b.seatKey) ?? 0));
     const counts: Record<string, { available: number; held: number; guest: number; sold: number; comp: number }> = {};
     for (const c of counted) counts[c.ticket_type_id] = { available: c.available, held: c.held, guest: c.guest, sold: c.sold, comp: c.comp };
-    return { layout, versionId: e.seatMapVersionId, rules, counts, seats };
+    return { layout, versionId: e.seatMapVersionId, rules, counts, colors, seats };
   }
 
   // ───────────── Public availability ─────────────
@@ -314,7 +321,7 @@ export class EventSeatsService {
     return {
       id: e.id,
       versionId,
-      types: types.map((t, i) => ({ id: t.id, name: t.name, nameMy: t.nameMy, priceMmk: mmk(t.priceMmk), color: t.color ?? SEAT_PALETTE[i % SEAT_PALETTE.length] })),
+      types: types.map((t, i) => ({ id: t.id, name: t.name, nameMy: t.nameMy, priceMmk: mmk(t.priceMmk), color: seatTypeColor(t, i) })),
       seatTypes: seatTypes.join(''),
       status: status.join(''),
     };

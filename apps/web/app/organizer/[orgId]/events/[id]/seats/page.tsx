@@ -13,6 +13,7 @@ interface Overview {
   versionId: string | null;
   rules: { sectionKey: string; rowLabel: string | null; ticketTypeId: string }[];
   counts: Record<string, Counts>;
+  colors?: Record<string, string>;
   seats: SeatRow[];
 }
 
@@ -53,6 +54,7 @@ export default async function SeatsPage({ params, searchParams }: { params: Prom
           rules={rules}
           seats={ov.seats}
           counts={ov.counts}
+          colors={ov.colors ?? {}}
           guests={guests}
           canEdit={codes !== null}
         />

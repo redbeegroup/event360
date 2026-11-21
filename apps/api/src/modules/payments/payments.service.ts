@@ -18,7 +18,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventSeatsService } from '../seating/event-seats.service';
-import { claimSeats, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
+import { claimSeats, SEATED_TX, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
 import { commission, pickRule } from './fee';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
@@ -37,8 +37,6 @@ export interface OrderItemInput {
 
 /** 409 for a seated checkout: the app refreshes the map and keeps the buyer's other seats. */
 const seatsTaken = (takenSeats: string[]) => new ConflictException({ message: 'Some seats were just taken', takenSeats });
-/** A seated on-sale rush queues for pool connections and for the seated types' counter rows: wait, don't fail. */
-const SEATED_TX = { maxWait: 10_000, timeout: 15_000 };
 type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] };
 
 @Injectable()
@@ -425,11 +423,22 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
       }
       if (seatedIn?.typeIds.length) {
-        await releaseSeats(tx, orderId, 'AVAILABLE');
-        await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
+        // A seat may come back under another type (or none) if the rules changed while it was held
+        const back = await releaseSeats(tx, orderId);
+        await this.seating.recountTicketTypes(tx, seatedIn.eventId, back.typeIds, [...new Set([...seatedIn.typeIds, ...back.typeIds])]);
       }
       return true;
+    }, await this.seatedTx(orderId));
+  }
+
+  /** Transaction options for an order: a seated one waits for the pool and counter rows like seated checkout does. */
+  private async seatedTx(orderId: string | null | undefined) {
+    if (!orderId) return undefined;
+    const o = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { event: { select: { seatMapVersionId: true } }, items: { where: { seatKeys: { isEmpty: false } }, select: { id: true }, take: 1 } },
     });
+    return o && (o.event.seatMapVersionId || o.items.length) ? SEATED_TX : undefined;
   }
 
   /**
@@ -481,6 +490,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
    * If the hold already expired, take free seats if there are any; otherwise flag the order for an admin refund.
    */
   async settle(paymentId: string, amountMmk?: bigint) {
+    const txOpts = await this.seatedTx((await this.prisma.payment.findUnique({ where: { id: paymentId }, select: { orderId: true } }))?.orderId);
     const issuedFor = await this.prisma.$transaction(async (tx) => {
       const pay = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!pay?.orderId) return;
@@ -558,7 +568,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         { account: ACC.commission, credit: order.commissionMmk },
       ]);
       return issued ? order.id : null;
-    });
+    }, txOpts);
     if (issuedFor) {
       void this.notify.ticketConfirmed(issuedFor);
       const o = await this.prisma.order.findUnique({ where: { id: issuedFor }, select: { eventId: true } });
@@ -616,8 +626,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       for (const [id, q] of perType) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
       if (seatedIn?.typeIds.length) {
         // Refunded seats go back on sale; seated counters follow event_seats
-        await refundSeats(tx, orderId);
-        await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
+        const back = await refundSeats(tx, orderId);
+        await this.seating.recountTicketTypes(tx, seatedIn.eventId, back.typeIds, [...new Set([...seatedIn.typeIds, ...back.typeIds])]);
       }
 
       // Sale reversed: organizer and platform give back their shares; the buyer is owed the money until it is sent
@@ -637,7 +647,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
       await tx.auditLog.create({ data: { actorId, action: 'order.refund', entityType: 'order', entityId: orderId, data: { reason, tickets: live.length } } });
       return ids;
-    });
+    }, await this.seatedTx(orderId));
     for (const id of refundIds) await this.sendRefund(id);
     void this.notify.orderRefunded(orderId);
     return this.adminOrder(orderId);

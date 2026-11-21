@@ -6,6 +6,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from '../tickets/ticket-token.service';
 import { EventSeatsService } from './event-seats.service';
+import { returnSeatsToSale } from './seat-claims';
 import { PdfTicket, renderTicketsPdf } from './ticket-pdf';
 
 type Tx = Prisma.TransactionClient;
@@ -65,19 +66,13 @@ export class GuestsService {
     const keys = this.keys(seats);
     await this.prisma.$transaction(async (tx) => {
       await this.lockedEvent(tx, orgId, eventId);
-      const rows = await tx.$queryRaw<{ seat_key: string; ticket_type_id: string | null }[]>`
-        UPDATE event_seats SET status = 'AVAILABLE', hold_label = NULL
-        WHERE id IN (
-          SELECT id FROM event_seats
-          WHERE event_id = ${eventId}::uuid AND seat_key = ANY(${keys}::text[]) AND status = 'GUEST_HOLD'
-          ORDER BY seat_key FOR UPDATE
-        ) AND status = 'GUEST_HOLD'
-        RETURNING seat_key, ticket_type_id`;
-      if (rows.length !== keys.length) {
-        const got = new Set(rows.map((r) => r.seat_key));
+      // Back on sale under the current rules: a seat whose row or section lost its rule becomes UNSOLD
+      const back = await returnSeatsToSale(tx, Prisma.sql`event_id = ${eventId}::uuid AND seat_key = ANY(${keys}::text[]) AND status = 'GUEST_HOLD'`);
+      if (back.seatKeys.length !== keys.length) {
+        const got = new Set(back.seatKeys);
         throw taken('Some seats are not held for guests', keys.filter((k) => !got.has(k)));
       }
-      await this.seats.recountTicketTypes(tx, eventId, rows.map((r) => r.ticket_type_id).filter((x): x is string => !!x));
+      await this.seats.recountTicketTypes(tx, eventId, back.typeIds);
     });
     return { released: keys.length };
   }

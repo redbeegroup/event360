@@ -1,7 +1,7 @@
 import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Header, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { Transform, Type } from 'class-transformer';
 import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, Matches, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
@@ -224,7 +224,9 @@ class BestSeatsDto {
 export class PublicSeatsController {
   constructor(private readonly seats: EventSeatsService) {}
 
-  @Get(':idOrSlug/seats') get(@Param('idOrSlug') idOrSlug: string) {
+  /** Polled by every open seat picker and served from a short cache, so it skips the per-IP limit (a venue shares one IP). */
+  @Get(':idOrSlug/seats') @SkipThrottle()
+  get(@Param('idOrSlug') idOrSlug: string) {
     return this.seats.publicSeats(idOrSlug);
   }
 

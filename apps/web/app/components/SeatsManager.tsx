@@ -81,6 +81,7 @@ export function SeatsManager({
   rules: initialRules,
   seats,
   counts,
+  colors,
   guests,
   canEdit,
 }: {
@@ -93,6 +94,8 @@ export function SeatsManager({
   rules: SeatRule[];
   seats: SeatRow[];
   counts: Record<string, Counts>;
+  /** Ticket type id -> map colour, as the API gives the buyer apps (GET seating `colors`). */
+  colors: Record<string, string>;
   guests: GuestRow[];
   canEdit: boolean;
 }) {
@@ -112,6 +115,7 @@ export function SeatsManager({
   const rules = useMemo(() => initialRules.map((r) => ({ ...r, rowLabel: r.rowLabel ?? undefined })), [initialRules]);
   const tName = (t: TypeRow) => (lang === 'my' && t.nameMy) || t.name;
   const typeIdx = useMemo(() => new Map(types.map((t, i) => [t.id, i])), [types]);
+  const typeColors = useMemo(() => types.map((t, i) => colors[t.id] ?? DEFAULT_SEAT_COLORS[i % DEFAULT_SEAT_COLORS.length]), [types, colors]);
   const bySeat = useMemo(() => new Map(seats.map((s) => [s.seatKey, s])), [seats]);
 
   const { seatTypes, status, held } = useMemo(() => {
@@ -243,7 +247,7 @@ export function SeatsManager({
             layout={layout}
             seatTypes={seatTypes}
             status={status}
-            colors={DEFAULT_SEAT_COLORS}
+            colors={typeColors}
             held={held}
             selected={mode === 'guests' ? selected : undefined}
             onToggle={mode === 'guests' ? toggle : undefined}
@@ -263,7 +267,7 @@ export function SeatsManager({
             <ul className="legend">
               {types.map((t, i) => (
                 <li key={t.id}>
-                  <span className="sw" style={{ background: DEFAULT_SEAT_COLORS[i % DEFAULT_SEAT_COLORS.length] }} />
+                  <span className="sw" style={{ background: typeColors[i] }} />
                   <span>{tName(t)}</span>
                   <span className="muted">{legend.n.get(t.id) ?? 0} {L.stSeatsWord}</span>
                 </li>
@@ -291,7 +295,7 @@ export function SeatsManager({
                         disabled={pending}
                         onClick={() => assign(t.id)}
                       >
-                        <span className="sw" style={{ background: DEFAULT_SEAT_COLORS[i % DEFAULT_SEAT_COLORS.length] }} /> {tName(t)}
+                        <span className="sw" style={{ background: typeColors[i] }} /> {tName(t)}
                       </button>
                     ))}
                     <button type="button" className="secondary" disabled={pending} onClick={() => assign(null)}>{L.stUnassign}</button>
@@ -369,7 +373,7 @@ export function SeatsManager({
               const c = counts[t.id];
               return (
                 <tr key={t.id}>
-                  <td><span className="sw" style={{ background: DEFAULT_SEAT_COLORS[i % DEFAULT_SEAT_COLORS.length] }} /> {tName(t)}</td>
+                  <td><span className="sw" style={{ background: typeColors[i] }} /> {tName(t)}</td>
                   <td>{c?.available ?? 0}</td><td>{c?.held ?? 0}</td><td>{c?.guest ?? 0}</td><td>{c?.sold ?? 0}</td><td>{c?.comp ?? 0}</td>
                 </tr>
               );

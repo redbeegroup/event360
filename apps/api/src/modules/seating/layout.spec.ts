@@ -40,6 +40,10 @@ describe('expandSeats', () => {
     expect(s.labelMy).toBe('ရှေ့ခန်း · အတန်း B · ခုံ 12');
   });
 
+  it('an empty nameMy falls back to the English name', () => {
+    expect(expandSeats(base({ nameMy: '' }))[0].labelMy).toBe('Stalls · အတန်း 1 · ခုံ 1');
+  });
+
   it('gapBefore shifts x by gap * SEAT_SPACING', () => {
     const l = base({ rows: [{ label: '1', seats: [{ n: 1 }, { n: 2, gapBefore: 2 }, { n: 3 }] }] });
     const out = expandSeats(l);

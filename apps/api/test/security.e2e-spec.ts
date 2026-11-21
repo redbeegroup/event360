@@ -114,4 +114,15 @@ run('Security', () => {
     expect(codes.slice(0, 10).every((s) => s !== 429)).toBe(true);
     expect(codes[10]).toBe(429);
   });
+
+  it('seat-map polling is not rate limited, best-seat suggestions are', async () => {
+    const id = randomUUID();
+    const polls: number[] = [];
+    for (let i = 0; i < 130; i++) polls.push((await http.get(`/v1/events/${id}/seats`)).status);
+    expect(polls.every((s) => s === 404)).toBe(true);
+    const best: number[] = [];
+    for (let i = 0; i < 21; i++) best.push((await http.post(`/v1/events/${id}/seats/best`).send({ ticketTypeId: randomUUID(), quantity: 1 })).status);
+    expect(best.slice(0, 20).every((s) => s !== 429)).toBe(true);
+    expect(best[20]).toBe(429);
+  });
 });

@@ -1084,5 +1084,7 @@ model EventSeat {
 
   @@unique([eventId, seatKey])
   @@index([eventId, status])
+  @@index([ticketTypeId])
+  @@index([orderId])
   @@map("event_seats")
 }

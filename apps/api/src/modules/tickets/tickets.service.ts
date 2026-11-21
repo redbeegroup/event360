@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { Prisma } from '@prisma/client';
 import { EventSeatsService } from '../seating/event-seats.service';
 import { normalizeMyanmarPhone, upsertUserByPhone } from '../auth/phone';
 import { mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
-import { shareLockEvent } from '../seating/seat-claims';
+import { returnSeatsToSale, SEATED_TX, shareLockEvent } from '../seating/seat-claims';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from './ticket-token.service';
 
@@ -35,7 +36,7 @@ export class TicketsService {
     if (tt.priceMmk > 0n) throw new BadRequestException('Paid tickets are not available yet');
     if (quantity > tt.maxPerOrder) throw new BadRequestException(`At most ${tt.maxPerOrder} per person`);
     // Seated types are sold seat by seat through checkout (their quota is recounted from event_seats)
-    if (await this.prisma.eventSeat.findFirst({ where: { ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
+    if (await this.prisma.eventSeat.findFirst({ where: { eventId, ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Seated event: share-lock the event row so seat assignments can't change during this registration
@@ -154,10 +155,9 @@ export class TicketsService {
       });
       if (n.count !== 1) throw new ConflictException('This ticket changed meanwhile; please refresh');
       if (t.seatKey) {
-        await tx.$executeRaw`
-          UPDATE event_seats SET status = 'AVAILABLE', ticket_id = NULL, order_id = NULL, held_until = NULL
-          WHERE ticket_id = ${ticketId}::uuid AND status = 'SOLD'`;
-        await this.moduleRef.get(EventSeatsService, { strict: false }).recountTicketTypes(tx, e.id, [], [t.ticketTypeId]);
+        // Back on sale under the current rules (another type, or UNSOLD, if they changed since the sale)
+        const back = await returnSeatsToSale(tx, Prisma.sql`ticket_id = ${ticketId}::uuid AND status = 'SOLD'`);
+        await this.moduleRef.get(EventSeatsService, { strict: false }).recountTicketTypes(tx, e.id, back.typeIds, [...new Set([t.ticketTypeId, ...back.typeIds])]);
       } else {
         await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
       }
@@ -166,7 +166,7 @@ export class TicketsService {
       if ((await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } })) === 0) {
         await tx.order.updateMany({ where: { id: t.orderId, status: { in: ['PAID', 'CONFIRMED'] } }, data: { status: 'CANCELLED' } });
       }
-    });
+    }, t.seatKey || e.seatMapVersionId ? SEATED_TX : undefined);
     return { ok: true };
   }
 

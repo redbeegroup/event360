@@ -85,7 +85,7 @@ export function expandSeats(l: Layout): ExpandedSeat[] {
           rowLabel: row.label,
           seatLabel,
           label: `${name} · Row ${row.label} · Seat ${seatLabel}`,
-          labelMy: `${sec.nameMy ?? name} · အတန်း ${row.label} · ခုံ ${seatLabel}`,
+          labelMy: `${sec.nameMy || name} · အတန်း ${row.label} · ခုံ ${seatLabel}`,
           x: sec.x + lx * cos - ly * sin,
           y: sec.y + lx * sin + ly * cos,
           attrs: s.attrs ? [...s.attrs] : [],

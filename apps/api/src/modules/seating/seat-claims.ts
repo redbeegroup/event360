@@ -1,9 +1,11 @@
-import type { EventSeat, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { EventSeat } from '@prisma/client';
 
 /**
  * Seat state changes for checkout. Every function runs inside the caller's transaction, which must already hold
  * the event row share lock (shareLockEvent) so it excludes assignment and map changes (they take FOR UPDATE),
- * and must call EventSeatsService.recountTicketTypes (for the order's seated types) afterwards.
+ * and must call EventSeatsService.recountTicketTypes (for the order's seated types, plus any types a seat going
+ * back on sale left or joined) afterwards.
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
  * user row (createOrder only) → event row (shared, never upgraded) → seat rows (claims lock them in seat_key
@@ -11,6 +13,9 @@ import type { EventSeat, Prisma } from '@prisma/client';
  * in the recount, the last step before commit).
  */
 type Tx = Prisma.TransactionClient;
+
+/** A seated on-sale rush queues for pool connections and for the seated types' counter rows: wait, don't fail. */
+export const SEATED_TX = { maxWait: 10_000, timeout: 15_000 };
 
 /** Shared lock on the event row: checkouts don't block each other, but wait for (and block) assignment and map changes. */
 export async function shareLockEvent(tx: Tx, eventId: string): Promise<void> {
@@ -54,11 +59,47 @@ export async function unclaimSeats(tx: Tx, seatIds: string[]): Promise<void> {
   await tx.$executeRaw`UPDATE event_seats SET status = 'AVAILABLE', order_id = NULL, held_until = NULL WHERE id = ANY(${seatIds}::uuid[]) AND ticket_id IS NULL`;
 }
 
-/** Hold expired or cancelled: the order's CHECKOUT_HOLD seats go back on sale. */
-export async function releaseSeats(tx: Tx, orderId: string, to: 'AVAILABLE'): Promise<number> {
-  return tx.$executeRaw`
-    UPDATE event_seats SET status = ${to}::"SeatStatus", order_id = NULL, held_until = NULL
-    WHERE order_id = ${orderId}::uuid AND status = 'CHECKOUT_HOLD'`;
+/** What returnSeatsToSale changed: the seats, and every ticket type they left or joined (recount all of them). */
+export interface ReturnedSeats {
+  seatKeys: string[];
+  typeIds: string[];
+}
+
+/**
+ * Seats matching `where` (a condition on event_seats columns; include the expected status) go back on sale under
+ * the event's current assignment rules, which may have changed while they were held or sold: a row rule wins over
+ * a whole-section rule, and with no rule the seat is UNSOLD with no type. Locks the seats in seat_key order.
+ * The caller must hold the event row lock (shared or exclusive) so the rules can't change meanwhile, and must then
+ * recount `typeIds` (the old and the new types) with EventSeatsService.recountTicketTypes(tx, eventId, typeIds, ...),
+ * which locks those ticket_types rows in id order, after the seats.
+ */
+export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql): Promise<ReturnedSeats> {
+  const rows = await tx.$queryRaw<{ seat_key: string; old_type: string | null; new_type: string | null }[]>`
+    WITH s AS (
+      SELECT seat.id, seat.seat_key, seat.ticket_type_id AS old_type,
+        (SELECT r.ticket_type_id FROM event_sections r
+         WHERE r.event_id = seat.event_id AND r.section_key = seat.section_key AND (r.row_label = seat.row_label OR r.row_label IS NULL)
+         ORDER BY r.row_label IS NULL LIMIT 1) AS new_type
+      FROM event_seats seat
+      WHERE ${where}
+      ORDER BY seat.seat_key
+      FOR UPDATE OF seat
+    )
+    UPDATE event_seats e SET
+      ticket_type_id = s.new_type,
+      status = CASE WHEN s.new_type IS NULL THEN 'UNSOLD'::"SeatStatus" ELSE 'AVAILABLE'::"SeatStatus" END,
+      order_id = NULL, ticket_id = NULL, held_until = NULL, hold_label = NULL
+    FROM s
+    WHERE e.id = s.id
+    RETURNING s.seat_key, s.old_type::text AS old_type, s.new_type::text AS new_type`;
+  const types = new Set<string>();
+  for (const r of rows) for (const t of [r.old_type, r.new_type]) if (t) types.add(t);
+  return { seatKeys: rows.map((r) => r.seat_key), typeIds: [...types] };
+}
+
+/** Hold expired or cancelled: the order's CHECKOUT_HOLD seats go back on sale (under the current rules). */
+export async function releaseSeats(tx: Tx, orderId: string): Promise<ReturnedSeats> {
+  return returnSeatsToSale(tx, Prisma.sql`order_id = ${orderId}::uuid AND status = 'CHECKOUT_HOLD'`);
 }
 
 /**
@@ -76,9 +117,7 @@ export async function sellSeats(tx: Tx, orderId: string, ticketIdsBySeat: Map<st
   if (n !== keys.length) throw new Error(`sellSeats: order ${orderId} holds ${n} of ${keys.length} seats`);
 }
 
-/** Admin refund: the order's sold seats go back on sale. */
-export async function refundSeats(tx: Tx, orderId: string): Promise<number> {
-  return tx.$executeRaw`
-    UPDATE event_seats SET status = 'AVAILABLE', order_id = NULL, ticket_id = NULL, held_until = NULL
-    WHERE order_id = ${orderId}::uuid AND status = 'SOLD'`;
+/** Admin refund: the order's sold seats go back on sale (under the current rules). */
+export async function refundSeats(tx: Tx, orderId: string): Promise<ReturnedSeats> {
+  return returnSeatsToSale(tx, Prisma.sql`order_id = ${orderId}::uuid AND status = 'SOLD'`);
 }

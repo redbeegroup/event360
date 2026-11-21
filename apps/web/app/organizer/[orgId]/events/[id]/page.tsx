@@ -49,6 +49,10 @@ interface Attendee {
   id: string;
   status: string;
   createdAt: string;
+  seatLabel: string | null;
+  seatLabelMy: string | null;
+  isComplimentary: boolean;
+  guestName: string | null;
   ticketType: { name: string };
   holder: { displayName: string | null; phone: string | null };
 }
@@ -117,6 +121,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     </>
   );
   const closed = ['CANCELLED', 'COMPLETED'].includes(e.status);
+  const seatedList = attendees.some((a) => a.seatLabel);
   const okText = { saved: tr.saved, rereview: tr.reReview, mapSaved: tr.stMapSaved, mapCleared: tr.stMapCleared };
   return (
     <>
@@ -509,13 +514,17 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
           <p className="muted">{tr.noAttendees}</p>
         ) : (
           <table>
-            <thead><tr><th>{tr.name}</th><th>{tr.phone}</th><th>{tr.ticketTypes}</th><th>{tr.registeredAt}</th><th>{tr.status}</th></tr></thead>
+            <thead><tr><th>{tr.name}</th><th>{tr.phone}</th><th>{tr.ticketTypes}</th>{seatedList && <th>{tr.stSeat}</th>}<th>{tr.registeredAt}</th><th>{tr.status}</th></tr></thead>
             <tbody>
               {attendees.map((a) => (
                 <tr key={a.id}>
-                  <td>{a.holder.displayName ?? '—'}</td>
+                  <td>{a.holder.displayName || a.guestName || '—'}</td>
                   <td>{a.holder.phone ?? '—'}</td>
-                  <td>{a.ticketType.name}</td>
+                  <td>
+                    {a.ticketType.name}
+                    {a.isComplimentary && <> <span className="badge">{tr.compTag}</span></>}
+                  </td>
+                  {seatedList && <td>{pick(tr.lang, a.seatLabel, a.seatLabelMy) || '—'}</td>}
                   <td>{fmtDate(a.createdAt, tr.lang)}</td>
                   <td>{a.status}</td>
                 </tr>

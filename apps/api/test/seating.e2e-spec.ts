@@ -457,6 +457,11 @@ run('Seated events', () => {
     // layout order: A row1 (3 seats), A row2 (3), B (2)
     expect(r.body.seatTypes).toBe('111000--');
     expect(r.body.status).toBe('TTGAAAUU');
+    // the portal colours seated types like the buyer apps; a type without seats continues the palette
+    const ov = await http.get(`${base(ev.id)}/seating`).set(O).expect(200);
+    expect(ov.body.colors[std]).toBe(r.body.types[0].color);
+    expect(ov.body.colors[vip]).toBe(r.body.types[1].color);
+    expect(Object.values(ov.body.colors)).toEqual(expect.arrayContaining(['#3b6fd8']));
   });
 
   describe('Best available', () => {
@@ -859,6 +864,46 @@ run('Seated checkout', () => {
     await order(await consumer(), ev.id, { seats: ['A:3:1'] }).expect(201);
   });
 
+  it('a seat back on sale follows the current rules (expiry, cancel, refund)', async () => {
+    const ev = await seatedEvent('Rules');
+    const B = await consumer();
+    const assign = (rules: object[]) => http.put(`${base(ev.id)}/seating/assignments`).set(O).send({ rules }).expect(200);
+    // Std seats in rows 1 and 2 are held while the organizer moves row 1 to VIP and drops the rest of A
+    const r = await order(B, ev.id, { seats: ['A:1:1', 'A:1:2', 'A:2:1'] }).expect(201);
+    await assign([{ sectionKey: 'A', rowLabel: '1', ticketTypeId: ev.vip }, { sectionKey: 'A', rowLabel: '6', ticketTypeId: ev.free }, { sectionKey: 'B', ticketTypeId: ev.vip }, { sectionKey: 'F', ticketTypeId: ev.floor }]);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'CHECKOUT_HOLD', ticketTypeId: ev.std }); // a hold keeps its type
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 3, held: 3, sold: 0 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 12, held: 0 });
+    await prisma.order.update({ where: { id: r.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+    await svc.sweep();
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.vip, orderId: null });
+    expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.vip });
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'UNSOLD', ticketTypeId: null, orderId: null, heldUntil: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 0, held: 0, sold: 0 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 14, held: 0, sold: 0 });
+    const pub = await http.get(`/v1/events/${ev.id}/seats`).expect(200);
+    expect(pub.body.types.map((t: any) => t.id)).not.toContain(ev.std);
+
+    // Cancel: a VIP hold in row 1 comes back as Std after row 1 moves to Std
+    const c = await order(B, ev.id, { seats: ['A:1:3'] }).expect(201);
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 14, held: 1 });
+    await assign([{ sectionKey: 'A', rowLabel: '1', ticketTypeId: ev.std }, { sectionKey: 'B', ticketTypeId: ev.vip }]);
+    await http.post(`/v1/orders/${c.body.id}/cancel`).set(B).expect(200);
+    expect(await seat(ev.id, 'A:1:3')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.std, orderId: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 10, held: 0, sold: 0 });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 4, held: 0, sold: 0 });
+
+    // Refund: a sold balcony seat whose section lost its rule becomes UNSOLD
+    const p = await order(B, ev.id, { seats: ['B:1:1'] }).expect(201);
+    await mockPay(await payWithMock(B, p.body.id));
+    await assign([{ sectionKey: 'A', rowLabel: '1', ticketTypeId: ev.std }]);
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 1, sold: 1 });
+    await http.post(`/v1/admin/finance/orders/${p.body.id}/refund`).set(A).send({ reason: 'Rules changed' }).expect(200);
+    expect(await seat(ev.id, 'B:1:1')).toMatchObject({ status: 'UNSOLD', ticketTypeId: null, orderId: null, ticketId: null });
+    expect(await ttRow(ev.vip)).toMatchObject({ quota: 0, held: 0, sold: 0 });
+    for (const id of [ev.std, ev.vip]) await expectCountersMatch(id);
+  });
+
   it('per-person limit counts seats', async () => {
     const ev = await seatedEvent('Limit', 2);
     const B = await consumer();
@@ -1012,6 +1057,19 @@ run('Guest seats', () => {
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', holdLabel: null });
     expect(await ttRow(ev.std)).toMatchObject({ quota: 10 });
     await http.post(`/v1/events/${ev.id}/orders`).set(await login(newPhone())).send({ seats: ['A:1:1'] }).expect(201);
+  });
+
+  it('released guest seats follow the current rules', async () => {
+    const ev = await guestEvent('ReleaseRules');
+    await hold(ev.id, ['A:1:1', 'A:2:1']).expect(201);
+    // Only row 2 stays on sale (as a new type); row 1 has no rule any more
+    const vip = (await http.post(`${base(ev.id)}/ticket-types`).set(O).send({ name: 'VIP', priceMmk: 30_000, quota: 1, maxPerOrder: 2 }).expect(201)).body.id as string;
+    await http.put(`${seating(ev.id)}/assignments`).set(O).send({ rules: [{ sectionKey: 'A', rowLabel: '2', ticketTypeId: vip }] }).expect(200);
+    await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:2:1'] }).expect(200);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'UNSOLD', ticketTypeId: null, holdLabel: null });
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: vip, holdLabel: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 0, held: 0, sold: 0 });
+    expect(await ttRow(vip)).toMatchObject({ quota: 5, held: 0, sold: 0 });
   });
 
   it('comps issue tickets to a phone and mark seats sold', async () => {
@@ -1296,6 +1354,12 @@ run('Seat everywhere', () => {
     const [header, row] = (r.text as string).replace('﻿', '').split('\r\n');
     expect(header.split(',')).toContain('seat');
     expect(row).toContain('"Stalls · Row 1 · Seat 3"');
+    // the portal's attendee list carries the seat, the comp flag and the guest name
+    await http.post(`${base(ev.id)}/seating/hold`).set(O).send({ seats: ['A:2:2'], label: 'Press' }).expect(201);
+    await http.post(`${base(ev.id)}/seating/comps`).set(O).send({ seats: ['A:2:2'], guestName: 'U Ba', phone: newPhone() }).expect(201);
+    const list = (await http.get(`${base(ev.id)}/attendees`).set(O).expect(200)).body as any[];
+    expect(list.find((x) => x.seatLabel === 'Stalls · Row 1 · Seat 3')).toMatchObject({ seatLabelMy: 'ရှေ့ခန်း · အတန်း 1 · ခုံ 3', isComplimentary: false, guestName: null });
+    expect(list.find((x) => x.seatLabel === 'Stalls · Row 2 · Seat 2')).toMatchObject({ isComplimentary: true, guestName: 'U Ba' });
   });
 
   it('cancel free seated ticket frees the seat', async () => {
@@ -1321,6 +1385,27 @@ run('Seat everywhere', () => {
     await http.post(`/v1/me/tickets/${other.id}/cancel`).set(B).expect(200);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).status).toBe('CANCELLED');
     expect(await ttRow(ev.free)).toMatchObject({ sold: 1, quota: 5 });
+  });
+
+  it('a cancelled free seat follows the current rules', async () => {
+    const ev = await seatedEvent('CancelRules');
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:1:1', 'A:1:2'] }).expect(201);
+    const assign = (rules: object[]) => http.put(`${base(ev.id)}/seating/assignments`).set(O).send({ rules }).expect(200);
+    const byKey = new Map((await mine(B)).map((t) => [t.seatKey, t.id]));
+    // Row 1 loses its rule: the cancelled seat is not on sale
+    await assign([{ sectionKey: 'A', rowLabel: '2', ticketTypeId: ev.std }]);
+    expect(await ttRow(ev.free)).toMatchObject({ quota: 2, sold: 2 });
+    await http.post(`/v1/me/tickets/${byKey.get('A:1:1')}/cancel`).set(B).expect(200);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'UNSOLD', ticketTypeId: null, ticketId: null, orderId: null });
+    expect(await ttRow(ev.free)).toMatchObject({ quota: 1, sold: 1, held: 0 });
+    // The whole section goes to Std: the next cancelled seat comes back as Std
+    await assign([{ sectionKey: 'A', ticketTypeId: ev.std }]);
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 9 });
+    await http.post(`/v1/me/tickets/${byKey.get('A:1:2')}/cancel`).set(B).expect(200);
+    expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.std, ticketId: null });
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 10, sold: 0, held: 0 });
+    expect(await ttRow(ev.free)).toMatchObject({ quota: 0, sold: 0, held: 0 });
   });
 
   it('cancel free unseated ticket returns quota', async () => {
