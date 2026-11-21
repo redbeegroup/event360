@@ -32,7 +32,11 @@ class SeatPickerScreen extends ConsumerStatefulWidget {
 class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final _controller = TransformationController();
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
-  final String _idempotencyKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  static String _newSalt() => List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+
+  /// Retries of the same seats reuse an order; renewed after each order so picking them again (say after
+  /// cancelling that order in checkout) makes a new one instead of reopening the dead order.
+  String _idempotencyKey = _newSalt();
 
   SeatMapData? _data;
   SeatLayout? _layout;
@@ -321,6 +325,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     try {
       final key = '$_idempotencyKey-${Object.hashAll([...keys]..sort()).toRadixString(16)}';
       final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys);
+      _idempotencyKey = _newSalt();
       ref.invalidate(eventProvider(event.id));
       ref.invalidate(pendingOrdersProvider);
       if (!mounted) return;

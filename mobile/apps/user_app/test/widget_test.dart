@@ -95,6 +95,7 @@ class FakeApi extends Event360Api {
   int seatLoads = 0;
   final bestCalls = <String>[];
   final seatOrders = <List<String>>[];
+  final seatOrderKeys = <String>[];
   List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
   final cancelled = <String>[];
   List<Map<String, dynamic>> extraTickets = [];
@@ -152,6 +153,7 @@ class FakeApi extends Event360Api {
         throw ApiException(409, 'Some seats were just taken', takenSeats: taken);
       }
       seatOrders.add(seats);
+      seatOrderKeys.add(idempotencyKey);
       final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 20000 * seats.length, qty: seats.length);
       orders['ord-1'] = o;
       return Order.fromJson(o);
@@ -802,6 +804,34 @@ void main() {
       ['A:1:4', 'A:1:5']
     ]);
     expect(find.text('Checkout'), findsWidgets);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('choosing the same seats again after leaving checkout makes a new order', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    Future<void> buy() async {
+      await tapSeat(tester, 1, 4);
+      await tapSeat(tester, 1, 5);
+      await tester.tap(find.byKey(const Key('seatContinue')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Checkout'), findsWidgets);
+    }
+
+    await buy();
+    GoRouter.of(tester.element(find.text('Checkout').first)).pop(); // e.g. after cancelling the order there
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    await buy();
+    expect(pickerApi.seatOrders, [
+      ['A:1:4', 'A:1:5'],
+      ['A:1:4', 'A:1:5'],
+    ]);
+    expect(pickerApi.seatOrderKeys, hasLength(2));
+    expect(pickerApi.seatOrderKeys[1], isNot(pickerApi.seatOrderKeys[0]));
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -215,7 +215,8 @@ class SeatLayout {
           final t = (xs[i] - centre) / half;
           final ly = ri * kSeatSpacing + curve * half * t * t + n(s['dy']);
           final seatLabel = (s['label'] as String?) ?? '${(s['n'] as num).toString().replaceAll(RegExp(r'\.0$'), '')}';
-          final nameMy = (sec['nameMy'] as String?) ?? name;
+          final rawMy = sec['nameMy'] as String?;
+          final nameMy = rawMy?.isNotEmpty == true ? rawMy! : name;
           seats.add(MapSeat(
             index: seats.length,
             seatKey: '$key:$rowLabel:$seatLabel',

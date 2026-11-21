@@ -37,6 +37,16 @@ void main() {
       expect(l.seats[1000].labelFor('my'), 'ဘောလ်ကနီ ညာ · အတန်း 1 · ခုံ 1');
       expect(l.seats[1000].labelFor('en'), 'Balcony Right · Row 1 · Seat 1');
     });
+    test('an empty Myanmar section name falls back to the English name', () {
+      final l = SeatLayout.fromJson({
+        'width': 400,
+        'height': 300,
+        'sections': [
+          {'key': 'A', 'name': 'Stalls', 'nameMy': '', 'kind': 'SEATED', 'x': 0, 'y': 0, 'rows': [{'label': '1', 'seats': [{'n': 1}]}]},
+        ],
+      });
+      expect(l.seats.single.labelMy, 'Stalls · အတန်း 1 · ခုံ 1');
+    });
     test('seat keys are unique', () {
       expect(l.seats.map((s) => s.seatKey).toSet().length, 1200);
     });
