@@ -23,6 +23,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsObject,
@@ -35,17 +36,31 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import type { PayoutMethod } from '@prisma/client';
 import type { Response } from 'express';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
-import { ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
+import { ORG_PAYOUT_VIEWERS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PAYMENT_PROVIDER_FIELDS, PaymentProviderKey, PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SeatingModule } from '../seating/seating.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { mockPage, mockResultPage } from './mock-page';
 import { PaymentsService } from './payments.service';
+import { PAYOUT_METHODS, PayoutsService } from './payouts.service';
 
 export { PaymentsService } from './payments.service';
+
+class RecordPayoutDto {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) @Max(Number.MAX_SAFE_INTEGER) amountMmk: number;
+  @ApiProperty() @IsDateString() paidAt: string;
+  @ApiProperty({ enum: PAYOUT_METHODS }) @IsIn(PAYOUT_METHODS) method: PayoutMethod;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) reference?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) note?: string;
+}
+
+class VoidPayoutDto {
+  @ApiProperty() @IsString() @Length(3, 500) reason: string;
+}
 
 class OrderItemDto {
   @ApiProperty() @IsUUID() ticketTypeId: string;
@@ -247,7 +262,24 @@ export class AdminFinanceController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly settings: PaymentSettingsService,
+    private readonly payouts: PayoutsService,
   ) {}
+
+  @Post('finance/organizations/:orgId/payouts')
+  recordPayout(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: RecordPayoutDto, @CurrentUser() u: AuthUser) {
+    return this.payouts.record(orgId, dto, u.sub);
+  }
+
+  @Get('finance/organizations/:orgId/payouts')
+  listPayouts(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.payouts.list(orgId);
+  }
+
+  @Post('finance/payouts/:id/void')
+  @HttpCode(200)
+  voidPayout(@Param('id', ParseUUIDPipe) id: string, @Body() dto: VoidPayoutDto, @CurrentUser() u: AuthUser) {
+    return this.payouts.void(id, dto.reason, u.sub);
+  }
 
   @Get('finance/orders')
   orders(@Query('status') status?: string, @Query('review') review?: string, @Query('q') q?: string, @Query('limit') limit?: string) {
@@ -287,8 +319,8 @@ export class AdminFinanceController {
     const rows = await this.payments.balances();
     const esc = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`;
     const csv = [
-      'organization,organization_id,orders,gross_mmk,refunded_mmk,commission_mmk,owed_mmk',
-      ...rows.map((r) => [r.organization, r.organizationId, r.orders, r.grossMmk, r.refundedMmk, r.commissionMmk, r.owedMmk].map(esc).join(',')),
+      'organization,organization_id,orders,gross_mmk,refunded_mmk,commission_mmk,paid_out_mmk,owed_mmk',
+      ...rows.map((r) => [r.organization, r.organizationId, r.orders, r.grossMmk, r.refundedMmk, r.commissionMmk, r.paidOutMmk, r.owedMmk].map(esc).join(',')),
     ].join('\n');
     res.type('text/csv').setHeader('Content-Disposition', 'attachment; filename="event360-balances.csv"');
     res.send(csv);
@@ -345,10 +377,49 @@ export class OrgSalesController {
   }
 }
 
+@ApiTags('organizer')
+@Controller('organizations/:orgId/payouts')
+@Auth()
+export class OrgPayoutsController {
+  constructor(
+    private readonly payouts: PayoutsService,
+    private readonly access: OrgAccessService,
+  ) {}
+
+  @Get('summary')
+  async summary(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_PAYOUT_VIEWERS);
+    return this.payouts.summary(orgId);
+  }
+
+  @Get('summary.csv')
+  async summaryCsv(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() u: AuthUser, @Res() res: Response) {
+    await this.access.assert(u, orgId, ORG_PAYOUT_VIEWERS);
+    const s = await this.payouts.summary(orgId);
+    const esc = (v: unknown) => {
+      let t = String(v ?? '');
+      if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`; // spreadsheet formula injection
+      return `"${t.replace(/"/g, '""')}"`;
+    };
+    const csv = [
+      'event,gross_mmk,discount_mmk,commission_mmk,refunds_mmk,net_mmk',
+      ...s.events.map((e) => [e.title, e.grossMmk, e.discountMmk, e.commissionMmk, e.refundsMmk, e.netMmk].map(esc).join(',')),
+      '',
+      'earned_mmk,paid_out_mmk,owed_mmk',
+      [s.earnedMmk, s.paidOutMmk, s.owedMmk].map(esc).join(','),
+      '',
+      'paid_at,amount_mmk,method,reference,note,voided',
+      ...s.payouts.map((p) => [p.paidAt.toISOString(), p.amountMmk, p.method, p.reference, p.note, p.voidedAt ? 'yes' : 'no'].map(esc).join(',')),
+    ].join('\n');
+    res.type('text/csv').setHeader('Content-Disposition', 'attachment; filename="event360-payouts.csv"');
+    res.send(csv);
+  }
+}
+
 @Module({
   imports: [SeatingModule, WaitlistModule],
-  controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController],
-  providers: [PaymentsService],
+  controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController, OrgPayoutsController],
+  providers: [PaymentsService, PayoutsService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

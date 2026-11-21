@@ -13,6 +13,7 @@ export const ACC = {
   commission: 'platform_commission',
   refundsPayable: 'refunds_payable',
   unallocated: 'unallocated_receipts',
+  payoutsCash: 'payouts_cash',
 };
 
 /** Writes one balanced journal (sum of debits = sum of credits; zero lines skipped). */

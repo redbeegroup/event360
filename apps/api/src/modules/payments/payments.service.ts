@@ -23,6 +23,7 @@ import { commission, pickRule } from './fee';
 import { chooseDiscount, currentPrice, priceView } from './pricing';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
+import { orgFigures } from './payouts.service';
 import { KbzPayProvider } from './providers/kbzpay.provider';
 import { MockProvider } from './providers/mock.provider';
 import { InvalidSignatureError, PaymentProvider, ProviderStatus } from './providers/provider';
@@ -870,54 +871,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return this.adminRow(o);
   }
 
-  /** What each organizer is owed, from the ledger (sales − commission − refunds). */
+  /** What each organizer earned, was paid and is owed — the same figures the organizer payouts summary shows. */
   async balances() {
-    const sums = await this.prisma.ledgerEntry.groupBy({
-      by: ['account'],
-      where: { account: { startsWith: 'organizer_payable:' } },
-      _sum: { creditMmk: true, debitMmk: true },
-    });
-    const orgIds = sums.map((s) => s.account.split(':')[1]);
-    const orgs = await this.prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } });
-    const sales = await this.prisma.order.groupBy({
-      by: ['eventId'],
-      where: { status: { in: ['PAID', 'REFUNDED'] }, totalMmk: { gt: 0n }, channel: { not: 'COMP' } },
-      _sum: { totalMmk: true, commissionMmk: true },
-      _count: true,
-    });
-    const refunded = await this.prisma.order.groupBy({ by: ['eventId'], where: { status: 'REFUNDED', totalMmk: { gt: 0n }, channel: { not: 'COMP' } }, _sum: { totalMmk: true, commissionMmk: true } });
-    const events = await this.prisma.event.findMany({ where: { id: { in: sales.map((s) => s.eventId) } }, select: { id: true, organizationId: true } });
-    const orgOf = new Map(events.map((e) => [e.id, e.organizationId]));
-    const agg = new Map<string, { gross: bigint; commission: bigint; refunded: bigint; orders: number }>();
-    for (const s of sales) {
-      const k = orgOf.get(s.eventId)!;
-      const a = agg.get(k) ?? { gross: 0n, commission: 0n, refunded: 0n, orders: 0 };
-      a.gross += s._sum.totalMmk ?? 0n;
-      a.commission += s._sum.commissionMmk ?? 0n;
-      a.orders += s._count;
-      agg.set(k, a);
-    }
-    for (const r of refunded) {
-      const a = agg.get(orgOf.get(r.eventId)!);
-      if (a) {
-        a.refunded += r._sum.totalMmk ?? 0n;
-        a.commission -= r._sum.commissionMmk ?? 0n;
-      }
-    }
-    return sums
-      .map((s) => {
-        const id = s.account.split(':')[1];
-        const a = agg.get(id) ?? { gross: 0n, commission: 0n, refunded: 0n, orders: 0 };
-        return {
-          organizationId: id,
-          organization: orgs.find((o) => o.id === id)?.name ?? id,
-          orders: a.orders,
-          grossMmk: mmk(a.gross),
-          refundedMmk: mmk(a.refunded),
-          commissionMmk: mmk(a.commission),
-          owedMmk: mmk((s._sum.creditMmk ?? 0n) - (s._sum.debitMmk ?? 0n)),
-        };
-      })
+    const figs = await orgFigures(this.prisma);
+    const orgs = await this.prisma.organization.findMany({ where: { id: { in: [...figs.keys()] } }, select: { id: true, name: true } });
+    return [...figs.values()]
+      .map((f) => ({
+        organizationId: f.organizationId,
+        organization: orgs.find((o) => o.id === f.organizationId)?.name ?? f.organizationId,
+        orders: f.orders,
+        grossMmk: mmk(f.grossMmk),
+        refundedMmk: mmk(f.refundedMmk),
+        commissionMmk: mmk(f.commissionMmk),
+        paidOutMmk: mmk(f.paidOutMmk),
+        owedMmk: mmk(f.owedMmk),
+      }))
       .sort((a, b) => b.owedMmk - a.owedMmk);
   }
 

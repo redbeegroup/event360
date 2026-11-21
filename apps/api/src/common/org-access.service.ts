@@ -5,6 +5,8 @@ import type { AuthUser } from './auth';
 
 export const ORG_EDITORS: OrgRole[] = ['ORG_OWNER', 'ORG_MANAGER'];
 export const ORG_VIEWERS: OrgRole[] = ['ORG_OWNER', 'ORG_MANAGER', 'ORG_FINANCE'];
+/** Payout totals are money-sensitive: owners and finance only. */
+export const ORG_PAYOUT_VIEWERS: OrgRole[] = ['ORG_OWNER', 'ORG_FINANCE'];
 
 /** Checks that a user may act on an organization (platform admins may act on any). */
 @Injectable()
