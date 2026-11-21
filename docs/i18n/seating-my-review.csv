@@ -349,3 +349,4 @@
 "ticketsTotal","{n, plural, =1{1 ticket} other{{n} tickets}} · Total","လက်မှတ် {n} စောင် · စုစုပေါင်း","user_app"
 "fewerTickets","One fewer {type} ticket","{type} လက်မှတ် တစ်စောင် လျှော့ရန်","user_app"
 "moreTickets","One more {type} ticket","{type} လက်မှတ် တစ်စောင် တိုးရန်","user_app"
+"practicalInfo","Practical info","အသုံးဝင်သော အချက်အလက်","user_app"

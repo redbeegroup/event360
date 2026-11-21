@@ -266,7 +266,7 @@ class L10nEn extends L10n {
   String get gallery => 'Photos';
 
   @override
-  String get practicalInfo => 'Good to know';
+  String get practicalInfo => 'Practical info';
 
   @override
   String ageLimit(int n) {

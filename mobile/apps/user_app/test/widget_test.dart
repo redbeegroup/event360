@@ -123,10 +123,21 @@ class FakeApi extends Event360Api {
   /// Standing types only: one nearly gone, one plain, one sold out (a waitlist offer can sit on it).
   static Map<String, dynamic> mixedEventJson() => {
         ...eventJson('mixed', free: false),
+        'description': 'Welcome the new year with a night of live music, street food and fireworks over the lake. Doors open at 6 PM, the show starts at 7:30 PM and the countdown is at midnight. Bring friends: groups of four or more save ten percent. Standing tickets are first come first served and the VIP deck has its own bar.',
         'ticketTypes': [
           {'id': 'tt-mix-a', 'name': 'Standing', 'nameMy': 'ရပ်ကြည့်', 'priceMmk': 5000, 'quota': 100, 'remaining': 8, 'maxPerOrder': 4, 'color': '#2563eb'},
           {'id': 'tt-mix-b', 'name': 'VIP deck', 'nameMy': null, 'priceMmk': 35000, 'quota': 100, 'remaining': 60, 'maxPerOrder': 2, 'color': '#c2410c'},
           {'id': 'tt-mix-c', 'name': 'Early bird', 'nameMy': null, 'priceMmk': 10000, 'quota': 50, 'remaining': 0, 'maxPerOrder': 2, 'color': '#16a34a'},
+        ],
+      };
+
+  /// Seats on the map and standing tickets by quantity, both on sale.
+  static Map<String, dynamic> bothEventJson() => {
+        ...seatedEventJson(),
+        'id': 'both',
+        'ticketTypes': [
+          {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'quota': 10, 'remaining': 10, 'maxPerOrder': 3, 'seated': true, 'color': '#f2b632'},
+          {'id': 'tt-stand', 'name': 'Standing', 'nameMy': null, 'priceMmk': 8000, 'quota': 50, 'remaining': 40, 'maxPerOrder': 4},
         ],
       };
 
@@ -383,7 +394,7 @@ class FakeApi extends Event360Api {
               {'id': 'tt-soldout', 'name': 'General', 'nameMy': 'အထွေထွေ', 'priceMmk': 5000, 'quota': 100, 'remaining': 0, 'maxPerOrder': 4},
             ],
           }
-        : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+        : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'both' ? bothEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
@@ -796,6 +807,10 @@ void main() {
     expect(find.text('LIVE'), findsOneWidget);
     expect(find.text('Highlights'), findsOneWidget);
     expect(find.textContaining('02:05'), findsOneWidget);
+    await tester.ensureVisible(find.text('Keynote'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 300)); // out from under the pinned top bar
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Keynote'));
     await tester.pumpAndSettle();
     expect(find.text('PLAYER https://api.example/v1/play/t/TOKEN/live/c0000000-0000-0000-0000-000000000001/index.m3u8'), findsOneWidget);
@@ -2105,7 +2120,15 @@ void main() {
   });
 
   // ───── Event page and ticket picker (visual refresh) ─────
-  Finder goldButtons() => find.byWidgetPredicate((w) => w is FilledButton && w.style?.backgroundColor?.resolve({}) == E360Colors.gold);
+  /// Buttons (of any kind) whose resolved background is the gold token: style set inline, by the theme, or by default.
+  List<Element> goldButtons(WidgetTester tester, {Finder? within}) {
+    final all = within == null ? find.bySubtype<ButtonStyleButton>() : find.descendant(of: within, matching: find.bySubtype<ButtonStyleButton>());
+    return all.evaluate().where((el) {
+      final b = el.widget as ButtonStyleButton;
+      final style = (b.style ?? const ButtonStyle()).merge(b.themeStyleOf(el)).merge(b.defaultStyleOf(el)); // the widget's own style wins
+      return style.backgroundColor?.resolve({}) == E360Colors.gold;
+    }).toList();
+  }
 
   testWidgets('event page shows the bottom bar with price range and the right action', (tester) async {
     final methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
@@ -2125,8 +2148,8 @@ void main() {
       final action = find.byKey(Key(key));
       expect(action, findsOneWidget, reason: id);
       expect(find.descendant(of: action, matching: find.text(label)), findsOneWidget, reason: id);
-      expect(goldButtons(), findsOneWidget, reason: '$id: the bar action is the only gold button');
-      expect(find.descendant(of: find.byType(PrimaryActionBar), matching: action), findsOneWidget, reason: id);
+      expect(goldButtons(tester), hasLength(1), reason: '$id: the bar action is the only gold button');
+      expect(goldButtons(tester, within: find.byType(PrimaryActionBar)), hasLength(1), reason: id);
       await tester.pumpWidget(const SizedBox());
     }
     // Paid tickets with no payment method yet: "on sale soon", no bar at all
@@ -2187,9 +2210,11 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-b'))).data, 'Up to 2 per person');
     expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-a'))).style?.color, E360Colors.amberInk);
     expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-b'))).style?.color, isNot(E360Colors.amberInk));
-    // The first type is selected: 2 px navy border on it only
-    final selectedBorder = find.byWidgetPredicate((w) => w is Container && w.decoration is BoxDecoration && (w.decoration as BoxDecoration).border?.top.width == 2);
-    expect(selectedBorder, findsOneWidget);
+    // Every card has the same 2 px border; only the selected one is navy, so nothing shifts
+    final borders = find.byWidgetPredicate((w) => w is Container && w.decoration is BoxDecoration && (w.decoration as BoxDecoration).border?.top.width == 2);
+    expect(borders, findsNWidgets(3));
+    final navy = tester.widgetList<Container>(borders).where((c) => (c.decoration as BoxDecoration).border!.top.color == E360Colors.night);
+    expect(navy, hasLength(1));
     expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-a'))).data, '1');
     expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-b'))).data, '0');
     expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '5,000 MMK');
@@ -2222,16 +2247,16 @@ void main() {
       a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
     });
     expect(find.byKey(const Key('offerBanner')), findsOneWidget); // the banner on Discover
-    expect(goldButtons(), findsNothing);
+    expect(goldButtons(tester), isEmpty);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
     await tester.pumpAndSettle();
     final buy = find.byKey(const Key('buyOffer-tt-mix-c'));
     await tester.scrollUntilVisible(buy, 200, scrollable: find.byType(Scrollable).first);
     expect(buy, findsOneWidget);
     expect(find.byKey(const Key('getTickets')), findsOneWidget); // the bar is up
-    expect(goldButtons(), findsOneWidget);
-    expect(tester.widget<FilledButton>(buy).style?.backgroundColor?.resolve({}), isNot(E360Colors.gold));
-    expect(find.descendant(of: find.byType(PrimaryActionBar), matching: goldButtons()), findsOneWidget);
+    expect(goldButtons(tester), hasLength(1));
+    expect(goldButtons(tester, within: find.byType(PrimaryActionBar)), hasLength(1));
+    expect(goldButtons(tester, within: find.byKey(const Key('buyOffer-tt-mix-c'))), isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -2267,4 +2292,44 @@ void main() {
       }
     }
   }, variant: phoneWidths);
+
+  testWidgets('an event with seats and standing types shows exactly one gold button, in the bar', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/both');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chooseSeats')), findsOneWidget);
+    final standing = find.byKey(const Key('getTickets'));
+    expect(standing, findsOneWidget); // "Standing tickets", outlined, in the Tickets section
+    expect(goldButtons(tester), hasLength(1));
+    expect(goldButtons(tester, within: find.byType(PrimaryActionBar)), hasLength(1));
+    expect(goldButtons(tester, within: standing), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('with the ticket picker open, exactly one gold button is visible in the sheet', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    expect(goldButtons(tester, within: find.byType(BottomSheet)), hasLength(1));
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.byKey(const Key('sheetSubmit'))), findsOneWidget); // and it is the sheet's action
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Read more expands the description', (tester) async {
+    await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    final text = find.textContaining('Welcome the new year');
+    expect(tester.widget<Text>(text).maxLines, 4);
+    expect(find.byKey(const Key('readMore')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('readMore')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('readMore')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(text).maxLines, isNull);
+    expect(find.byKey(const Key('readMore')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

@@ -266,7 +266,7 @@ class L10nMy extends L10n {
   String get gallery => 'ဓာတ်ပုံများ';
 
   @override
-  String get practicalInfo => 'သိထားသင့်သည်များ';
+  String get practicalInfo => 'အသုံးဝင်သော အချက်အလက်';
 
   @override
   String ageLimit(int n) {

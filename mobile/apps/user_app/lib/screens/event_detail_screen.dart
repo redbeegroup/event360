@@ -93,23 +93,29 @@ class _Detail extends ConsumerWidget {
     }
 
     // "Good to know": only what the event already tells us (price rises, group tiers, refund policy)
-    final goodToKnow = <(String, String)>[
+    final goodToKnow = <(String, String, bool)>[
       for (final tt in e.ticketTypes)
         if (tt.nextPrice != null && tt.priceMmk > 0)
-          (t.priceRiseSoon, t.priceRiseCard(pickLang(lang, tt.name, tt.nameMy), t.mmk(formatAmount(tt.nextPrice!.priceMmk, lang)), formatDay(tt.nextPrice!.startsAt, lang))),
+          (t.priceRiseSoon, t.priceRiseCard(pickLang(lang, tt.name, tt.nameMy), t.mmk(formatAmount(tt.nextPrice!.priceMmk, lang)), formatDay(tt.nextPrice!.startsAt, lang)), false),
       if (e.groupDiscounts.isNotEmpty)
         (
           t.groupDiscountTitle,
           ([...e.groupDiscounts]..sort((a, b) => a.minQuantity.compareTo(b.minQuantity))).map((g) => t.groupTierLine(g.minQuantity, percentText(g.percentBp))).join('\n'),
+          false,
         ),
-      if (!e.refundPolicy.isEmpty) (t.refundPolicy, e.refundPolicy.of(lang)),
+      if (!e.refundPolicy.isEmpty) (t.refundPolicy, e.refundPolicy.of(lang), true),
     ];
 
     final priceRange = _priceRange(t, lang, e.ticketTypes);
-    final dateLine = '${formatDay(e.startsAt, lang)} · ${formatTime(e.startsAt, lang)}';
+    final day = dateBadge(e.startsAt, lang);
+    final dateLine = '${day.day} ${day.month} · ${formatTime(e.startsAt, lang)}';
 
     return Scaffold(
-      body: CustomScrollView(slivers: [
+      body: _ScrollWithBar(
+        title: pickLang(lang, e.title, e.titleMy),
+        onBack: () => context.canPop() ? context.pop() : context.go('/'),
+        onShare: () => SharePlus.instance.share(ShareParams(text: shareText(e, lang))),
+        slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
             height: 260,
@@ -218,9 +224,15 @@ class _Detail extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: IntrinsicHeight(
                     child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      for (final (i, (title, body)) in goodToKnow.indexed) ...[
+                      for (final (i, (title, body, policy)) in goodToKnow.indexed) ...[
                         if (i > 0) const SizedBox(width: 12),
-                        _GoodCard(title: title, body: body),
+                        // Tiers and price rises list in full; the refund policy is cut at 3 lines with "Read more" for all of it
+                        _GoodCard(
+                          title: title,
+                          body: body,
+                          maxLines: policy ? 3 : null,
+                          onMore: policy && body.length > 80 ? () => _showPolicy(context, title, body) : null,
+                        ),
                       ],
                     ]),
                   ),
@@ -426,7 +438,7 @@ class _Detail extends ConsumerWidget {
           ? PrimaryActionBar(
               summary: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(priceRange, key: const Key('barPrice'), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
-                Text(dateLine, key: const Key('barDate'), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+                Text(dateLine, key: const Key('barDate'), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
               ]),
               action: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
@@ -471,6 +483,25 @@ class _Detail extends ConsumerWidget {
     final i = template.indexOf('\u0000');
     final nameSpan = TextSpan(text: name, style: TextStyle(fontWeight: FontWeight.w700, color: linked ? theme.colorScheme.primary : null));
     return [if (i > 0) TextSpan(text: template.substring(0, i)), nameSpan, if (i >= 0 && i + 1 < template.length) TextSpan(text: template.substring(i + 1))];
+  }
+
+  void _showPolicy(BuildContext context, String title, String body) {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(title, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Text(body, style: theme.textTheme.bodyLarge),
+          ]),
+        ),
+      ),
+    );
   }
 
   void _showPerformer(BuildContext context, Performer p, String lang) {
@@ -553,12 +584,12 @@ Future<void> _joinWaitlist(BuildContext context, WidgetRef ref, EventSummary eve
 }
 
 /// Under a sold-out ticket type: "Join waitlist", then "You're #N in line · Leave" (or "Buy now" once an offer arrives).
-/// With [priceLabel] (the ticket picker) the price sits on the left of the join button.
+/// With [stacked] (the ticket picker) the join button takes the full row, so a long label never wraps in a corner.
 class _WaitlistRow extends ConsumerStatefulWidget {
-  const _WaitlistRow({required this.event, required this.type, this.priceLabel, this.keyPrefix = ''});
+  const _WaitlistRow({required this.event, required this.type, this.stacked = false, this.keyPrefix = ''});
   final EventSummary event;
   final TicketType type;
-  final String? priceLabel;
+  final bool stacked;
 
   /// Keeps the keys apart when the same row shows on the page and in the ticket picker above it.
   final String keyPrefix;
@@ -596,19 +627,19 @@ class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(children: [
         if (entry == null) ...[
-          if (widget.priceLabel != null) ...[
-            Text(widget.priceLabel!, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            const SizedBox(width: 12),
-          ],
           // The button takes what is left (and wraps its label) so a long Myanmar label cannot overflow the row
           Expanded(
             child: Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: OutlinedButton(
+              alignment: widget.stacked ? Alignment.center : AlignmentDirectional.centerEnd,
+              widthFactor: null,
+              child: SizedBox(
+                width: widget.stacked ? double.infinity : null,
+                child: OutlinedButton(
                 key: Key('${widget.keyPrefix}joinWaitlist-$id'),
                 style: E360Buttons.outline,
                 onPressed: _join,
-                child: Text(t.joinWaitlist, textAlign: TextAlign.center),
+                  child: Text(t.joinWaitlist, textAlign: TextAlign.center),
+                ),
               ),
             ),
           ),
@@ -744,9 +775,12 @@ class _RoundIcon extends StatelessWidget {
 
 /// Bordered white box: radius 14, 1 px line, no elevation.
 class _CardBox extends StatelessWidget {
-  const _CardBox({required this.child, this.selected = false});
+  const _CardBox({required this.child, this.selected, this.ringed = false});
   final Widget child;
-  final bool selected;
+
+  /// With [ringed] (the ticket picker) every card has a 2 px border and only its colour changes, so nothing shifts.
+  final bool? selected;
+  final bool ringed;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -755,7 +789,7 @@ class _CardBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: selected ? scheme.primary : scheme.outlineVariant, width: selected ? 2 : 1),
+        border: ringed ? Border.all(color: selected == true ? scheme.primary : scheme.outlineVariant, width: 2) : Border.all(color: scheme.outlineVariant),
       ),
       child: child,
     );
@@ -764,8 +798,10 @@ class _CardBox extends StatelessWidget {
 
 /// One "Good to know" card (200 wide, scrolls sideways with its neighbours).
 class _GoodCard extends StatelessWidget {
-  const _GoodCard({required this.title, required this.body});
+  const _GoodCard({required this.title, required this.body, this.maxLines, this.onMore});
   final String title, body;
+  final int? maxLines;
+  final VoidCallback? onMore;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -782,7 +818,14 @@ class _GoodCard extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(title, style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
           const SizedBox(height: 6),
-          Text(body, maxLines: 5, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14, height: 1.45)),
+          Text(body, maxLines: maxLines, overflow: maxLines == null ? TextOverflow.visible : TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14, height: 1.45)),
+          if (onMore != null)
+            TextButton(
+              key: const Key('policyMore'),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(44, 44), alignment: AlignmentDirectional.centerStart, tapTargetSize: MaterialTapTargetSize.shrinkWrap, textStyle: theme.textTheme.labelLarge),
+              onPressed: onMore,
+              child: Text(L10n.of(context).readMore),
+            ),
         ]),
       ),
     );
@@ -920,6 +963,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final rise = priceRiseText(t, lang, tt.priceMmk, tt.nextPrice);
     final max = [tt.maxPerOrder, tt.remaining].reduce((a, b) => a < b ? a : b);
     return _CardBox(
+      ringed: true,
       selected: selected,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
@@ -973,18 +1017,25 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
   Widget _soldOutCard(TicketType tt, String lang, L10n t, ThemeData theme) {
     final price = tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang));
     return _CardBox(
+      ringed: true,
+      selected: false,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
-            Expanded(child: Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                Text(price, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
+              ]),
+            ),
             const SizedBox(width: 12),
             E360Badge(t.soldOut, kind: E360BadgeKind.dark),
           ]),
         ),
         Divider(color: theme.colorScheme.outlineVariant),
         const SizedBox(height: 14),
-        _WaitlistRow(event: widget.event, type: tt, priceLabel: price, keyPrefix: 'sheet-'),
+        _WaitlistRow(event: widget.event, type: tt, stacked: true, keyPrefix: 'sheet-'),
       ]),
     );
   }
@@ -1142,48 +1193,144 @@ class _WatchSection extends ConsumerWidget {
     final s = ref.watch(eventStreamsProvider(eventId)).value;
     if (s == null || s.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final danger = theme.brightness == Brightness.dark ? E360DarkColors.danger : E360Colors.danger;
+    final onDanger = theme.brightness == Brightness.dark ? E360DarkColors.paper : Colors.white;
     String dur(int? sec) => sec == null ? '' : '${sec ~/ 3600 > 0 ? '${sec ~/ 3600}:' : ''}${((sec % 3600) ~/ 60).toString().padLeft(2, '0')}:${(sec % 60).toString().padLeft(2, '0')}';
     void open(String kind, String id, String title) => context.push('/watch/$kind/$id?title=${Uri.encodeQueryComponent(title)}');
+    Widget iconTile(IconData icon, Color color) => Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: theme.colorScheme.outlineVariant)),
+          child: Icon(icon, size: 20, color: color),
+        );
+    // A Material (not a DecoratedBox) so the tile's ink shows
+    Widget tileCard(Widget tile) => Material(
+          color: theme.colorScheme.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: theme.colorScheme.outlineVariant)),
+          child: tile,
+        );
     return Padding(
       padding: const EdgeInsets.only(top: 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(t.watch, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+        Text(t.watch, style: theme.textTheme.titleLarge),
+        const SizedBox(height: 12),
         for (final l in s.live)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              key: Key('live-${l.channelId}'),
-              leading: Icon(Icons.live_tv, color: l.isLive ? const Color(0xFFD32F2F) : null),
-              title: Text(pickLang(lang, l.title, l.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(l.isLive ? t.watchLive : t.startsAtTime(formatEventDate(l.startsAt, lang))),
-              trailing: l.isLive
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(4)),
-                      child: Text(t.liveNow, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
-                    )
-                  : null,
-              onTap: l.isLive ? () => open('live', l.channelId, pickLang(lang, l.title, l.titleMy)) : null,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: tileCard(
+              ListTile(
+                key: Key('live-${l.channelId}'),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: iconTile(Icons.live_tv, l.isLive ? danger : theme.colorScheme.primary),
+                title: Text(pickLang(lang, l.title, l.titleMy), style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
+                subtitle: Text(l.isLive ? t.watchLive : t.startsAtTime(formatEventDate(l.startsAt, lang)), style: theme.textTheme.bodySmall),
+                trailing: l.isLive
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: danger, borderRadius: BorderRadius.circular(6)),
+                        child: Text(t.liveNow, style: TextStyle(color: onDanger, fontWeight: FontWeight.w700, fontSize: 12)),
+                      )
+                    : null,
+                onTap: l.isLive ? () => open('live', l.channelId, pickLang(lang, l.title, l.titleMy)) : null,
+              ),
             ),
           ),
         for (final r in s.recordings)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              key: Key('vod-${r.id}'),
-              leading: const Icon(Icons.play_circle_outline),
-              title: Text(pickLang(lang, r.title, r.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text([
-                t.recordingsTitle,
-                if (r.durationSec != null) dur(r.durationSec),
-                if (r.availableUntil != null) t.availableUntil(formatEventDate(r.availableUntil!, lang)),
-              ].join(' · ')),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => open('vod', r.id, pickLang(lang, r.title, r.titleMy)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: tileCard(
+              ListTile(
+                key: Key('vod-${r.id}'),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: iconTile(Icons.play_circle_outline, theme.colorScheme.primary),
+                title: Text(pickLang(lang, r.title, r.titleMy), style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
+                subtitle: Text([
+                  t.recordingsTitle,
+                  if (r.durationSec != null) dur(r.durationSec),
+                  if (r.availableUntil != null) t.availableUntil(formatEventDate(r.availableUntil!, lang)),
+                ].join(' · '), style: theme.textTheme.bodySmall),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => open('vod', r.id, pickLang(lang, r.title, r.titleMy)),
+              ),
             ),
           ),
       ]),
     );
+  }
+}
+
+/// The page's scroll view with a slim pinned bar (back, title, share) that fades in once the cover has scrolled away.
+class _ScrollWithBar extends StatefulWidget {
+  const _ScrollWithBar({required this.slivers, required this.title, required this.onBack, required this.onShare});
+  final List<Widget> slivers;
+  final String title;
+  final VoidCallback onBack, onShare;
+  @override
+  State<_ScrollWithBar> createState() => _ScrollWithBarState();
+}
+
+class _ScrollWithBarState extends State<_ScrollWithBar> {
+  final _controller = ScrollController();
+  bool _show = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final show = _controller.hasClients && _controller.offset > 200;
+      if (show != _show) setState(() => _show = show);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    final theme = Theme.of(context);
+    return Stack(children: [
+      CustomScrollView(controller: _controller, slivers: widget.slivers),
+      if (_show)
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: Material(
+            key: const Key('pinnedBar'),
+            color: theme.colorScheme.surface,
+            child: DecoratedBox(
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant))),
+              child: Padding(
+                padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top, left: 8, right: 8),
+                child: SizedBox(
+                  height: 56,
+                  child: Row(children: [
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: widget.onBack,
+                    ),
+                    Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium)),
+                    IconButton(
+                      tooltip: t.share,
+                      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                      icon: const Icon(Icons.ios_share),
+                      onPressed: widget.onShare,
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ]);
   }
 }

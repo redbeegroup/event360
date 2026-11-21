@@ -580,7 +580,7 @@ abstract class L10n {
   /// No description provided for @practicalInfo.
   ///
   /// In en, this message translates to:
-  /// **'Good to know'**
+  /// **'Practical info'**
   String get practicalInfo;
 
   /// No description provided for @ageLimit.

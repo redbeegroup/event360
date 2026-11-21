@@ -130,7 +130,7 @@
   "schedule": "Schedule",
   "lineup": "Lineup",
   "gallery": "Photos",
-  "practicalInfo": "Good to know",
+  "practicalInfo": "Practical info",
   "ageLimit": "Ages {n}+",
   "@ageLimit": {
     "placeholders": {
