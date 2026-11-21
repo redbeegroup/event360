@@ -1,5 +1,5 @@
 // Dev only: a demo venue seat map ("Shwe Pyi Theatre", fictional, 490 seats) and one public seated sample event
-// (slug sample-seated-gala). Run as a one-off Job with the API image and event360-secrets (see docs/runbook.md, scripts section).
+// (slug sample-seated-gala). Run it like the load-test data script (docs/runbook.md §10): a one-off Job in event360-dev with the API image and envFrom event360-secrets.
 // Re-running recreates both, as long as the event has no orders and no other event uses the map.
 process.env.APP_ROLE = 'script';
 if (!/[?&]schema=dev(&|$)/.test(process.env.DATABASE_URL ?? '')) { console.error('dev schema only'); process.exit(2); }
