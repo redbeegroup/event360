@@ -63,20 +63,18 @@ class _Detail extends ConsumerWidget {
     final canRegister = !ended && !cancelled && e.ticketTypes.any((tt) => !tt.seated && sellable(tt));
     final canChooseSeats = !ended && !cancelled && e.ticketTypes.any((tt) => tt.seated && sellable(tt));
     final sellsPaid = e.ticketTypes.any((tt) => !tt.seated && !tt.isFree && sellable(tt));
-    final bold = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
+    // Nothing to buy but a sold-out type the buyer is not in line for yet: the bar offers the waitlist
+    final entries = ref.watch(waitlistProvider).value ?? const <WaitlistEntry>[];
+    final waitlistType = canRegister || canChooseSeats || ended || cancelled
+        ? null
+        : e.ticketTypes.where((tt) => tt.soldOut && activeEntryFor(entries, tt.id) == null).firstOrNull;
+    final bold = theme.textTheme.titleLarge;
+    final dark = theme.brightness == Brightness.dark;
     void open(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
-    Widget infoRow(IconData icon, String title, [String? sub, VoidCallback? onTap]) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          onTap: onTap,
-          leading: CircleAvatar(backgroundColor: theme.colorScheme.primaryContainer, child: Icon(icon, color: theme.colorScheme.onPrimaryContainer)),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: sub == null || sub.isEmpty ? null : Text(sub),
-          trailing: onTap == null ? null : const Icon(Icons.chevron_right),
-        );
     Widget section(String title, List<Widget> children) => Padding(
           padding: const EdgeInsets.only(top: 24),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: bold), const SizedBox(height: 8), ...children]),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: bold), const SizedBox(height: 12), ...children]),
         );
 
     final practical = <(IconData, String, String)>[
@@ -94,47 +92,190 @@ class _Detail extends ConsumerWidget {
       days.putIfAbsent(formatDay(s.startsAt, lang), () => []).add(s);
     }
 
+    // "Good to know": only what the event already tells us (price rises, group tiers, refund policy)
+    final goodToKnow = <(String, String)>[
+      for (final tt in e.ticketTypes)
+        if (tt.nextPrice != null && tt.priceMmk > 0)
+          (t.priceRiseSoon, t.priceRiseCard(pickLang(lang, tt.name, tt.nameMy), t.mmk(formatAmount(tt.nextPrice!.priceMmk, lang)), formatDay(tt.nextPrice!.startsAt, lang))),
+      if (e.groupDiscounts.isNotEmpty)
+        (
+          t.groupDiscountTitle,
+          ([...e.groupDiscounts]..sort((a, b) => a.minQuantity.compareTo(b.minQuantity))).map((g) => t.groupTierLine(g.minQuantity, percentText(g.percentBp))).join('\n'),
+        ),
+      if (!e.refundPolicy.isEmpty) (t.refundPolicy, e.refundPolicy.of(lang)),
+    ];
+
+    final priceRange = _priceRange(t, lang, e.ticketTypes);
+    final dateLine = '${formatDay(e.startsAt, lang)} · ${formatTime(e.startsAt, lang)}';
+
     return Scaffold(
       body: CustomScrollView(slivers: [
-        SliverAppBar(
-          pinned: true,
-          expandedHeight: 240,
-          actions: [
-            IconButton(tooltip: t.addToCalendar, icon: const Icon(Icons.event_available), onPressed: () => open(ref.read(apiProvider).calendarUri(e.id))),
-            IconButton(
-              tooltip: t.share,
-              icon: const Icon(Icons.ios_share),
-              onPressed: () => SharePlus.instance.share(ShareParams(text: shareText(e, lang))),
-            ),
-          ],
-          flexibleSpace: FlexibleSpaceBar(background: EventCover(url: e.coverImageUrl, aspectRatio: 16 / 10)),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 260,
+            child: Stack(fit: StackFit.expand, children: [
+              EventCover(url: e.coverImageUrl, aspectRatio: 16 / 10),
+              Positioned(
+                left: 16,
+                right: 16,
+                top: MediaQuery.paddingOf(context).top + 8,
+                child: Row(children: [
+                  _RoundIcon(
+                    icon: Icons.arrow_back,
+                    tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                    onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+                  ),
+                  const Spacer(),
+                  _RoundIcon(icon: Icons.event_available, tooltip: t.addToCalendar, onPressed: () => open(ref.read(apiProvider).calendarUri(e.id))),
+                  const SizedBox(width: 10),
+                  _RoundIcon(
+                    icon: Icons.ios_share,
+                    tooltip: t.share,
+                    onPressed: () => SharePlus.instance.share(ShareParams(text: shareText(e, lang))),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           sliver: SliverList.list(children: [
             if (cancelled) _Banner(text: t.eventCancelled, color: theme.colorScheme.error),
             if (!cancelled && ended) _Banner(text: t.eventEnded, color: theme.colorScheme.outline),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              Pill(pickLang(lang, e.categoryName, e.categoryNameMy), color: theme.colorScheme.secondary),
-              Pill(formatLabel(t, e.format), color: theme.colorScheme.tertiary),
-              if (e.ageMin != null) Pill(t.ageLimit(e.ageMin!), color: theme.colorScheme.error),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              if (e.seating != null) E360Badge(t.reservedSeating, kind: E360BadgeKind.gold),
+              E360Badge(pickLang(lang, e.categoryName, e.categoryNameMy)),
+              E360Badge(formatLabel(t, e.format)),
+              if (e.ageMin != null) E360Badge(t.ageLimit(e.ageMin!)),
             ]),
             const SizedBox(height: 10),
-            Text(pickLang(lang, e.title, e.titleMy), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
-            if (summary.isNotEmpty) ...[const SizedBox(height: 6), Text(summary, style: theme.textTheme.bodyLarge)],
-            const SizedBox(height: 12),
-            infoRow(Icons.event, formatEventDate(e.startsAt, lang), formatTimeRange(e.startsAt, e.endsAt, lang),
-                () => open(ref.read(apiProvider).calendarUri(e.id))),
-            if (e.venue != null)
-              infoRow(Icons.place_outlined, pickLang(lang, e.venue!.name, e.venue!.nameMy),
-                  [e.venue!.address, e.venue!.city].whereType<String>().join(', '), () => open(e.venue!.mapsUri)),
-            if (e.format == 'ONLINE') infoRow(Icons.live_tv_outlined, t.formatOnline),
-            infoRow(
-              e.organizerVerified ? Icons.verified : Icons.groups_outlined,
-              e.organizerName,
-              e.organizerVerified ? t.verified : t.organizer,
-              e.organizerSlug == null ? null : () => context.push('/organizer/${e.organizerSlug}'),
+            Text(pickLang(lang, e.title, e.titleMy), style: theme.textTheme.headlineMedium),
+            const SizedBox(height: 6),
+            InkWell(
+              key: const Key('organizerLink'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: e.organizerSlug == null ? null : () => context.push('/organizer/${e.organizerSlug}'),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text.rich(
+                    TextSpan(
+                      style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      children: [
+                        ..._byOrganizer(t.byOrganizer('\u0000'), e.organizerName, theme, linked: e.organizerSlug != null),
+                        if (e.organizerVerified)
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 4),
+                              child: Semantics(label: t.verified, child: Icon(Icons.verified, size: 16, color: theme.colorScheme.primary)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
+            if (summary.isNotEmpty) Text(summary, style: theme.textTheme.bodyLarge),
+            const SizedBox(height: 16),
+            InfoRow(
+              icon: Icons.event,
+              title: formatEventDate(e.startsAt, lang),
+              subtitle: formatTimeRange(e.startsAt, e.endsAt, lang),
+              onTap: () => open(ref.read(apiProvider).calendarUri(e.id)),
+            ),
+            const SizedBox(height: 10),
+            if (e.venue != null) ...[
+              InfoRow(
+                icon: Icons.place_outlined,
+                title: pickLang(lang, e.venue!.name, e.venue!.nameMy),
+                subtitle: [e.venue!.address, e.venue!.city].whereType<String>().join(', '),
+                onTap: () => open(e.venue!.mapsUri),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (e.format == 'ONLINE') InfoRow(icon: Icons.live_tv_outlined, title: t.formatOnline),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Divider(color: theme.colorScheme.outlineVariant),
+              section(t.overview, [_Overview(text: description)]),
+            ],
+          ]),
+        ),
+        if (goodToKnow.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(t.goodToKnow, style: bold)),
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  key: const Key('goodToKnow'),
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: IntrinsicHeight(
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      for (final (i, (title, body)) in goodToKnow.indexed) ...[
+                        if (i > 0) const SizedBox(width: 12),
+                        _GoodCard(title: title, body: body),
+                      ],
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          sliver: SliverList.list(children: [
+            section(t.tickets, [
+              _CardBox(
+                child: Column(children: [
+                  for (final (i, tt) in e.ticketTypes.indexed) ...[
+                    if (i > 0) Divider(indent: 16, endIndent: 16, color: theme.colorScheme.outlineVariant),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Container(width: 12, height: 12, decoration: BoxDecoration(color: parseHexColor(tt.color) ?? theme.colorScheme.primary, shape: BoxShape.circle)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
+                            Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining),
+                                style: theme.textTheme.bodySmall?.copyWith(color: !tt.soldOut && _scarce(tt) ? (dark ? E360DarkColors.amberInk : E360Colors.amberInk) : null, fontWeight: !tt.soldOut && _scarce(tt) ? FontWeight.w600 : null)),
+                            if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null)
+                              Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('priceRise-${tt.id}'), style: theme.textTheme.bodySmall),
+                          ]),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
+                            style: theme.textTheme.titleMedium?.copyWith(fontSize: 15, color: tt.isFree ? (dark ? E360DarkColors.success : E360Colors.success) : null)),
+                      ]),
+                    ),
+                    if (tt.soldOut && !ended && !cancelled) _WaitlistRow(event: e, type: tt),
+                  ],
+                ]),
+              ),
+              if (!payable && e.ticketTypes.any((tt) => !tt.isFree))
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.paidSoon, style: theme.textTheme.bodySmall)),
+              // Seats AND standing tickets on sale: the gold bar button takes the seats, standing tickets sit here
+              if (canChooseSeats && canRegister)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: OutlinedButton(
+                    key: const Key('getTickets'),
+                    style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
+                    onPressed: () => _startRegister(context, ref, payable),
+                    child: Text(t.standingTickets),
+                  ),
+                ),
+            ]),
             _WatchSection(eventId: e.id, lang: lang),
             if (e.gallery.isNotEmpty)
               section(t.gallery, [
@@ -145,7 +286,7 @@ class _Detail extends ConsumerWidget {
                     itemCount: e.gallery.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) => ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       child: GestureDetector(
                         onTap: () => _openGallery(context, e.gallery, i, lang),
                         child: AspectRatio(aspectRatio: 4 / 3, child: CachedNetworkImage(imageUrl: e.gallery[i].url, fit: BoxFit.cover)),
@@ -154,7 +295,6 @@ class _Detail extends ConsumerWidget {
                   ),
                 ),
               ]),
-            if (description.isNotEmpty) section(t.about, [Text(description)]),
             if (days.isNotEmpty)
               section(t.schedule, [
                 for (final day in days.entries) ...[
@@ -166,16 +306,16 @@ class _Detail extends ConsumerWidget {
                           width: 78,
                           child: Padding(padding: const EdgeInsets.only(top: 10), child: Text(formatTime(s.startsAt, lang), style: theme.textTheme.labelLarge)),
                         ),
-                        Container(width: 2, color: theme.colorScheme.primaryContainer),
+                        Container(width: 2, color: theme.colorScheme.outlineVariant),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(pickLang(lang, s.title, s.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+                              Text(pickLang(lang, s.title, s.titleMy), style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
                               Text([formatTimeRange(s.startsAt, s.endsAt, lang), if (s.location != null) s.location!].join(' · '),
                                   style: theme.textTheme.bodySmall),
-                              if (pickLang(lang, s.description, s.descriptionMy).isNotEmpty) Text(pickLang(lang, s.description, s.descriptionMy)),
+                              if (pickLang(lang, s.description, s.descriptionMy).isNotEmpty) Text(pickLang(lang, s.description, s.descriptionMy), style: theme.textTheme.bodyMedium),
                             ]),
                           ),
                         ),
@@ -206,8 +346,7 @@ class _Detail extends ConsumerWidget {
                               child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.titleLarge) : null,
                             ),
                             const SizedBox(height: 6),
-                            Text(pickLang(lang, p.name, p.nameMy),
-                                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(pickLang(lang, p.name, p.nameMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
                             if (pickLang(lang, p.role, p.roleMy).isNotEmpty)
                               Text(pickLang(lang, p.role, p.roleMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
                           ]),
@@ -217,46 +356,30 @@ class _Detail extends ConsumerWidget {
                   ),
                 ),
               ]),
-            section(t.tickets, [
-              for (final tt in e.ticketTypes)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: Column(children: [
-                  ListTile(
-                    leading: tt.seated ? Icon(Icons.event_seat, color: parseHexColor(tt.color)) : null,
-                    title: Text(pickLang(lang, tt.name, tt.nameMy)),
-                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
-                      if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null)
-                        Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('priceRise-${tt.id}'), style: theme.textTheme.bodySmall),
-                    ]),
-                    trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  ),
-                  if (tt.soldOut && !ended && !cancelled) _WaitlistRow(event: e, type: tt),
-                  ]),
-                ),
-              if (!payable && e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
-            ]),
             if (practical.isNotEmpty)
               section(t.practicalInfo, [
                 for (final (icon, title, value) in practical)
-                  ListTile(contentPadding: EdgeInsets.zero, dense: true, leading: Icon(icon), title: Text(title), subtitle: value.isEmpty ? null : Text(value)),
+                  Padding(padding: const EdgeInsets.only(bottom: 10), child: InfoRow(icon: icon, title: title, subtitle: value.isEmpty ? null : value)),
               ]),
             if (e.venue != null)
               section(t.directions, [
-                Card(
+                _CardBox(
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(16),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(pickLang(lang, e.venue!.name, e.venue!.nameMy), style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text([e.venue!.address, e.venue!.city].whereType<String>().join(', ')),
+                      Text(pickLang(lang, e.venue!.name, e.venue!.nameMy), style: theme.textTheme.titleMedium),
+                      Text([e.venue!.address, e.venue!.city].whereType<String>().join(', '), style: theme.textTheme.bodyMedium),
                       if (pickLang(lang, e.venue!.directions, e.venue!.directionsMy).isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(pickLang(lang, e.venue!.directions, e.venue!.directionsMy)),
+                        Text(pickLang(lang, e.venue!.directions, e.venue!.directionsMy), style: theme.textTheme.bodyMedium),
                       ],
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(onPressed: () => open(e.venue!.mapsUri), icon: const Icon(Icons.map_outlined), label: Text(t.openInMaps)),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: E360Buttons.outline,
+                        onPressed: () => open(e.venue!.mapsUri),
+                        icon: const Icon(Icons.map_outlined),
+                        label: Text(t.openInMaps),
+                      ),
                     ]),
                   ),
                 ),
@@ -266,10 +389,10 @@ class _Detail extends ConsumerWidget {
                 for (final f in e.faqs)
                   ExpansionTile(
                     tilePadding: EdgeInsets.zero,
-                    title: Text(pickLang(lang, f.question, f.questionMy), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(pickLang(lang, f.question, f.questionMy), style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
                     expandedCrossAxisAlignment: CrossAxisAlignment.start,
                     childrenPadding: const EdgeInsets.only(bottom: 12),
-                    children: [Text(pickLang(lang, f.answer, f.answerMy))],
+                    children: [Text(pickLang(lang, f.answer, f.answerMy), style: theme.textTheme.bodyMedium)],
                   ),
               ]),
             if (!e.refundPolicy.isEmpty || !e.terms.isEmpty)
@@ -283,7 +406,7 @@ class _Detail extends ConsumerWidget {
                       title: Text(t.refundPolicy),
                       expandedCrossAxisAlignment: CrossAxisAlignment.start,
                       childrenPadding: const EdgeInsets.only(bottom: 12),
-                      children: [Text(e.refundPolicy.of(lang))],
+                      children: [Text(e.refundPolicy.of(lang), style: theme.textTheme.bodyMedium)],
                     ),
                   if (!e.terms.isEmpty)
                     ExpansionTile(
@@ -292,44 +415,62 @@ class _Detail extends ConsumerWidget {
                       title: Text(t.terms),
                       expandedCrossAxisAlignment: CrossAxisAlignment.start,
                       childrenPadding: const EdgeInsets.only(bottom: 12),
-                      children: [Text(e.terms.of(lang))],
+                      children: [Text(e.terms.of(lang), style: theme.textTheme.bodyMedium)],
                     ),
                 ]),
               ),
           ]),
         ),
       ]),
-      bottomNavigationBar: canRegister || canChooseSeats
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  if (canChooseSeats)
-                    FilledButton.icon(
-                      key: const Key('chooseSeats'),
-                      onPressed: () => context.push('/event/${e.id}/seats'),
-                      icon: const Icon(Icons.event_seat_outlined),
-                      label: Text(t.chooseSeats),
-                    ),
-                  if (canChooseSeats && canRegister) const SizedBox(height: 8),
-                  if (canRegister)
-                    canChooseSeats
-                        ? OutlinedButton(
+      bottomNavigationBar: canRegister || canChooseSeats || waitlistType != null
+          ? PrimaryActionBar(
+              summary: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(priceRange, key: const Key('barPrice'), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                Text(dateLine, key: const Key('barDate'), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+              ]),
+              action: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
+                child: canChooseSeats
+                    ? FilledButton(
+                        key: const Key('chooseSeats'),
+                        style: E360Buttons.gold,
+                        onPressed: () => context.push('/event/${e.id}/seats'),
+                        child: Text(t.chooseSeats, textAlign: TextAlign.center),
+                      )
+                    : canRegister
+                        ? FilledButton(
                             key: const Key('getTickets'),
-                            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                            style: E360Buttons.gold,
                             onPressed: () => _startRegister(context, ref, payable),
-                            child: Text(t.standingTickets),
+                            child: Text(sellsPaid ? t.getTickets : t.registerFree, textAlign: TextAlign.center),
                           )
                         : FilledButton(
-                            key: const Key('getTickets'),
-                            onPressed: () => _startRegister(context, ref, payable),
-                            child: Text(sellsPaid ? t.getTickets : t.registerFree),
+                            key: const Key('joinWaitlistBar'),
+                            style: E360Buttons.gold,
+                            onPressed: () => _joinWaitlist(context, ref, e, waitlistType!),
+                            child: Text(t.joinWaitlist, textAlign: TextAlign.center),
                           ),
-                ]),
               ),
             )
           : null,
     );
+  }
+
+  /// "15,000 – 45,000 MMK", one price, or "Free".
+  static String _priceRange(L10n t, String lang, List<TicketType> types) {
+    if (types.isEmpty) return '';
+    final prices = types.map((x) => x.priceMmk).toList()..sort();
+    final lo = prices.first, hi = prices.last;
+    if (hi == 0) return t.free;
+    if (lo == hi) return t.mmk(formatAmount(hi, lang));
+    return '${lo == 0 ? t.free : formatAmount(lo, lang)} – ${t.mmk(formatAmount(hi, lang))}';
+  }
+
+  /// "By NAME" with only the name in bold (the name is the link to the organizer page).
+  static List<InlineSpan> _byOrganizer(String template, String name, ThemeData theme, {required bool linked}) {
+    final i = template.indexOf('\u0000');
+    final nameSpan = TextSpan(text: name, style: TextStyle(fontWeight: FontWeight.w700, color: linked ? theme.colorScheme.primary : null));
+    return [if (i > 0) TextSpan(text: template.substring(0, i)), nameSpan, if (i >= 0 && i + 1 < template.length) TextSpan(text: template.substring(i + 1))];
   }
 
   void _showPerformer(BuildContext context, Performer p, String lang) {
@@ -387,17 +528,40 @@ class _Detail extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       builder: (_) => _RegisterSheet(event: event, payable: payable),
     );
     if (orderId != null && context.mounted) await context.push('/checkout/$orderId');
   }
 }
 
+/// Join flow for a sold-out type: sign in first, then pick a quantity. Shared by the ticket row and the bottom bar.
+Future<void> _joinWaitlist(BuildContext context, WidgetRef ref, EventSummary event, TicketType type) async {
+  final me = await ref.read(sessionProvider.future);
+  if (!context.mounted) return;
+  if (me == null) {
+    await context.push('/login?from=${Uri.encodeComponent('/event/${event.id}')}');
+    return;
+  }
+  final joined = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _JoinWaitlistSheet(type: type),
+  );
+  if (joined == true) ref.invalidate(waitlistProvider);
+}
+
 /// Under a sold-out ticket type: "Join waitlist", then "You're #N in line · Leave" (or "Buy now" once an offer arrives).
+/// With [priceLabel] (the ticket picker) the price sits on the left of the join button.
 class _WaitlistRow extends ConsumerStatefulWidget {
-  const _WaitlistRow({required this.event, required this.type});
+  const _WaitlistRow({required this.event, required this.type, this.priceLabel, this.keyPrefix = ''});
   final EventSummary event;
   final TicketType type;
+  final String? priceLabel;
+
+  /// Keeps the keys apart when the same row shows on the page and in the ticket picker above it.
+  final String keyPrefix;
   @override
   ConsumerState<_WaitlistRow> createState() => _WaitlistRowState();
 }
@@ -405,21 +569,7 @@ class _WaitlistRow extends ConsumerStatefulWidget {
 class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
   bool _busy = false;
 
-  Future<void> _join() async {
-    final me = await ref.read(sessionProvider.future);
-    if (!mounted) return;
-    if (me == null) {
-      await context.push('/login?from=${Uri.encodeComponent('/event/${widget.event.id}')}');
-      return;
-    }
-    final joined = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _JoinWaitlistSheet(type: widget.type),
-    );
-    if (joined == true) ref.invalidate(waitlistProvider);
-  }
+  Future<void> _join() => _joinWaitlist(context, ref, widget.event, widget.type);
 
   Future<void> _leave() async {
     final t = L10n.of(context);
@@ -445,27 +595,41 @@ class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(children: [
-        if (entry == null)
+        if (entry == null) ...[
+          if (widget.priceLabel != null) ...[
+            Text(widget.priceLabel!, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            const SizedBox(width: 12),
+          ],
+          // The button takes what is left (and wraps its label) so a long Myanmar label cannot overflow the row
           Expanded(
-            child: OutlinedButton.icon(
-              key: Key('joinWaitlist-$id'),
-              onPressed: _join,
-              icon: const Icon(Icons.hourglass_empty),
-              label: Text(t.joinWaitlist),
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: OutlinedButton(
+                key: Key('${widget.keyPrefix}joinWaitlist-$id'),
+                style: E360Buttons.outline,
+                onPressed: _join,
+                child: Text(t.joinWaitlist, textAlign: TextAlign.center),
+              ),
             ),
-          )
-        else if (entry.isOffered) ...[
-          Expanded(child: Text(t.waitlistOfferedInline, key: Key('waitlistOffered-$id'), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700))),
-          FilledButton(key: Key('buyOffer-$id'), onPressed: () => openOffer(context, ref, entry), child: Text(t.buyNow)),
+          ),
+        ] else if (entry.isOffered) ...[
+          Expanded(child: Text(t.waitlistOfferedInline, key: Key('${widget.keyPrefix}waitlistOffered-$id'), style: theme.textTheme.titleSmall)),
+          // The offer is the thing to act on here, but the screen's one gold button is the bar's: navy
+          FilledButton(
+            key: Key('${widget.keyPrefix}buyOffer-$id'),
+            style: E360Buttons.navy.copyWith(minimumSize: const WidgetStatePropertyAll(Size(64, 44))),
+            onPressed: () => openOffer(context, ref, entry),
+            child: Text(t.buyNow),
+          ),
         ] else ...[
           Expanded(
             child: Text(
               t.waitlistPosition(entry.position ?? 1),
-              key: Key('waitlistPosition-$id'),
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              key: Key('${widget.keyPrefix}waitlistPosition-$id'),
+              style: theme.textTheme.titleSmall,
             ),
           ),
-          TextButton(key: Key('leaveWaitlist-$id'), onPressed: _busy ? null : _leave, child: Text(t.leaveWaitlist)),
+          TextButton(key: Key('${widget.keyPrefix}leaveWaitlist-$id'), onPressed: _busy ? null : _leave, child: Text(t.leaveWaitlist)),
         ],
       ]),
     );
@@ -518,14 +682,15 @@ class _JoinWaitlistSheetState extends ConsumerState<_JoinWaitlistSheet> {
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: Text('${t.quantity} · ${t.perPersonLimit(max_)}')),
-          IconButton.outlined(key: const Key('waitMinus'), onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', key: const Key('waitQty'), style: theme.textTheme.titleLarge)),
-          IconButton.outlined(key: const Key('waitPlus'), onPressed: _qty < max_ ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
+          StepperButton(key: const Key('waitMinus'), icon: Icons.remove, semanticLabel: t.fewerTickets(pickLang(lang, widget.type.name, widget.type.nameMy)), onPressed: _qty > 1 ? () => setState(() => _qty--) : null),
+          SizedBox(width: 36, child: Text('$_qty', key: const Key('waitQty'), textAlign: TextAlign.center, style: theme.textTheme.titleLarge)),
+          StepperButton(key: const Key('waitPlus'), icon: Icons.add, semanticLabel: t.moreTickets(pickLang(lang, widget.type.name, widget.type.nameMy)), onPressed: _qty < max_ ? () => setState(() => _qty++) : null),
         ]),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, key: const Key('waitError'), style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 16),
         FilledButton(
           key: const Key('waitSubmit'),
+          style: E360Buttons.navy,
           onPressed: _busy ? null : _submit,
           child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.waitlistJoinAction),
         ),
@@ -543,10 +708,123 @@ class _Banner extends StatelessWidget {
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
         child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
       );
 }
+
+/// White circle over the cover photo (back, calendar, share).
+class _RoundIcon extends StatelessWidget {
+  const _RoundIcon({required this.icon, required this.tooltip, required this.onPressed});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Color(0x2E15172E), blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: SizedBox.square(
+          dimension: 44,
+          child: Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            child: IconButton(
+              tooltip: tooltip,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              icon: Icon(icon, size: 22, color: E360Colors.ink),
+              onPressed: onPressed,
+            ),
+          ),
+        ),
+      );
+}
+
+/// Bordered white box: radius 14, 1 px line, no elevation.
+class _CardBox extends StatelessWidget {
+  const _CardBox({required this.child, this.selected = false});
+  final Widget child;
+  final bool selected;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: selected ? scheme.primary : scheme.outlineVariant, width: selected ? 2 : 1),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// One "Good to know" card (200 wide, scrolls sideways with its neighbours).
+class _GoodCard extends StatelessWidget {
+  const _GoodCard({required this.title, required this.body});
+  final String title, body;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 200,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 104),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
+          const SizedBox(height: 6),
+          Text(body, maxLines: 5, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14, height: 1.45)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// The description, cut at four lines with "Read more" when it is longer.
+class _Overview extends StatefulWidget {
+  const _Overview({required this.text});
+  final String text;
+  @override
+  State<_Overview> createState() => _OverviewState();
+}
+
+class _OverviewState extends State<_Overview> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodyLarge!;
+    return LayoutBuilder(builder: (context, c) {
+      final painter = TextPainter(text: TextSpan(text: widget.text, style: style), maxLines: 4, textDirection: Directionality.of(context), textScaler: MediaQuery.textScalerOf(context))
+        ..layout(maxWidth: c.maxWidth);
+      final cut = painter.didExceedMaxLines;
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(widget.text, maxLines: _open ? null : 4, overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis, style: style),
+        if (cut && !_open)
+          TextButton(
+            key: const Key('readMore'),
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(44, 44), alignment: AlignmentDirectional.centerStart, tapTargetSize: MaterialTapTargetSize.shrinkWrap, textStyle: theme.textTheme.labelLarge),
+            onPressed: () => setState(() => _open = true),
+            child: Text(t.readMore),
+          ),
+      ]);
+    });
+  }
+}
+
+/// Few enough left to say so in amber.
+bool _scarce(TicketType tt) => tt.remaining <= 20 || (tt.quota > 0 && tt.remaining * 4 <= tt.quota);
 
 class _RegisterSheet extends ConsumerStatefulWidget {
   const _RegisterSheet({required this.event, required this.payable});
@@ -563,6 +841,7 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
   final String _idempotencyKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   int _qty = 1;
   bool _busy = false;
+  bool _promoOpen = false;
   final _promo = TextEditingController();
   PromoCheck? _promoResult; // applied code (for the current type and quantity)
   bool _checking = false;
@@ -625,12 +904,97 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     }
   }
 
+  void _select(TicketType tt) => setState(() {
+        _type = tt;
+        _qty = 1;
+        _resetPromo();
+      });
+
+  Widget _typeCard(TicketType tt, String lang, L10n t, ThemeData theme) {
+    final dark = theme.brightness == Brightness.dark;
+    final selected = tt.id == _type.id;
+    final name = pickLang(lang, tt.name, tt.nameMy);
+    final limit = t.perPersonLimit(tt.maxPerOrder);
+    final scarce = _scarce(tt);
+    final amber = dark ? E360DarkColors.amberInk : E360Colors.amberInk;
+    final rise = priceRiseText(t, lang, tt.priceMmk, tt.nextPrice);
+    final max = [tt.maxPerOrder, tt.remaining].reduce((a, b) => a < b ? a : b);
+    return _CardBox(
+      selected: selected,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Expanded(child: Text(name, style: theme.textTheme.titleMedium)),
+            const SizedBox(width: 12),
+            StepperButton(
+              icon: Icons.remove,
+              semanticLabel: t.fewerTickets(name),
+              onPressed: selected && _qty > 1
+                  ? () => setState(() {
+                        _qty--;
+                        _resetPromo();
+                      })
+                  : null,
+            ),
+            SizedBox(width: 32, child: Text(selected ? '$_qty' : '0', key: Key('qty-${tt.id}'), textAlign: TextAlign.center, style: theme.textTheme.titleLarge)),
+            StepperButton(
+              icon: Icons.add,
+              semanticLabel: t.moreTickets(name),
+              onPressed: !selected
+                  ? (max > 0 ? () => _select(tt) : null)
+                  : _qty < _max
+                      ? () => setState(() {
+                            _qty++;
+                            _resetPromo();
+                          })
+                      : null,
+            ),
+          ]),
+        ),
+        Divider(color: theme.colorScheme.outlineVariant),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)), style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              scarce ? '${t.remaining(tt.remaining)} · $limit' : limit,
+              key: Key('scarcity-${tt.id}'),
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 14, color: scarce ? amber : null, fontWeight: scarce ? FontWeight.w600 : null),
+            ),
+            if (rise != null) Text(rise, key: Key('sheetRise-${tt.id}'), style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _soldOutCard(TicketType tt, String lang, L10n t, ThemeData theme) {
+    final price = tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang));
+    return _CardBox(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Expanded(child: Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
+            const SizedBox(width: 12),
+            E360Badge(t.soldOut, kind: E360BadgeKind.dark),
+          ]),
+        ),
+        Divider(color: theme.colorScheme.outlineVariant),
+        const SizedBox(height: 14),
+        _WaitlistRow(event: widget.event, type: tt, priceLabel: price, keyPrefix: 'sheet-'),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
-    final free = _options;
+    final scheme = theme.colorScheme;
     final view = resolveDiscount(
       tiers: widget.event.groupDiscounts,
       paidQty: _type.isFree ? 0 : _qty,
@@ -638,108 +1002,128 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
       totalMmk: _type.priceMmk * _qty,
       promo: _promoResult,
     );
+    final e = widget.event;
+    final listed = e.ticketTypes.where((x) => !x.seated && (x.soldOut || x.isFree || widget.payable)).toList();
+    final showPromo = _promoOpen || _promoResult != null || _promo.text.isNotEmpty;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: _done
-          ? Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.check_circle, size: 56, color: theme.colorScheme.primary),
-              const SizedBox(height: 12),
-              Text(t.registered, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  context.go('/tickets');
-                },
-                child: Text(t.viewTickets),
-              ),
-            ])
-          : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text(pickLang(lang, widget.event.title, widget.event.titleMy), style: theme.textTheme.titleLarge),
-              const SizedBox(height: 12),
-              for (final tt in free)
-                RadioListTile<String>(
-                  value: tt.id,
-                  groupValue: _type.id,
-                  onChanged: (_) => setState(() {
-                    _type = tt;
-                    _qty = 1;
-                    _resetPromo();
-                  }),
-                  title: Text(pickLang(lang, tt.name, tt.nameMy)),
-                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(t.remaining(tt.remaining)),
-                    if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null) Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('sheetRise-${tt.id}')),
-                  ]),
-                  secondary: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)), style: const TextStyle(fontWeight: FontWeight.w700)),
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_circle, size: 56, color: scheme.primary),
+                const SizedBox(height: 12),
+                Text(t.registered, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                FilledButton(
+                  style: E360Buttons.navy,
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    context.go('/tickets');
+                  },
+                  child: Text(t.viewTickets),
                 ),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: Text('${t.quantity} · ${t.perPersonLimit(_type.maxPerOrder)}')),
-                IconButton.outlined(
-                    onPressed: _qty > 1
-                        ? () => setState(() {
-                              _qty--;
-                              _resetPromo();
-                            })
-                        : null,
-                    icon: const Icon(Icons.remove)),
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', style: theme.textTheme.titleLarge)),
-                IconButton.outlined(
-                    onPressed: _qty < _max
-                        ? () => setState(() {
-                              _qty++;
-                              _resetPromo();
-                            })
-                        : null,
-                    icon: const Icon(Icons.add)),
               ]),
-              if (!_type.isFree) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(
-                      child: TextField(
-                        key: const Key('promoField'),
-                        controller: _promo,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: InputDecoration(labelText: t.promoCode, isDense: true),
-                        onChanged: (_) => setState(_resetPromo),
-                        onSubmitted: (_) => _applyPromo(),
+            )
+          : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Column(children: [
+                        Text(pickLang(lang, e.title, e.titleMy), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                        Text('${formatDay(e.startsAt, lang)} · ${formatTime(e.startsAt, lang)}', textAlign: TextAlign.center, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
+                      ]),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                    constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ]),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    for (final tt in listed) ...[
+                      tt.soldOut ? _soldOutCard(tt, lang, t, theme) : _typeCard(tt, lang, t, theme),
+                      const SizedBox(height: 12),
+                    ],
+                    if (!_type.isFree) ...[
+                      if (!showPromo)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton(
+                            key: const Key('sheetAddPromo'),
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(44, 44), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                            onPressed: () => setState(() => _promoOpen = true),
+                            child: Text(t.addPromoCode, style: theme.textTheme.labelLarge?.copyWith(color: scheme.primary, decoration: TextDecoration.underline, decorationColor: scheme.primary)),
+                          ),
+                        )
+                      else ...[
+                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(
+                            child: TextField(
+                              key: const Key('promoField'),
+                              controller: _promo,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: InputDecoration(labelText: t.promoCode, isDense: true),
+                              onChanged: (_) => setState(_resetPromo),
+                              onSubmitted: (_) => _applyPromo(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(key: const Key('promoApply'), style: E360Buttons.outline, onPressed: _checking ? null : _applyPromo, child: Text(t.apply)),
+                        ]),
+                        if (_promoResult != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: _promoResult!.valid
+                                ? (_promoResult!.promoApplied
+                                    ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w600))
+                                    : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
+                                : Text(promoReasonText(t, _promoResult!.reasonCode), style: TextStyle(color: scheme.error)),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ]),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 16),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (!_type.isFree) DiscountLines(view: view, lang: lang),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: TotalRow(
+                        label: Text(t.ticketsTotal(_qty), style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant)),
+                        original: !_type.isFree && view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+                        total: _type.isFree ? t.free : t.mmk(formatAmount(view.totalMmk, lang)),
+                        totalKey: const Key('sheetTotal'),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(key: const Key('promoApply'), onPressed: _checking ? null : _applyPromo, child: Text(t.apply)),
+                    if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: scheme.error))),
+                    const SizedBox(height: 14),
+                    FilledButton(
+                      key: const Key('sheetSubmit'),
+                      style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)), textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
+                      onPressed: _busy ? null : _submit,
+                      child: _busy
+                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: E360Colors.goldInk))
+                          : Text(_type.isFree ? t.register : t.continueToPayment),
+                    ),
                   ]),
                 ),
-                if (_promoResult != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: _promoResult!.valid
-                        ? (_promoResult!.promoApplied
-                            ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
-                            : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
-                        : Text(promoReasonText(t, _promoResult!.reasonCode), style: TextStyle(color: theme.colorScheme.error)),
-                  ),
-                DiscountLines(view: view, lang: lang),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TotalRow(
-                    label: Text(t.total, style: theme.textTheme.titleMedium),
-                    original: view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
-                    total: t.mmk(formatAmount(view.totalMmk, lang)),
-                    totalKey: const Key('sheetTotal'),
-                  ),
-                ),
-              ],
-              if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
-              const SizedBox(height: 16),
-              FilledButton(
-                key: const Key('sheetSubmit'),
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-                    : Text(_type.isFree ? t.register : t.checkout),
               ),
             ]),
     );

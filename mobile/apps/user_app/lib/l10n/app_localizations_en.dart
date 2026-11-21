@@ -683,4 +683,58 @@ class L10nEn extends L10n {
 
   @override
   String get offerTotalEstimate => 'Estimated total';
+
+  @override
+  String get overview => 'Overview';
+
+  @override
+  String get goodToKnow => 'Good to know';
+
+  @override
+  String get readMore => 'Read more';
+
+  @override
+  String get continueToPayment => 'Continue to payment';
+
+  @override
+  String byOrganizer(String name) {
+    return 'By $name';
+  }
+
+  @override
+  String get priceRiseSoon => 'Price rises soon';
+
+  @override
+  String priceRiseCard(String type, String price, String date) {
+    return '$type goes to $price on $date';
+  }
+
+  @override
+  String get groupDiscountTitle => 'Group discount';
+
+  @override
+  String groupTierLine(int n, String percent) {
+    return '$n+ tickets: $percent% off';
+  }
+
+  @override
+  String ticketsTotal(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n tickets',
+      one: '1 ticket',
+    );
+    return '$_temp0 · Total';
+  }
+
+  @override
+  String fewerTickets(String type) {
+    return 'One fewer $type ticket';
+  }
+
+  @override
+  String moreTickets(String type) {
+    return 'One more $type ticket';
+  }
 }

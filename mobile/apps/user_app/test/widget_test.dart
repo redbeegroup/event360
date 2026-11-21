@@ -120,6 +120,16 @@ class FakeApi extends Event360Api {
         ],
       };
 
+  /// Standing types only: one nearly gone, one plain, one sold out (a waitlist offer can sit on it).
+  static Map<String, dynamic> mixedEventJson() => {
+        ...eventJson('mixed', free: false),
+        'ticketTypes': [
+          {'id': 'tt-mix-a', 'name': 'Standing', 'nameMy': 'ရပ်ကြည့်', 'priceMmk': 5000, 'quota': 100, 'remaining': 8, 'maxPerOrder': 4, 'color': '#2563eb'},
+          {'id': 'tt-mix-b', 'name': 'VIP deck', 'nameMy': null, 'priceMmk': 35000, 'quota': 100, 'remaining': 60, 'maxPerOrder': 2, 'color': '#c2410c'},
+          {'id': 'tt-mix-c', 'name': 'Early bird', 'nameMy': null, 'priceMmk': 10000, 'quota': 50, 'remaining': 0, 'maxPerOrder': 2, 'color': '#16a34a'},
+        ],
+      };
+
   static Map<String, dynamic> twoTypeEventJson() => {
         ...seatedEventJson(),
         'id': 'seated2',
@@ -373,7 +383,7 @@ class FakeApi extends Event360Api {
               {'id': 'tt-soldout', 'name': 'General', 'nameMy': 'အထွေထွေ', 'priceMmk': 5000, 'quota': 100, 'remaining': 0, 'maxPerOrder': 4},
             ],
           }
-        : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+        : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
@@ -772,7 +782,7 @@ void main() {
 
     await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 3000); // back to the top
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Yangon Live'));
+    await tester.tap(find.byKey(const Key('organizerLink')));
     await tester.pumpAndSettle();
     expect(find.text('We run food festivals'), findsOneWidget);
     expect(find.text('Yangon Food Fair e1'), findsWidgets);
@@ -941,6 +951,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
+    await tester.tap(find.byKey(const Key('sheetAddPromo'))); // the field opens from "Add promo code"
+    await tester.pump();
     await tester.enterText(find.byKey(const Key('promoField')), 'nope');
     await tester.tap(find.byKey(const Key('promoApply')));
     await tester.pumpAndSettle();
@@ -1049,6 +1061,8 @@ void main() {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
     expect(find.text('Group discount −1,500 MMK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sheetAddPromo'))); // the field opens from "Add promo code"
+    await tester.pump();
     await tester.enterText(find.byKey(const Key('promoField')), 'save20');
     await tester.tap(find.byKey(const Key('promoApply')));
     await tester.pumpAndSettle();
@@ -1405,6 +1419,8 @@ void main() {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
     final full = total();
+    await tester.tap(find.byKey(const Key('sheetAddPromo'))); // the field opens from "Add promo code"
+    await tester.pump();
     await tester.enterText(find.byKey(const Key('promoField')), 'save20');
     await tester.tap(find.byKey(const Key('promoApply')));
     await tester.pumpAndSettle();
@@ -1721,7 +1737,7 @@ void main() {
     await openEvent(tester, 'soldout');
     final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
     await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
-    expect(find.text('Join waitlist'), findsOneWidget);
+    expect(find.text('Join waitlist'), findsNWidgets(2)); // the ticket row and the bottom bar
     await tester.tap(join);
     await tester.pumpAndSettle();
     expect(find.text('Join the waitlist'), findsOneWidget);
@@ -2087,4 +2103,168 @@ void main() {
     expect(api.waitlistLoads, n); // nothing active: no timer
     await tester.pumpWidget(const SizedBox());
   });
+
+  // ───── Event page and ticket picker (visual refresh) ─────
+  Finder goldButtons() => find.byWidgetPredicate((w) => w is FilledButton && w.style?.backgroundColor?.resolve({}) == E360Colors.gold);
+
+  testWidgets('event page shows the bottom bar with price range and the right action', (tester) async {
+    final methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+    // (event, price line, action key, action label)
+    for (final (id, price, key, label) in [
+      ('seated', '20,000 MMK', 'chooseSeats', 'Choose seats'),
+      ('e2', '5,000 MMK', 'getTickets', 'Get tickets'),
+      ('e1', 'Free', 'getTickets', 'Register for free'),
+      ('mixed', '5,000 – 35,000 MMK', 'getTickets', 'Get tickets'),
+      ('soldout', '5,000 MMK', 'joinWaitlistBar', 'Join waitlist'),
+    ]) {
+      await pumpApp(tester, signedIn: true, setup: (a) => a.methods = methods);
+      GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/$id');
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.byKey(const Key('barPrice'))).data, price, reason: id);
+      expect(tester.widget<Text>(find.byKey(const Key('barDate'))).data, contains('15 Jan'), reason: id);
+      final action = find.byKey(Key(key));
+      expect(action, findsOneWidget, reason: id);
+      expect(find.descendant(of: action, matching: find.text(label)), findsOneWidget, reason: id);
+      expect(goldButtons(), findsOneWidget, reason: '$id: the bar action is the only gold button');
+      expect(find.descendant(of: find.byType(PrimaryActionBar), matching: action), findsOneWidget, reason: id);
+      await tester.pumpWidget(const SizedBox());
+    }
+    // Paid tickets with no payment method yet: "on sale soon", no bar at all
+    await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    expect(find.byType(PrimaryActionBar), findsNothing);
+    // Already in line for the sold-out type: the waitlist row says so and the bar is gone
+    await pumpApp(tester, signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w1', position: 2)]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/soldout');
+    await tester.pumpAndSettle();
+    expect(find.byType(PrimaryActionBar), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('good to know lists price rise and group discount when present, and is hidden when empty', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.nextPriceJson = {'priceMmk': 7000, 'startsAt': '2027-01-10T08:00:00.000Z'};
+      a.groupTiers = [
+        {'minQuantity': 4, 'percentBp': 2000},
+        {'minQuantity': 2, 'percentBp': 1000},
+      ];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    expect(find.text('Good to know'), findsOneWidget);
+    expect(find.text('Price rises soon'), findsOneWidget);
+    expect(find.text('General goes to 7,000 MMK on Sun, 10 Jan'), findsOneWidget);
+    expect(find.text('Group discount'), findsOneWidget);
+    expect(find.text('2+ tickets: 10% off\n4+ tickets: 20% off'), findsOneWidget); // tiers in order
+    // The rich fixture's refund policy shows too
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/rich');
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('goodToKnow')), matching: find.text('No refunds')), findsOneWidget);
+    // Free event with nothing to add: no section
+    await tester.pumpWidget(const SizedBox());
+    await pumpApp(tester, signedIn: true);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e1');
+    await tester.pumpAndSettle();
+    expect(find.text('Good to know'), findsNothing);
+    expect(find.byKey(const Key('goodToKnow')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('ticket picker cards have steppers, scarcity line and sold-out badge with Join waitlist', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    // One card per type, steppers on the two on sale
+    expect(find.byType(StepperButton), findsNWidgets(4));
+    expect(find.bySemanticsLabel('One more Standing ticket'), findsOneWidget);
+    expect(find.bySemanticsLabel('One fewer VIP deck ticket'), findsOneWidget);
+    // Scarcity in amber only where few are left; the limit is always there
+    expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-a'))).data, '8 left · Up to 4 per person');
+    expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-b'))).data, 'Up to 2 per person');
+    expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-a'))).style?.color, E360Colors.amberInk);
+    expect(tester.widget<Text>(find.byKey(const Key('scarcity-tt-mix-b'))).style?.color, isNot(E360Colors.amberInk));
+    // The first type is selected: 2 px navy border on it only
+    final selectedBorder = find.byWidgetPredicate((w) => w is Container && w.decoration is BoxDecoration && (w.decoration as BoxDecoration).border?.top.width == 2);
+    expect(selectedBorder, findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-a'))).data, '1');
+    expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-b'))).data, '0');
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '5,000 MMK');
+    // + on another type moves the selection to it
+    await tester.tap(find.byIcon(Icons.add).last);
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-b'))).data, '1');
+    expect(tester.widget<Text>(find.byKey(const Key('qty-tt-mix-a'))).data, '0');
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '35,000 MMK');
+    expect(find.text('1 ticket · Total'), findsOneWidget);
+    // Sold-out type: dark badge and the existing waitlist flow
+    expect(find.text('SOLD OUT'), findsOneWidget);
+    final join = find.byKey(const Key('sheet-joinWaitlist-tt-mix-c'));
+    expect(join, findsOneWidget);
+    expect(find.descendant(of: join, matching: find.text('Join waitlist')), findsOneWidget);
+    await tester.tap(join);
+    await tester.pumpAndSettle();
+    expect(find.text('Join the waitlist'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('waitSubmit')));
+    await tester.pumpAndSettle();
+    expect(api.waitlistJoins, ['tt-mix-c:1']);
+    // The gold "Continue to payment" is the sheet's action
+    expect(find.descendant(of: find.byKey(const Key('sheetSubmit')), matching: find.text('Continue to payment')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('only one gold button is on screen when an offer banner is visible', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
+    });
+    expect(find.byKey(const Key('offerBanner')), findsOneWidget); // the banner on Discover
+    expect(goldButtons(), findsNothing);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    final buy = find.byKey(const Key('buyOffer-tt-mix-c'));
+    await tester.scrollUntilVisible(buy, 200, scrollable: find.byType(Scrollable).first);
+    expect(buy, findsOneWidget);
+    expect(find.byKey(const Key('getTickets')), findsOneWidget); // the bar is up
+    expect(goldButtons(), findsOneWidget);
+    expect(tester.widget<FilledButton>(buy).style?.backgroundColor?.resolve({}), isNot(E360Colors.gold));
+    expect(find.descendant(of: find.byType(PrimaryActionBar), matching: goldButtons()), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('event page and ticket picker have no overflow at 360 and 412 dp in EN and MY', (tester) async {
+    for (final lang in ['en', 'my']) {
+      for (final id in ['mixed', 'seated2', 'rich']) {
+        await pumpApp(tester, signedIn: true, lang: lang, setup: (a) {
+          a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+          a.nextPriceJson = {'priceMmk': 700000, 'startsAt': '2027-01-10T08:00:00.000Z'};
+          a.groupTiers = [
+            {'minQuantity': 2, 'percentBp': 1000},
+            {'minQuantity': 4, 'percentBp': 2000},
+          ];
+          a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
+        });
+        await phoneWidth(tester);
+        GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/$id');
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$lang $id top');
+        await tester.fling(find.byType(Scrollable).first, const Offset(0, -3000), 3000); // to the bottom
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$lang $id scrolled');
+        if (id == 'mixed') {
+          await tester.tap(find.byKey(const Key('getTickets')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byIcon(Icons.add).first);
+          await tester.pump();
+          await tester.tap(find.byKey(const Key('sheetAddPromo')));
+          await tester.pump();
+          expect(tester.takeException(), isNull, reason: '$lang picker');
+        }
+        await tester.pumpWidget(const SizedBox());
+      }
+    }
+  }, variant: phoneWidths);
 }

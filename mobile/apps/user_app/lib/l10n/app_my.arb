@@ -201,5 +201,17 @@
   "waitlistNotIn": "သင်သည် ဤစောင့်ဆိုင်းစာရင်းတွင် မရှိပါ",
   "waitlistGenericError": "တစ်ခုခု မှားယွင်းသွားပါသည်။ ထပ်မံကြိုးစားပါ။",
   "waitlistCheckoutPending": "သင့်စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်မှ ငွေပေးချေမှုကို အရင် ပြီးဆုံးပါ သို့မဟုတ် ပယ်ဖျက်ပါ",
-  "offerTotalEstimate": "ခန့်မှန်း စုစုပေါင်း"
+  "offerTotalEstimate": "ခန့်မှန်း စုစုပေါင်း",
+  "overview": "အကျဉ်းချုပ်",
+  "goodToKnow": "သိထားသင့်သည်များ",
+  "readMore": "ဆက်ဖတ်ရန်",
+  "continueToPayment": "ငွေပေးချေရန် ဆက်သွားမည်",
+  "byOrganizer": "စီစဉ်သူ {name}",
+  "priceRiseSoon": "စျေးနှုန်း မကြာမီ တက်မည်",
+  "priceRiseCard": "{type} သည် {date} တွင် {price} ဖြစ်မည်",
+  "groupDiscountTitle": "အုပ်စုလျှော့စျေး",
+  "groupTierLine": "{n} စောင်နှင့်အထက် {percent}% လျှော့",
+  "ticketsTotal": "လက်မှတ် {n} စောင် · စုစုပေါင်း",
+  "fewerTickets": "{type} လက်မှတ် တစ်စောင် လျှော့ရန်",
+  "moreTickets": "{type} လက်မှတ် တစ်စောင် တိုးရန်"
 }

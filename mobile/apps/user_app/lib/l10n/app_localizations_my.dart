@@ -687,4 +687,52 @@ class L10nMy extends L10n {
 
   @override
   String get offerTotalEstimate => 'ခန့်မှန်း စုစုပေါင်း';
+
+  @override
+  String get overview => 'အကျဉ်းချုပ်';
+
+  @override
+  String get goodToKnow => 'သိထားသင့်သည်များ';
+
+  @override
+  String get readMore => 'ဆက်ဖတ်ရန်';
+
+  @override
+  String get continueToPayment => 'ငွေပေးချေရန် ဆက်သွားမည်';
+
+  @override
+  String byOrganizer(String name) {
+    return 'စီစဉ်သူ $name';
+  }
+
+  @override
+  String get priceRiseSoon => 'စျေးနှုန်း မကြာမီ တက်မည်';
+
+  @override
+  String priceRiseCard(String type, String price, String date) {
+    return '$type သည် $date တွင် $price ဖြစ်မည်';
+  }
+
+  @override
+  String get groupDiscountTitle => 'အုပ်စုလျှော့စျေး';
+
+  @override
+  String groupTierLine(int n, String percent) {
+    return '$n စောင်နှင့်အထက် $percent% လျှော့';
+  }
+
+  @override
+  String ticketsTotal(int n) {
+    return 'လက်မှတ် $n စောင် · စုစုပေါင်း';
+  }
+
+  @override
+  String fewerTickets(String type) {
+    return '$type လက်မှတ် တစ်စောင် လျှော့ရန်';
+  }
+
+  @override
+  String moreTickets(String type) {
+    return '$type လက်မှတ် တစ်စောင် တိုးရန်';
+  }
 }

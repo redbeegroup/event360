@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../app/format.dart';
@@ -30,7 +31,7 @@ class DiscountLines extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (groupApplies)
           Text(t.groupDiscountLine(t.mmk(formatAmount(view.discountMmk, lang))),
-              key: const Key('groupDiscountLine'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+              key: const Key('groupDiscountLine'), style: TextStyle(color: theme.brightness == Brightness.dark ? E360DarkColors.success : E360Colors.success, fontWeight: FontWeight.w600)),
         if (view.promoLost) Text(t.promoLostToGroup, key: const Key('promoLostNote'), style: theme.textTheme.bodySmall),
         if (next != null) Text(t.groupDiscountHint(next.minQuantity, percentText(next.percentBp)), key: const Key('groupDiscountHint'), style: theme.textTheme.bodySmall),
       ]),

@@ -1308,6 +1308,78 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Estimated total'**
   String get offerTotalEstimate;
+
+  /// No description provided for @overview.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get overview;
+
+  /// No description provided for @goodToKnow.
+  ///
+  /// In en, this message translates to:
+  /// **'Good to know'**
+  String get goodToKnow;
+
+  /// No description provided for @readMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Read more'**
+  String get readMore;
+
+  /// No description provided for @continueToPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue to payment'**
+  String get continueToPayment;
+
+  /// No description provided for @byOrganizer.
+  ///
+  /// In en, this message translates to:
+  /// **'By {name}'**
+  String byOrganizer(String name);
+
+  /// No description provided for @priceRiseSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Price rises soon'**
+  String get priceRiseSoon;
+
+  /// No description provided for @priceRiseCard.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} goes to {price} on {date}'**
+  String priceRiseCard(String type, String price, String date);
+
+  /// No description provided for @groupDiscountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Group discount'**
+  String get groupDiscountTitle;
+
+  /// No description provided for @groupTierLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{n}+ tickets: {percent}% off'**
+  String groupTierLine(int n, String percent);
+
+  /// No description provided for @ticketsTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, =1{1 ticket} other{{n} tickets}} · Total'**
+  String ticketsTotal(int n);
+
+  /// No description provided for @fewerTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'One fewer {type} ticket'**
+  String fewerTickets(String type);
+
+  /// No description provided for @moreTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'One more {type} ticket'**
+  String moreTickets(String type);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

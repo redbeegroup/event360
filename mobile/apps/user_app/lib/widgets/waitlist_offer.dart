@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -264,9 +265,9 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: Text(t.quantity)),
-          IconButton.outlined(key: const Key('offerMinus'), onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', key: const Key('offerQty'), style: theme.textTheme.titleLarge)),
-          IconButton.outlined(key: const Key('offerPlus'), onPressed: _qty < max_ ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
+          StepperButton(key: const Key('offerMinus'), icon: Icons.remove, semanticLabel: t.fewerTickets(pickLang(lang, e.ticketTypeName, e.ticketTypeNameMy)), onPressed: _qty > 1 ? () => setState(() => _qty--) : null),
+          SizedBox(width: 36, child: Text('$_qty', key: const Key('offerQty'), textAlign: TextAlign.center, style: theme.textTheme.titleLarge)),
+          StepperButton(key: const Key('offerPlus'), icon: Icons.add, semanticLabel: t.moreTickets(pickLang(lang, e.ticketTypeName, e.ticketTypeNameMy)), onPressed: _qty < max_ ? () => setState(() => _qty++) : null),
         ]),
         if (view != null) ...[
           DiscountLines(view: view, lang: lang),
@@ -274,7 +275,7 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
             padding: const EdgeInsets.only(top: 8),
             child: Row(children: [
               Expanded(child: Text(t.offerTotalEstimate, style: theme.textTheme.titleMedium)),
-              Text(t.mmk(formatAmount(view.totalMmk, lang)), key: const Key('offerTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text(t.mmk(formatAmount(view.totalMmk, lang)), key: const Key('offerTotal'), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
             ]),
           ),
         ],
@@ -282,6 +283,7 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
         const SizedBox(height: 16),
         FilledButton(
           key: const Key('offerSubmit'),
+          style: E360Buttons.navy,
           onPressed: _busy || !live ? null : _submit,
           child: _busy
               ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))

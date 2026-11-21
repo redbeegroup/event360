@@ -13,8 +13,8 @@ class TotalAmounts extends StatelessWidget {
     final theme = Theme.of(context);
     Widget fit(Widget w) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: w);
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-      if (original != null) fit(Text(original!, style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough))),
-      fit(Text(total, key: totalKey, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+      if (original != null) fit(Text(original!, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14, decoration: TextDecoration.lineThrough))),
+      fit(Text(total, key: totalKey, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800))),
     ]);
   }
 }
