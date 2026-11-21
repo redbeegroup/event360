@@ -513,6 +513,10 @@ run('Seated events', () => {
     await prisma.eventSeat.update({ where: { eventId_seatKey: { eventId: ev.id, seatKey: 'A:1:1' } }, data: { status: 'SOLD' } });
     await prisma.eventSeat.update({ where: { eventId_seatKey: { eventId: ev.id, seatKey: 'A:1:2' } }, data: { status: 'CHECKOUT_HOLD' } });
     await prisma.eventSeat.update({ where: { eventId_seatKey: { eventId: ev.id, seatKey: 'A:1:3' } }, data: { status: 'GUEST_HOLD' } });
+    // Timed prices: Std rises later (shown as nextPrice); VIP's step is already in effect (current price). Colours stay by base price.
+    const stdStep = new Date(Date.now() + 2 * 3600e3);
+    await http.put(`${base(ev.id)}/ticket-types/${std}/price-steps`).set(O).send({ steps: [{ startsAt: stdStep.toISOString(), priceMmk: 40_000 }] }).expect(200);
+    await prisma.ticketPriceStep.create({ data: { ticketTypeId: vip, startsAt: new Date(Date.now() - 60_000), priceMmk: 35_000n } });
     const r = await http.get(`/v1/events/${ev.slug}/seats`).expect(200);
     const n = expandSeats(mixed as any).length;
     expect(r.body.versionId).toBe(versionId);
@@ -521,8 +525,8 @@ run('Seated events', () => {
     expect(r.body.status).toHaveLength(n);
     // price ascending: Std = 0, VIP = 1; Std has no colour so takes the palette entry for its price rank
     expect(r.body.types.map((t: any) => t.id)).toEqual([std, vip]);
-    expect(r.body.types[0]).toMatchObject({ name: 'Std', priceMmk: 10000, color: '#f2b632' });
-    expect(r.body.types[1]).toMatchObject({ name: 'VIP', nameMy: 'ဗစ်ပ်', priceMmk: 30000, color: '#abcdef' });
+    expect(r.body.types[0]).toMatchObject({ name: 'Std', priceMmk: 10000, basePriceMmk: 10000, color: '#f2b632', nextPrice: { priceMmk: 40000 } });
+    expect(r.body.types[1]).toMatchObject({ name: 'VIP', nameMy: 'ဗစ်ပ်', priceMmk: 35000, basePriceMmk: 30000, color: '#abcdef', nextPrice: null });
     // layout order: A row1 (3 seats), A row2 (3), B (2)
     expect(r.body.seatTypes).toBe('111000--');
     expect(r.body.status).toBe('TTGAAAUU');

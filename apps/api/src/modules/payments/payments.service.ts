@@ -20,7 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventSeatsService } from '../seating/event-seats.service';
 import { claimSeats, SEATED_TX, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
 import { commission, pickRule } from './fee';
-import { currentPrice } from './pricing';
+import { currentPrice, priceView } from './pricing';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
 import { KbzPayProvider } from './providers/kbzpay.provider';
@@ -867,8 +867,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   /** Organizer view of one event's sales. */
   async eventSales(organizationId: string, eventId: string) {
-    const e = await this.prisma.event.findFirst({ where: { id: eventId, organizationId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' } } } });
+    const e = await this.prisma.event.findFirst({ where: { id: eventId, organizationId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' }, include: { priceSteps: true } } } });
     if (!e) throw new NotFoundException('Event not found');
+    // What each type actually earned: the frozen unit price of paid, non-comp order items
+    const earned = new Map<string, bigint>();
+    for (const r of await this.prisma.orderItem.findMany({ where: { order: { eventId, status: 'PAID', channel: { not: 'COMP' } } }, select: { ticketTypeId: true, quantity: true, unitPriceMmk: true } })) {
+      earned.set(r.ticketTypeId, (earned.get(r.ticketTypeId) ?? 0n) + r.unitPriceMmk * BigInt(r.quantity));
+    }
+    const nowT = new Date();
     const paid = await this.prisma.order.aggregate({ where: { eventId, status: 'PAID', totalMmk: { gt: 0n }, channel: { not: 'COMP' } }, _sum: { totalMmk: true, commissionMmk: true }, _count: true });
     const refunded = await this.prisma.order.aggregate({ where: { eventId, status: 'REFUNDED', channel: { not: 'COMP' } }, _sum: { totalMmk: true }, _count: true });
     const recent = await this.prisma.order.findMany({
@@ -880,7 +886,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const gross = paid._sum.totalMmk ?? 0n;
     const fee = paid._sum.commissionMmk ?? 0n;
     return {
-      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, priceMmk: mmk(t.priceMmk), quota: t.quota, sold: t.sold, held: t.held, revenueMmk: mmk(t.priceMmk * BigInt(t.sold)) })),
+      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, ...priceView(t, nowT), quota: t.quota, sold: t.sold, held: t.held, revenueMmk: mmk(earned.get(t.id) ?? 0n) })),
       paidOrders: paid._count,
       grossMmk: mmk(gross),
       commissionMmk: mmk(fee),

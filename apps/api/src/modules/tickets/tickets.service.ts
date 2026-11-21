@@ -78,7 +78,7 @@ export class TicketsService {
       where: { holderUserId: userId },
       orderBy: { createdAt: 'desc' },
       include: {
-        order: { select: { totalMmk: true, channel: true } },
+        order: { select: { totalMmk: true, channel: true, items: { select: { ticketTypeId: true, unitPriceMmk: true } } } },
         ticketType: {
           include: { event: { include: { venue: true, organization: { select: { name: true } } } } },
         },
@@ -95,7 +95,7 @@ export class TicketsService {
         seatLabelMy: t.seatLabelMy,
         isComplimentary: t.isComplimentary,
         compLabel: t.compLabel,
-        ticketType: { id: t.ticketTypeId, name: t.ticketType.name, nameMy: t.ticketType.nameMy, priceMmk: mmk(t.ticketType.priceMmk) },
+        ticketType: { id: t.ticketTypeId, name: t.ticketType.name, nameMy: t.ticketType.nameMy, priceMmk: t.isComplimentary ? 0 : mmk(t.order.items.find((i) => i.ticketTypeId === t.ticketTypeId)?.unitPriceMmk ?? 0n) },
         event: {
           id: e.id,
           slug: e.slug,

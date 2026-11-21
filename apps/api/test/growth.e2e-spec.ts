@@ -171,4 +171,43 @@ run('Organizer growth', () => {
     // and a type with steps can't be made free
     await http.patch(`${e.base}/ticket-types/${e.paid}`).set(O).send({ priceMmk: 0 }).expect(400);
   });
+
+  it('reports use the price actually charged: dashboard, attendee CSV, ticket view, organizer type list', async () => {
+    const e = await newEvent('Reports');
+    await http.put(`${e.base}/ticket-types/${e.paid}/price-steps`).set(O).send({ steps: [{ startsAt: inHours(1), priceMmk: 14_000 }] }).expect(200);
+    const b1 = await consumer();
+    const b2 = await consumer();
+    const buy = async (h: Record<string, string>) => {
+      const o = await http.post(`/v1/events/${e.eventId}/orders`).set(h).send({ items: [{ ticketTypeId: e.paid, quantity: 1 }] }).expect(201);
+      await confirm(await payMock(h, o.body.id));
+      return o.body.id as string;
+    };
+    await buy(b1);
+    await prisma.ticketPriceStep.updateMany({ where: { ticketTypeId: e.paid }, data: { startsAt: new Date(Date.now() - 1000) } });
+    await buy(b2);
+    await http.put(`${e.base}/ticket-types/${e.paid}/price-steps`).set(O).send({ steps: [] }).expect(400); // in effect now
+    await http.put(`${e.base}/ticket-types/${e.paid}/price-steps`).set(O).send({ steps: [{ startsAt: (await prisma.ticketPriceStep.findFirstOrThrow({ where: { ticketTypeId: e.paid } })).startsAt.toISOString(), priceMmk: 14_000 }, { startsAt: inHours(30), priceMmk: 20_000 }] }).expect(200);
+
+    const d = await http.get(`${e.base}/dashboard`).set(O).expect(200);
+    expect(d.body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ priceMmk: 14_000, basePriceMmk: 10_000, nextPrice: { priceMmk: 20_000 } });
+    const sales = await http.get(`${e.base}/sales`).set(O).expect(200);
+    expect(sales.body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ priceMmk: 14_000, basePriceMmk: 10_000, revenueMmk: 24_000 });
+    const csv = await http.get(`${e.base}/attendees.csv`).set(O).expect(200);
+    const prices = csv.text.replace(/^\uFEFF/, '').split('\r\n').slice(1).filter(Boolean).map((l: string) => l.replace(/"/g, '').split(',')[4]).sort();
+    expect(prices).toEqual(['10000', '14000']);
+    const t1 = (await http.get('/v1/me/tickets').set(b1).expect(200)).body[0];
+    const t2 = (await http.get('/v1/me/tickets').set(b2).expect(200)).body[0];
+    expect(t1.ticketType.priceMmk).toBe(10_000);
+    expect(t2.ticketType.priceMmk).toBe(14_000);
+  });
+
+  it('parallel price-steps updates never leave duplicate or in-effect-violating state', async () => {
+    const e = await newEvent('Race');
+    const url = `${e.base}/ticket-types/${e.paid}/price-steps`;
+    const at = inHours(3);
+    const rs = await Promise.all([1, 2, 3, 4].map((i) => http.put(url).set(O).send({ steps: [{ startsAt: at, priceMmk: 11_000 + i }] })));
+    expect(rs.every((r) => r.status === 200 || r.status === 409)).toBe(true);
+    expect(rs.some((r) => r.status === 200)).toBe(true);
+    expect(await prisma.ticketPriceStep.count({ where: { ticketTypeId: e.paid } })).toBe(1);
+  });
 });

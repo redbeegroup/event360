@@ -6,6 +6,7 @@ import type { Response } from 'express';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { maskPhone, mmk } from '../../common/util';
+import { priceView } from '../payments/pricing';
 import { normalizeCode } from '../payments/promo';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -33,7 +34,7 @@ export class OrgToolsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async event(orgId: string, id: string) {
-    const e = await this.prisma.event.findFirst({ where: { id, organizationId: orgId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' } } } });
+    const e = await this.prisma.event.findFirst({ where: { id, organizationId: orgId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' }, include: { priceSteps: true } } } });
     if (!e) throw new NotFoundException('Event not found');
     return e;
   }
@@ -129,9 +130,9 @@ export class OrgToolsService {
       where: { ticketType: { eventId } },
       orderBy: { createdAt: 'asc' },
       include: {
-        ticketType: { select: { name: true, priceMmk: true } },
+        ticketType: { select: { name: true } },
         holder: { select: { displayName: true, phone: true } },
-        order: { select: { id: true, status: true, createdAt: true, discountMmk: true, promoCode: { select: { code: true } } } },
+        order: { select: { id: true, status: true, createdAt: true, discountMmk: true, promoCode: { select: { code: true } }, items: { select: { ticketTypeId: true, unitPriceMmk: true } } } },
         checkins: { where: { undoneAt: null, isDuplicate: false }, orderBy: { scannedAt: 'asc' }, take: 1 },
       },
     });
@@ -148,7 +149,7 @@ export class OrgToolsService {
         t.holder.displayName ?? '',
         maskPhone(t.holder.phone) ?? '',
         t.ticketType.name,
-        t.isComplimentary ? 0 : mmk(t.ticketType.priceMmk),
+        t.isComplimentary ? 0 : mmk(t.order.items.find((i) => i.ticketTypeId === t.ticketTypeId)?.unitPriceMmk ?? 0n), // the price charged, frozen on the order
         t.status,
         t.order.id.slice(0, 8),
         t.order.status,
@@ -241,7 +242,7 @@ export class OrgToolsService {
       daily: series,
       checkinsByQuarterHour: [...buckets.entries()].sort().map(([at, count]) => ({ at, count })),
       checkinsByGate: [...gates.entries()].sort((a, b) => b[1] - a[1]).map(([gate, count]) => ({ gate, count })),
-      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, sold: t.sold, quota: t.quota, priceMmk: mmk(t.priceMmk), ...(seatsByType.has(t.id) ? { seats: seatsByType.get(t.id) } : {}) })),
+      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, sold: t.sold, quota: t.quota, ...priceView(t, new Date()), ...(seatsByType.has(t.id) ? { seats: seatsByType.get(t.id) } : {}) })),
     };
   }
 }

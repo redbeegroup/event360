@@ -391,19 +391,25 @@ export class EventsService implements OnModuleDestroy {
     const now = new Date();
     const wanted = steps.map((x) => ({ startsAt: new Date(x.startsAt), priceMmk: BigInt(x.priceMmk) }));
     if (new Set(wanted.map((x) => x.startsAt.getTime())).size !== wanted.length) throw new BadRequestException('Two price steps start at the same time');
-    const existing = await this.prisma.ticketPriceStep.findMany({ where: { ticketTypeId } });
-    const inEffect = existing.filter((x) => x.startsAt <= now);
-    for (const x of wanted) {
-      if (x.startsAt > now) continue;
-      const same = inEffect.find((e) => e.startsAt.getTime() === x.startsAt.getTime() && e.priceMmk === x.priceMmk);
-      if (!same) throw new BadRequestException('Price steps must start in the future');
+    try {
+      // Serialise concurrent edits of one type: the in-effect checks and the replacement see the same rows
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR UPDATE`;
+        const existing = await tx.ticketPriceStep.findMany({ where: { ticketTypeId } });
+        const inEffect = existing.filter((x) => x.startsAt <= now);
+        for (const x of wanted) {
+          if (x.startsAt > now) continue;
+          const same = inEffect.find((e) => e.startsAt.getTime() === x.startsAt.getTime() && e.priceMmk === x.priceMmk);
+          if (!same) throw new BadRequestException('Price steps must start in the future');
+        }
+        if (inEffect.some((e) => !wanted.some((x) => x.startsAt.getTime() === e.startsAt.getTime()))) throw new BadRequestException('A price step already in effect cannot be removed');
+        await tx.ticketPriceStep.deleteMany({ where: { ticketTypeId, startsAt: { gt: now } } });
+        await tx.ticketPriceStep.createMany({ data: wanted.filter((x) => x.startsAt > now).map((x) => ({ ticketTypeId, ...x })) });
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') throw new ConflictException('Price steps were changed at the same time; try again');
+      throw err;
     }
-    if (inEffect.some((e) => !wanted.some((x) => x.startsAt.getTime() === e.startsAt.getTime()))) throw new BadRequestException('A price step already in effect cannot be removed');
-    const future = wanted.filter((x) => x.startsAt > now);
-    await this.prisma.$transaction([
-      this.prisma.ticketPriceStep.deleteMany({ where: { ticketTypeId, startsAt: { gt: now } } }),
-      this.prisma.ticketPriceStep.createMany({ data: future.map((x) => ({ ticketTypeId, ...x })) }),
-    ]);
     const all = await this.prisma.ticketPriceStep.findMany({ where: { ticketTypeId }, orderBy: { startsAt: 'asc' } });
     return { ticketTypeId, steps: all.map((x) => ({ startsAt: x.startsAt, priceMmk: mmk(x.priceMmk) })) };
   }
