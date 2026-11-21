@@ -50,7 +50,8 @@ export function PrintTickets({ event, tickets, labels, backHref, auto }: { event
     <div className="print-root">
       <style>{`
         @page { size: A5; margin: 0; }
-        .print-sheet { background: #fff; color: #111; width: 148mm; min-height: 210mm; margin: 0 auto 16px; padding: 12mm 10mm; border: 2px solid #d4a017; border-radius: 6px; display: flex; flex-direction: column; align-items: center; text-align: center; font-family: var(--font-sans), var(--font-my), system-ui, sans-serif; }
+        .print-sheet { background: #fff; color: #111; width: 148mm; min-height: 210mm; margin: 0 auto 16px; padding: 12mm 10mm; border: 2px solid #d4a017; border-radius: 6px; display: flex; flex-direction: column; align-items: center; text-align: center; font-family: var(--body), system-ui, sans-serif; }
+        .print-sheet h2, .print-sheet h3 { font-family: inherit; }
         .print-sheet .eyebrow { font-size: 9pt; font-weight: 700; color: #8a6d0b; letter-spacing: .04em; margin-bottom: 6mm; }
         .print-sheet h2 { font-size: 20pt; margin: 0; line-height: 1.25; }
         .print-sheet h3 { font-size: 15pt; margin: 1mm 0 0; font-weight: 600; line-height: 1.5; }

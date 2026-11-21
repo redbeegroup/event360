@@ -1,6 +1,7 @@
 import 'server-only';
 import { cookies, headers as requestHeaders } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 
 export const API_URL = process.env.API_URL ?? 'http://localhost:3000';
 export const ACCESS_COOKIE = 'e360_at';
@@ -70,5 +71,5 @@ export interface Me {
   organizations: { id: string; name: string; slug: string; kycStatus: string; role: string }[];
 }
 
-export const getMe = () => api<Me>('/auth/me');
+export const getMe = cache(() => api<Me>('/auth/me'));
 export const isAdmin = (me: Me) => me.platformRoles.includes('PLATFORM_ADMIN');

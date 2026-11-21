@@ -250,7 +250,7 @@ export function SeatMapView({
   const T = lang === 'my'
     ? { in: 'ချဲ့ရန်', out: 'ချုံ့ရန်', fit: 'အားလုံးကြည့်ရန်', fitText: 'အားလုံး' }
     : { in: 'Zoom in', out: 'Zoom out', fit: 'Fit whole map', fitText: 'Fit' };
-  const btn: React.CSSProperties = { background: 'var(--surface, #fff)', minWidth: 32, height: 32, padding: '0 8px', lineHeight: 1, fontSize: 16, fontWeight: 600, cursor: 'pointer' };
+  const btn: React.CSSProperties = { background: 'var(--surface, #fff)', minWidth: 44, height: 44, borderRadius: 22, padding: '0 8px', lineHeight: 1, fontSize: 16, fontWeight: 600, cursor: 'pointer' };
 
   const svg = (
     <svg

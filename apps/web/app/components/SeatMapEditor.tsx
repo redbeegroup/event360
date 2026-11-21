@@ -234,7 +234,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
           {layout.sections.length === 0 && <p className="muted">{L.smNoSections}</p>}
           <div className="col" style={{ display: 'grid', gap: 6 }}>
             {layout.sections.map((s) => (
-              <button key={s.key} type="button" className={s.key === activeKey ? '' : 'secondary'} onClick={() => setActiveKey(s.key)} style={{ textAlign: 'left' }}>
+              <button key={s.key} type="button" className={s.key === activeKey ? '' : 'secondary'} onClick={() => setActiveKey(s.key)} style={{ textAlign: 'left', justifyContent: 'flex-start' }}>
                 {s.key} · {s.name} {s.kind === 'STANDING' ? `(${L.smStanding})` : ''}
               </button>
             ))}
