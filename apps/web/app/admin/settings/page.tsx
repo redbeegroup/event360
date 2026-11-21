@@ -96,7 +96,7 @@ export default async function SettingsPage() {
           </p>
         )}
         {!sms.canStoreSecrets && <div className="error">{tr.smsNoKey}</div>}
-        <ActionForm action={saveSmsSettingsAction} submitLabel={tr.save} variant="gold" okText={{ saved: tr.saved }}>
+        <ActionForm action={saveSmsSettingsAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
           <div className="grid">
             <div className="field">
               <label>{tr.smsApiKey}</label>

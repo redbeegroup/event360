@@ -233,7 +233,7 @@ label.check input { width: auto; }
 .table-card > table ~ p { border-top: 1px solid var(--line); }
 .table-card table { margin: 0; }
 .struck { text-decoration: line-through; }
-.dim { opacity: 0.55; }
+.dim td, .dim { color: var(--muted); }
 .small { font-size: 0.8125rem; }
 .btn-sm { min-height: 44px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
@@ -260,3 +260,12 @@ label.check input { width: auto; }
 .player video { width: 100%; max-height: 420px; background: #000; border-radius: 10px; }
 .player-mark { position: absolute; top: 18px; right: 24px; color: rgba(255, 255, 255, 0.7); font-size: 0.75rem; pointer-events: none; }
 .progress { margin: 4px 0 16px; }
+.card > p:first-child, .card > h2:first-child, .card > h3:first-child { margin-top: 0; }
+.invite-form { margin-top: 12px; }
+.save-bar { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; padding: 10px 16px; margin: 16px -32px -64px; background: var(--card); border-top: 1px solid var(--line); }
+@media (max-width: 760px) { .save-bar { margin: 16px -16px -48px; } .save-bar button { width: 100%; } }
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .stat-tile { padding: 14px; }
+  .stat-tile .stat-value { font-size: 1.5rem; overflow-wrap: anywhere; }
+}

@@ -65,7 +65,7 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
           ))}
         </ul>
         {myRole === 'ORG_OWNER' && (
-          <ActionForm action={inviteTeamAction} submitLabel={tr.inviteMember} inviteLabels={{ text: tr.inviteLink, copy: tr.copy }}>
+          <ActionForm action={inviteTeamAction} submitLabel={tr.inviteMember} inviteLabels={{ text: tr.inviteLink, copy: tr.copy }} className="invite-form">
             <input type="hidden" name="orgId" value={orgId} />
             <div className="grid">
               <div className="field"><label>{tr.email}</label><input name="email" type="email" required /></div>

@@ -24,6 +24,7 @@ export function ActionForm({
   okText,
   inviteLabels,
   className,
+  id,
 }: {
   action: (state: FormState, fd: FormData) => Promise<FormState>;
   submitLabel: string;
@@ -36,11 +37,14 @@ export function ActionForm({
   /** When the action returns data.inviteUrl, show it with these labels and a copy button. */
   inviteLabels?: { text: string; copy: string };
   className?: string;
+  /** Lets a button elsewhere on the page submit this form (`form` attribute). */
+  id?: string;
 }) {
   const [state, formAction] = useActionState(action, {} as FormState);
   return (
     <form
       action={formAction}
+      id={id}
       className={className}
       onSubmit={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();

@@ -323,7 +323,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
               )}
             </div>
             {active.kind === 'SEATED' && (
-              <div className="table-wrap">
+              <div className="table-card">
                 <table>
                   <thead><tr><th>{L.smRowLabel}</th><th>{L.smSeatCount}</th><th>{L.smGapAfter}</th></tr></thead>
                   <tbody>

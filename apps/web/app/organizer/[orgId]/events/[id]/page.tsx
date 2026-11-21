@@ -150,7 +150,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {['DRAFT', 'REJECTED'].includes(e.status) && (
         <div className="card">
           <p className="muted">{tr.submitHint}</p>
-          <ActionForm action={submitEventAction} submitLabel={tr.submit} variant="gold" okText={okText}>{hidden}</ActionForm>
+          <ActionForm action={submitEventAction} submitLabel={tr.submit} id="event-submit-form" okText={okText}>{hidden}</ActionForm>
         </div>
       )}
 
@@ -548,7 +548,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
 
           <h2>{tr.save}</h2>
           <div className="card">
-            <ActionForm action={updateEventAction} submitLabel={tr.save} variant={awaitingSubmit ? undefined : 'gold'} okText={okText}>
+            <ActionForm action={updateEventAction} submitLabel={tr.save} id="event-main-form" okText={okText}>
               {hidden}
               <EventFields tr={tr} categories={categories} event={e} />
             </ActionForm>
@@ -645,6 +645,14 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {!closed && (
         <div className="card">
           <ActionForm action={cancelEventAction} submitLabel={tr.cancelEvent} variant="danger" confirm={tr.confirmCancel} okText={okText}>{hidden}</ActionForm>
+        </div>
+      )}
+
+      {!closed && (
+        <div className="save-bar">
+          <button type="submit" className="btn-gold" form={awaitingSubmit ? 'event-submit-form' : 'event-main-form'}>
+            {awaitingSubmit ? tr.submit : tr.save}
+          </button>
         </div>
       )}
     </>
