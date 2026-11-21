@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventSeatsService } from '../seating/event-seats.service';
 import { claimSeats, SEATED_TX, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
 import { commission, pickRule } from './fee';
+import { currentPrice } from './pricing';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
 import { KbzPayProvider } from './providers/kbzpay.provider';
@@ -127,7 +128,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      include: { ticketTypes: true, category: { select: { id: true, parentId: true } } },
+      include: { ticketTypes: { include: { priceSteps: true } }, category: { select: { id: true, parentId: true } } },
     });
     if (!event) throw new NotFoundException('Event not found');
     if (event.status !== 'PUBLISHED') throw new ConflictException('Registration is not open for this event');
@@ -163,15 +164,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (tt.salesStartAt && tt.salesStartAt > now) throw new ConflictException(`Sales for ${tt.name} have not opened yet`);
       if (tt.salesEndAt && tt.salesEndAt < now) throw new ConflictException(`Sales for ${tt.name} have closed`);
       if (quantity > tt.maxPerOrder) throw new BadRequestException(`At most ${tt.maxPerOrder} ${tt.name} per person`);
-      subtotal += tt.priceMmk * BigInt(quantity);
-      return { tt, quantity, seatKeys };
+      const unitPrice = currentPrice(tt.priceMmk, tt.priceSteps, now); // frozen into the order item below
+      subtotal += unitPrice * BigInt(quantity);
+      return { tt, quantity, seatKeys, unitPrice };
     });
     // Promo code: discount on paid lines; a 100% code makes the order free (tickets issued now)
     let promo: { id: string } | null = null;
     let discount = 0n;
     if (promoCode?.trim()) {
       const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(promoCode) } } });
-      const r = applyPromo(p, lines.map(({ tt, quantity }) => ({ ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity })), now);
+      const r = applyPromo(p, lines.map(({ tt, quantity, unitPrice }) => ({ ticketTypeId: tt.id, unitPriceMmk: unitPrice, quantity })), now);
       // Old clients read `message`; the apps map `reasonCode` to their own (Myanmar) text
       if (!r.ok) throw new BadRequestException({ message: r.reason, reasonCode: r.reasonCode });
       promo = p;
@@ -241,7 +243,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey: idempotencyKey ?? null,
           holdExpiresAt: paid ? new Date(now.getTime() + HOLD_MINUTES * 60e3) : null,
           channel,
-          items: { create: lines.map(({ tt, quantity, seatKeys }) => ({ ticketTypeId: tt.id, quantity, unitPriceMmk: tt.priceMmk, seatKeys })) },
+          items: { create: lines.map(({ tt, quantity, seatKeys, unitPrice }) => ({ ticketTypeId: tt.id, quantity, unitPriceMmk: unitPrice, seatKeys })) },
         },
       });
       if (seats.length) {
@@ -275,11 +277,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
     }
     const wanted = [...items, ...[...seatTypes].map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity }))];
-    const types = await this.prisma.ticketType.findMany({ where: { eventId, id: { in: wanted.map((i) => i.ticketTypeId) } } });
+    const types = await this.prisma.ticketType.findMany({ where: { eventId, id: { in: wanted.map((i) => i.ticketTypeId) } }, include: { priceSteps: true } });
+    const now = new Date();
     const lines = wanted.map((i) => {
       const tt = types.find((t) => t.id === i.ticketTypeId);
       if (!tt) throw new NotFoundException('Ticket type not found');
-      return { ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity: i.quantity };
+      return { ticketTypeId: tt.id, unitPriceMmk: currentPrice(tt.priceMmk, tt.priceSteps, now), quantity: i.quantity };
     });
     const subtotal = lines.reduce((s, l) => s + l.unitPriceMmk * BigInt(l.quantity), 0n);
     const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(code) } } });

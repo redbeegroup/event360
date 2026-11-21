@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { MicroCache, publicCacheMs } from '../../common/micro-cache';
 import { mmk } from '../../common/util';
 import { EDITABLE_STATUSES, needsReReview } from '../events/events.service';
+import { currentPrice, nextStep } from '../payments/pricing';
 import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { aisleKeys, bestAvailable, stageCentre } from './best-available';
@@ -305,7 +306,7 @@ export class EventSeatsService {
     const versionId = e.seatMapVersionId;
     const { index } = await this.layouts.get(versionId, () => this.loadLayout(versionId));
     const [types, seats] = await Promise.all([
-      this.prisma.ticketType.findMany({ where: { eventId: e.id, eventSeats: { some: {} } }, orderBy: [{ priceMmk: 'asc' }, { id: 'asc' }] }),
+      this.prisma.ticketType.findMany({ where: { eventId: e.id, eventSeats: { some: {} } }, orderBy: [{ priceMmk: 'asc' }, { id: 'asc' }], include: { priceSteps: true } }),
       this.prisma.eventSeat.findMany({ where: { eventId: e.id }, select: { seatKey: true, ticketTypeId: true, status: true } }),
     ]);
     const typeIndex = new Map(types.map((t, i) => [t.id, i]));
@@ -321,7 +322,20 @@ export class EventSeatsService {
     return {
       id: e.id,
       versionId,
-      types: types.map((t, i) => ({ id: t.id, name: t.name, nameMy: t.nameMy, priceMmk: mmk(t.priceMmk), color: seatTypeColor(t, i) })),
+      types: types.map((t, i) => {
+        const now = new Date();
+        const next = nextStep(t.priceSteps, now);
+        // Colour and order stay by the base price; only the price shown is the current one
+        return {
+          id: t.id,
+          name: t.name,
+          nameMy: t.nameMy,
+          priceMmk: mmk(currentPrice(t.priceMmk, t.priceSteps, now)),
+          basePriceMmk: mmk(t.priceMmk),
+          nextPrice: next ? { priceMmk: mmk(next.priceMmk), startsAt: next.startsAt } : null,
+          color: seatTypeColor(t, i),
+        };
+      }),
       seatTypes: seatTypes.join(''),
       status: status.join(''),
     };

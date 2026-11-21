@@ -16,6 +16,7 @@ import {
   ListEventsQuery,
   ReasonDto,
   RegisterDto,
+  PriceStepsDto,
   TicketTypeDto,
   UpdateEventDto,
   UpdateTicketTypeDto,
@@ -160,6 +161,18 @@ export class OrganizerEventsController {
   ) {
     await this.access.assert(u, orgId, ORG_EDITORS);
     return this.events.updateTicketType(orgId, id, ttId, dto);
+  }
+
+  @Put(':id/ticket-types/:ttId/price-steps')
+  async setPriceSteps(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('ttId', ParseUUIDPipe) ttId: string,
+    @Body() dto: PriceStepsDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.events.setPriceSteps(orgId, id, ttId, dto.steps);
   }
 
   @Delete(':id/ticket-types/:ttId')

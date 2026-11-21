@@ -87,6 +87,16 @@ export class TicketTypeDto {
   @ApiPropertyOptional({ description: 'Seat-map colour, #rrggbb' }) @IsOptional() @IsString() @Matches(/^#[0-9a-fA-F]{6}$/) color?: string;
 }
 
+export class PriceStepDto {
+  @ApiProperty({ description: 'ISO timestamp from which this price applies' }) @IsDateString() startsAt: string;
+  @ApiProperty({ description: 'Price in MMK from then on' }) @IsInt() @Min(1) @Max(100_000_000) priceMmk: number;
+}
+
+export class PriceStepsDto {
+  @ApiProperty({ type: [PriceStepDto], description: 'The whole list: steps already in effect unchanged, the rest in the future' })
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => PriceStepDto) steps: PriceStepDto[];
+}
+
 export class UpdateTicketTypeDto extends PartialType(TicketTypeDto) {}
 
 export class ReasonDto {

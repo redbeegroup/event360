@@ -439,8 +439,21 @@ model TicketType {
   tickets       Ticket[]
   eventSections EventSection[]
   eventSeats    EventSeat[]
+  priceSteps    TicketPriceStep[]
 
   @@map("ticket_types")
+}
+
+/// From `startsAt` the ticket type sells at `priceMmk` (the type's own price is the price before the first step).
+model TicketPriceStep {
+  id           String     @id @default(uuid()) @db.Uuid
+  ticketTypeId String     @map("ticket_type_id") @db.Uuid
+  startsAt     DateTime   @map("starts_at")
+  priceMmk     BigInt     @map("price_mmk")
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketTypeId, startsAt])
+  @@map("ticket_price_steps")
 }
 
 enum OrderStatus {

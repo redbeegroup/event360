@@ -4,6 +4,7 @@ import { makeSlug, mmk } from '../../common/util';
 import { MediaService } from '../media/media.module';
 import { NotifyService } from '../notifications/notify.service';
 import { MicroCache, publicCacheMs } from '../../common/micro-cache';
+import { currentPrice, nextStep } from '../payments/pricing';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateEventDto,
@@ -11,6 +12,7 @@ import {
   ListEventsQuery,
   MediaItemDto,
   OrgProfileDto,
+  PriceStepsDto,
   PerformerItemDto,
   SessionItemDto,
   TicketTypeDto,
@@ -36,7 +38,7 @@ const cardInclude = {
   category: { select: { id: true, slug: true, nameEn: true, nameMy: true, parent: { select: { slug: true, nameEn: true, nameMy: true } } } },
   venue: true,
   organization: { select: { id: true, name: true, slug: true, kycStatus: true, logoUrl: true } },
-  ticketTypes: { orderBy: { priceMmk: 'asc' as const }, include: { _count: { select: { eventSeats: true } } } },
+  ticketTypes: { orderBy: { priceMmk: 'asc' as const }, include: { _count: { select: { eventSeats: true } }, priceSteps: { orderBy: { startsAt: 'asc' as const } } } },
 } satisfies Prisma.EventInclude;
 type EventWithRelations = Prisma.EventGetPayload<{ include: typeof cardInclude }>;
 
@@ -68,11 +70,16 @@ export class EventsService implements OnModuleDestroy {
   // ───────────── Serialization ─────────────
 
   toDto(e: EventWithRelations | EventFull, opts: { full?: boolean } = {}) {
-    const tickets = e.ticketTypes.map((t) => ({
+    const now = new Date();
+    const tickets = e.ticketTypes.map((t) => {
+      const next = nextStep(t.priceSteps, now);
+      return {
       id: t.id,
       name: t.name,
       nameMy: t.nameMy,
-      priceMmk: mmk(t.priceMmk),
+      priceMmk: mmk(currentPrice(t.priceMmk, t.priceSteps, now)),
+      basePriceMmk: mmk(t.priceMmk),
+      nextPrice: next ? { priceMmk: mmk(next.priceMmk), startsAt: next.startsAt } : null,
       quota: t.quota,
       remaining: Math.max(0, t.quota - t.sold - t.held),
       maxPerOrder: t.maxPerOrder,
@@ -81,8 +88,9 @@ export class EventsService implements OnModuleDestroy {
       salesEndAt: t.salesEndAt,
       color: t.color,
       seated: t._count.eventSeats > 0,
-      ...(opts.full ? { sold: t.sold } : {}),
-    }));
+      ...(opts.full ? { sold: t.sold, priceSteps: t.priceSteps.map((x) => ({ startsAt: x.startsAt, priceMmk: mmk(x.priceMmk) })) } : {}),
+      };
+    });
     return {
       id: e.id,
       slug: e.slug,
@@ -352,6 +360,7 @@ export class EventsService implements OnModuleDestroy {
     if (dto.quota !== undefined && (await this.prisma.eventSeat.count({ where: { ticketTypeId } }))) throw new BadRequestException('Quota of a seated ticket type is computed from its seats');
     if (dto.quota !== undefined && dto.quota < t.sold + t.held) throw new BadRequestException(`Quota cannot be below the ${t.sold + t.held} tickets already issued`);
     if (dto.priceMmk !== undefined && t.sold > 0 && BigInt(dto.priceMmk) !== t.priceMmk) throw new ConflictException('Price cannot change after tickets are issued');
+    if (dto.priceMmk === 0 && (await this.prisma.ticketPriceStep.count({ where: { ticketTypeId } }))) throw new BadRequestException('Remove the price steps before making this ticket type free');
     const updated = await this.prisma.ticketType.update({
       where: { id: ticketTypeId },
       data: {
@@ -368,6 +377,35 @@ export class EventsService implements OnModuleDestroy {
     });
     await this.recomputeIsFree(eventId);
     return { ...updated, priceMmk: mmk(updated.priceMmk) };
+  }
+
+  /**
+   * Replaces a paid ticket type's price steps. `steps` is the whole list: steps already in effect must be sent back
+   * unchanged (they are history and can't be removed or changed), the rest must start in the future.
+   */
+  async setPriceSteps(organizationId: string, eventId: string, ticketTypeId: string, steps: PriceStepsDto['steps']) {
+    await this.eventOf(organizationId, eventId);
+    const t = await this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId } });
+    if (!t) throw new NotFoundException('Ticket type not found');
+    if (t.priceMmk === 0n) throw new BadRequestException('Free ticket types cannot have price steps');
+    const now = new Date();
+    const wanted = steps.map((x) => ({ startsAt: new Date(x.startsAt), priceMmk: BigInt(x.priceMmk) }));
+    if (new Set(wanted.map((x) => x.startsAt.getTime())).size !== wanted.length) throw new BadRequestException('Two price steps start at the same time');
+    const existing = await this.prisma.ticketPriceStep.findMany({ where: { ticketTypeId } });
+    const inEffect = existing.filter((x) => x.startsAt <= now);
+    for (const x of wanted) {
+      if (x.startsAt > now) continue;
+      const same = inEffect.find((e) => e.startsAt.getTime() === x.startsAt.getTime() && e.priceMmk === x.priceMmk);
+      if (!same) throw new BadRequestException('Price steps must start in the future');
+    }
+    if (inEffect.some((e) => !wanted.some((x) => x.startsAt.getTime() === e.startsAt.getTime()))) throw new BadRequestException('A price step already in effect cannot be removed');
+    const future = wanted.filter((x) => x.startsAt > now);
+    await this.prisma.$transaction([
+      this.prisma.ticketPriceStep.deleteMany({ where: { ticketTypeId, startsAt: { gt: now } } }),
+      this.prisma.ticketPriceStep.createMany({ data: future.map((x) => ({ ticketTypeId, ...x })) }),
+    ]);
+    const all = await this.prisma.ticketPriceStep.findMany({ where: { ticketTypeId }, orderBy: { startsAt: 'asc' } });
+    return { ticketTypeId, steps: all.map((x) => ({ startsAt: x.startsAt, priceMmk: mmk(x.priceMmk) })) };
   }
 
   async deleteTicketType(organizationId: string, eventId: string, ticketTypeId: string) {
