@@ -136,29 +136,29 @@ class _OfferBannerState extends ConsumerState<OfferBanner> with _Ticking<OfferBa
     return Padding(
       padding: widget.padding,
       child: Material(
-        color: theme.colorScheme.tertiaryContainer,
-        borderRadius: BorderRadius.circular(14),
+        color: theme.colorScheme.primaryContainer,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.colorScheme.outlineVariant)),
         child: InkWell(
           key: const Key('offerBanner'),
-          borderRadius: BorderRadius.circular(14),
+          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           onTap: () => openOffer(context, ref, offer),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(children: [
-              Icon(Icons.timer_outlined, color: theme.colorScheme.onTertiaryContainer),
+              Icon(Icons.timer_outlined, color: theme.colorScheme.onPrimaryContainer),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, key: const Key('offerBannerText'), style: TextStyle(fontWeight: FontWeight.w700, color: theme.colorScheme.onTertiaryContainer)),
+                  Text(label, key: const Key('offerBannerText'), style: TextStyle(fontWeight: FontWeight.w700, color: theme.colorScheme.onPrimaryContainer)),
                   Text(
                     '${pickLang(ref.watch(langProvider), offer.eventTitle, offer.eventTitleMy)} · ${pickLang(ref.watch(langProvider), offer.ticketTypeName, offer.ticketTypeNameMy)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onPrimaryContainer),
                   ),
                 ]),
               ),
-              Icon(Icons.chevron_right, color: theme.colorScheme.onTertiaryContainer),
+              Icon(Icons.chevron_right, color: theme.colorScheme.onPrimaryContainer),
             ]),
           ),
         ),
@@ -318,16 +318,16 @@ class _OfferCountdownState extends State<OfferCountdown> with _Ticking<OfferCoun
     }
     return Container(
       width: double.infinity,
-      color: theme.colorScheme.tertiaryContainer,
+      color: theme.colorScheme.primaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(children: [
-        Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.onTertiaryContainer),
+        Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.onPrimaryContainer),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             over ? t.offerEnded : t.reservedForYouLeft(countdownText(widget.entry.offerExpiresAt!, widget.entry.serverNow)),
             key: const Key('offerCountdown'),
-            style: TextStyle(fontWeight: FontWeight.w700, color: theme.colorScheme.onTertiaryContainer),
+            style: TextStyle(fontWeight: FontWeight.w700, color: theme.colorScheme.onPrimaryContainer),
           ),
         ),
       ]),

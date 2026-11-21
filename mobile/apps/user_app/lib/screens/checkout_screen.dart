@@ -142,19 +142,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
       body = _Result(
         key: const Key('paid'),
         icon: Icons.check_circle,
-        color: theme.colorScheme.primary,
+        color: theme.brightness == Brightness.dark ? E360DarkColors.success : E360Colors.success,
         text: t.paymentReceived,
-        action: FilledButton(onPressed: () => context.go('/tickets'), child: Text(t.viewTickets)),
+        action: FilledButton(style: E360Buttons.gold, onPressed: () => context.go('/tickets'), child: Text(t.viewTickets)),
       );
     } else if (o.status == 'CANCELLED') {
-      body = _Result(icon: Icons.cancel_outlined, color: theme.colorScheme.outline, text: t.orderCancelled, action: OutlinedButton(onPressed: () => context.go('/event/${o.eventId}'), child: Text(t.startAgain)));
+      body = _Result(
+        icon: Icons.cancel_outlined,
+        color: theme.colorScheme.outline,
+        text: t.orderCancelled,
+        action: FilledButton(style: E360Buttons.navy, onPressed: () => context.go('/event/${o.eventId}'), child: Text(t.startAgain)),
+      );
     } else if (!o.isOpen) {
       body = _Result(
         key: const Key('expired'),
         icon: Icons.timer_off_outlined,
         color: theme.colorScheme.error,
         text: t.holdExpired,
-        action: OutlinedButton(onPressed: () => context.go('/event/${o.eventId}'), child: Text(t.startAgain)),
+        action: FilledButton(style: E360Buttons.navy, onPressed: () => context.go('/event/${o.eventId}'), child: Text(t.startAgain)),
       );
     } else {
       final methods = ref.watch(paymentMethodsProvider).value ?? const <PaymentMethod>[];
@@ -162,32 +167,39 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
       final action = o.paymentAction;
       final started = action != null;
       body = ListView(padding: const EdgeInsets.all(20), children: [
-        Text(pickLang(lang, o.eventTitle, o.eventTitleMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        for (final i in o.items) Text(t.orderSummary('${i.quantity}', pickLang(lang, i.name, i.nameMy))),
-        if (o.discountMmk > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(children: [
-              Expanded(child: Text(t.discount)),
-              Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount')),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(pickLang(lang, o.eventTitle, o.eventTitleMy), style: theme.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              for (final i in o.items) Text(t.orderSummary('${i.quantity}', pickLang(lang, i.name, i.nameMy)), style: theme.textTheme.bodyLarge),
+              if (o.discountMmk > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Expanded(child: Text(t.discount, style: theme.textTheme.bodyLarge)),
+                    Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount'), style: theme.textTheme.bodyLarge),
+                  ]),
+                ),
+              const Divider(height: 24),
+              Row(children: [
+                Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
+                Text(t.mmk(formatAmount(o.totalMmk, lang)), style: theme.textTheme.headlineSmall),
+              ]),
+              if (o.holdExpiresAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(children: [
+                    Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(t.holdExpiresIn(_left(o.holdExpiresAt!)), key: const Key('countdown'), style: theme.textTheme.titleSmall)), // wraps on a narrow phone (Myanmar)
+                  ]),
+                ),
             ]),
           ),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-          Text(t.mmk(formatAmount(o.totalMmk, lang)), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-        ]),
-        if (o.holdExpiresAt != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(children: [
-              Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.primary),
-              const SizedBox(width: 6),
-              Flexible(child: Text(t.holdExpiresIn(_left(o.holdExpiresAt!)), key: const Key('countdown'))), // wraps on a narrow phone (Myanmar)
-            ]),
-          ),
-        const Divider(height: 32),
+        ),
+        const SizedBox(height: 20),
         if (started) ...[
           Row(children: [
             const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
@@ -201,7 +213,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
             Center(
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.colorScheme.outlineVariant)),
                 child: QrImageView(data: action.qr!, size: 220),
               ),
             ),
@@ -209,6 +221,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
             Text(t.scanToPay, textAlign: TextAlign.center),
           ] else if (action.openUrl != null)
             OutlinedButton.icon(
+              style: E360Buttons.outline,
               onPressed: () => ref.read(openPaymentUrlProvider)(action.openUrl!),
               icon: const Icon(Icons.open_in_new),
               label: Text(t.openWalletAgain),
@@ -216,20 +229,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
           const SizedBox(height: 16),
           Text(t.payWith, style: theme.textTheme.bodySmall),
         ] else
-          Text(t.choosePayment, style: theme.textTheme.titleMedium),
+          Text(t.choosePayment, style: theme.textTheme.titleLarge),
         if (methods.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.paymentNotAvailable)),
+        const SizedBox(height: 8),
         for (final m in methods)
-          RadioListTile<String>(
-            key: Key('method-${m.code}'),
-            value: m.code,
-            groupValue: selected,
-            onChanged: _busy ? null : (v) => setState(() => _provider = v),
-            title: Text(m.label),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _MethodCard(
+              key: Key('method-${m.code}'),
+              label: m.label,
+              selected: m.code == selected,
+              onTap: _busy ? null : () => setState(() => _provider = m.code),
+            ),
           ),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 12),
         FilledButton(
           key: const Key('pay'),
+          style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54))),
           onPressed: _busy || selected == null || (started && selected == o.paymentProvider && action.type == 'QR')
               ? null
               : () {
@@ -245,6 +262,43 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
       ]);
     }
     return Scaffold(appBar: AppBar(title: Text(t.checkout)), body: body);
+  }
+}
+
+/// A payment method as a selectable card: 2 px navy border when chosen (like the ticket picker's cards).
+class _MethodCard extends StatelessWidget {
+  const _MethodCard({super.key, required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      inMutuallyExclusiveGroup: true,
+      checked: selected,
+      button: true,
+      child: Material(
+        color: scheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: selected ? scheme.primary : scheme.outlineVariant, width: selected ? 2 : 1)),
+        child: InkWell(
+          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(children: [
+                Expanded(child: Text(label, style: theme.textTheme.titleMedium)),
+                Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selected ? scheme.primary : scheme.outline),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

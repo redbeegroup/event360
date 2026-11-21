@@ -737,4 +737,19 @@ class L10nEn extends L10n {
   String moreTickets(String type) {
     return 'One more $type ticket';
   }
+
+  @override
+  String get ticketDate => 'Date';
+
+  @override
+  String get ticketTime => 'Time';
+
+  @override
+  String get ticketSeatLabel => 'Seat';
+
+  @override
+  String get ticketKind => 'Ticket';
+
+  @override
+  String get getDirections => 'Directions';
 }

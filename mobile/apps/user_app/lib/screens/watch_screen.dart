@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -96,16 +97,18 @@ class _WatchScreenState extends ConsumerState<WatchScreen> {
     final g = _grant;
     final live = widget.kind == 'live';
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: E360Colors.night,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: E360Colors.night,
         foregroundColor: Colors.white,
+        shape: const Border(bottom: BorderSide(color: Color(0x33FFFFFF))),
+        titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
         title: Row(children: [
           if (live)
             Container(
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: const Color(0xFFD32F2F), borderRadius: BorderRadius.circular(4)),
+              decoration: BoxDecoration(color: E360Colors.danger, borderRadius: BorderRadius.circular(6)),
               child: Text(t.liveNow, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),

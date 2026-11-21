@@ -39,13 +39,14 @@ class OrganizerScreen extends ConsumerWidget {
               CircleAvatar(
                 radius: 36,
                 backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.onPrimaryContainer,
                 backgroundImage: o.logoUrl == null ? null : CachedNetworkImageProvider(o.logoUrl!),
                 child: o.logoUrl == null ? Text(o.name.characters.first.toUpperCase(), style: theme.textTheme.headlineSmall) : null,
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(o.name, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(o.name, style: theme.textTheme.headlineSmall),
                   if (o.verified)
                     Row(children: [
                       Icon(Icons.verified, size: 16, color: theme.colorScheme.primary),
@@ -55,14 +56,14 @@ class OrganizerScreen extends ConsumerWidget {
                 ]),
               ),
             ]),
-            if (about.isNotEmpty) ...[const SizedBox(height: 16), Text(about)],
+            if (about.isNotEmpty) ...[const SizedBox(height: 16), Text(about, style: theme.textTheme.bodyLarge)],
             const SizedBox(height: 8),
             if (o.website != null) link(Icons.language, t.website, Uri.parse(o.website!)),
             if (o.facebookUrl != null) link(Icons.facebook, t.facebook, Uri.parse(o.facebookUrl!)),
             if (o.contactPhone != null && o.contactPhone!.isNotEmpty) link(Icons.phone, o.contactPhone!, Uri(scheme: 'tel', path: o.contactPhone)),
             if (o.contactEmail != null && o.contactEmail!.isNotEmpty) link(Icons.email_outlined, o.contactEmail!, Uri(scheme: 'mailto', path: o.contactEmail)),
             const SizedBox(height: 12),
-            Text(t.organizerEvents, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(t.organizerEvents, style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             if (o.events.isEmpty) MessageView(icon: Icons.event_busy, message: t.noUpcomingEvents),
             for (final e in o.events) Padding(padding: const EdgeInsets.only(bottom: 12), child: EventCard(event: e)),

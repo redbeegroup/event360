@@ -350,3 +350,8 @@
 "fewerTickets","One fewer {type} ticket","{type} လက်မှတ် တစ်စောင် လျှော့ရန်","user_app"
 "moreTickets","One more {type} ticket","{type} လက်မှတ် တစ်စောင် တိုးရန်","user_app"
 "practicalInfo","Practical info","အသုံးဝင်သော အချက်အလက်","user_app"
+"ticketDate","Date","ရက်စွဲ","user_app"
+"ticketTime","Time","အချိန်","user_app"
+"ticketSeatLabel","Seat","ခုံ","user_app"
+"ticketKind","Ticket","လက်မှတ်","user_app"
+"getDirections","Directions","လမ်းညွှန်","user_app"

@@ -404,5 +404,10 @@
   "fewerTickets": "One fewer {type} ticket",
   "@fewerTickets": {"placeholders": {"type": {"type": "String"}}},
   "moreTickets": "One more {type} ticket",
-  "@moreTickets": {"placeholders": {"type": {"type": "String"}}}
+  "@moreTickets": {"placeholders": {"type": {"type": "String"}}},
+  "ticketDate": "Date",
+  "ticketTime": "Time",
+  "ticketSeatLabel": "Seat",
+  "ticketKind": "Ticket",
+  "getDirections": "Directions"
 }

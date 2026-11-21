@@ -126,11 +126,14 @@ class Event360Theme {
       primaryTextTheme: text,
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        backgroundColor: paper,
+        // Slim bar like the event page's pinned bar: surface with a 1 px line under it
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
+        surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         elevation: 0,
-        titleTextStyle: text.titleLarge,
+        shape: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+        titleTextStyle: text.titleMedium,
       ),
       dividerTheme: DividerThemeData(color: scheme.outlineVariant, thickness: 1, space: 1),
       cardTheme: CardThemeData(

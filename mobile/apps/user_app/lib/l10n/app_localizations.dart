@@ -1380,6 +1380,36 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'One more {type} ticket'**
   String moreTickets(String type);
+
+  /// No description provided for @ticketDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get ticketDate;
+
+  /// No description provided for @ticketTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get ticketTime;
+
+  /// No description provided for @ticketSeatLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Seat'**
+  String get ticketSeatLabel;
+
+  /// No description provided for @ticketKind.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket'**
+  String get ticketKind;
+
+  /// No description provided for @getDirections.
+  ///
+  /// In en, this message translates to:
+  /// **'Directions'**
+  String get getDirections;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

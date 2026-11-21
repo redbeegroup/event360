@@ -735,4 +735,19 @@ class L10nMy extends L10n {
   String moreTickets(String type) {
     return '$type လက်မှတ် တစ်စောင် တိုးရန်';
   }
+
+  @override
+  String get ticketDate => 'ရက်စွဲ';
+
+  @override
+  String get ticketTime => 'အချိန်';
+
+  @override
+  String get ticketSeatLabel => 'ခုံ';
+
+  @override
+  String get ticketKind => 'လက်မှတ်';
+
+  @override
+  String get getDirections => 'လမ်းညွှန်';
 }

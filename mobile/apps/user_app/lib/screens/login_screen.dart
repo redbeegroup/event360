@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -82,9 +83,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       appBar: AppBar(title: Text(t.signIn)),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(24), children: [
-          Icon(Icons.phone_iphone, size: 48, color: theme.colorScheme.primary),
-          const SizedBox(height: 12),
-          Text(_codeSent ? t.codeSentTo(_phone.text) : t.signInToRegister, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+          const Align(child: E360Mark(size: 56)),
+          const SizedBox(height: 16),
+          Text(_codeSent ? t.codeSentTo(_phone.text) : t.signInToRegister, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
           const SizedBox(height: 24),
           if (!_codeSent)
             TextField(
@@ -112,7 +113,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             if (_devCode != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(t.devCode(_devCode!), textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.tertiary)),
+                child: Text(t.devCode(_devCode!), textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
               ),
             TextButton(
               onPressed: _busy
@@ -128,6 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
           const SizedBox(height: 24),
           FilledButton(
+            style: E360Buttons.gold,
             onPressed: _busy ? null : (_codeSent ? _verify : _send),
             child: _busy
                 ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))

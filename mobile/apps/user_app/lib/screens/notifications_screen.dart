@@ -79,9 +79,9 @@ class NotificationsScreen extends ConsumerWidget {
                     final n = box.items[i];
                     return ListTile(
                       key: Key('notif-${n.id}'),
-                      tileColor: n.unread ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35) : null,
-                      leading: CircleAvatar(child: Icon(_icon(n.kind))),
-                      title: Text(pickLang(lang, n.title, n.titleMy), style: TextStyle(fontWeight: n.unread ? FontWeight.w700 : FontWeight.w500)),
+                      tileColor: n.unread ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5) : null,
+                      leading: CircleAvatar(backgroundColor: theme.colorScheme.primaryContainer, foregroundColor: theme.colorScheme.onPrimaryContainer, child: Icon(_icon(n.kind))),
+                      title: Text(pickLang(lang, n.title, n.titleMy), style: theme.textTheme.titleSmall?.copyWith(fontWeight: n.unread ? FontWeight.w700 : FontWeight.w500)),
                       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(pickLang(lang, n.body, n.bodyMy)),
                         const SizedBox(height: 2),

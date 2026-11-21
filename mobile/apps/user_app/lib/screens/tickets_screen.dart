@@ -67,8 +67,8 @@ class _Header extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Text(text, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        padding: const EdgeInsets.fromLTRB(4, 12, 4, 10),
+        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
       );
 }
 
@@ -85,18 +85,18 @@ class _TicketTile extends ConsumerWidget {
     return Opacity(
       opacity: dim ? 0.6 : 1,
       child: Card(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 12),
         child: InkWell(
           onTap: () => context.push('/ticket/${ticket.id}'),
-          child: Row(children: [
-            SizedBox(width: 96, child: EventCover(url: ticket.coverImageUrl, aspectRatio: 1)),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 84, height: 84, child: EventCover(url: ticket.coverImageUrl, aspectRatio: 1))),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(pickLang(lang, ticket.eventTitle, ticket.eventTitleMy),
-                      maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
+                  Text(pickLang(lang, ticket.eventTitle, ticket.eventTitleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 2),
                   Text(formatEventDate(ticket.startsAt, lang), style: theme.textTheme.bodySmall),
                   Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy), style: theme.textTheme.bodySmall),
                   if (ticket.seatText(lang) != null)
@@ -104,13 +104,13 @@ class _TicketTile extends ConsumerWidget {
                   if (ticket.isComplimentary)
                     Text(
                       ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.tertiary),
+                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.brightness == Brightness.dark ? E360DarkColors.success : E360Colors.success),
                     ),
                 ]),
               ),
-            ),
-            const Padding(padding: EdgeInsets.only(right: 12), child: Icon(Icons.qr_code_2)),
-          ]),
+              const Padding(padding: EdgeInsets.only(left: 8, top: 4), child: Icon(Icons.qr_code_2)),
+            ]),
+          ),
         ),
       ),
     );
@@ -127,23 +127,31 @@ class _PendingTile extends ConsumerWidget {
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      color: theme.colorScheme.tertiaryContainer,
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            const Icon(Icons.hourglass_top),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.hourglass_top, color: theme.colorScheme.onPrimaryContainer),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(pickLang(lang, order.eventTitle, order.eventTitleMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
-                Text('${order.quantity} × · ${t.mmk(formatAmount(order.totalMmk, lang))}'),
+                Text(pickLang(lang, order.eventTitle, order.eventTitleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                Text('${order.quantity} × · ${t.mmk(formatAmount(order.totalMmk, lang))}', style: theme.textTheme.bodySmall),
               ]),
             ),
           ]),
-          const SizedBox(height: 10),
-          FilledButton.tonal(onPressed: () => context.push('/checkout/${order.id}'), child: Text(t.continuePayment)),
+          const SizedBox(height: 12),
+          FilledButton(
+            style: E360Buttons.navy.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48))),
+            onPressed: () => context.push('/checkout/${order.id}'),
+            child: Text(t.continuePayment),
+          ),
         ]),
       ),
     );

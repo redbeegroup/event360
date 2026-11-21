@@ -682,8 +682,9 @@ class _Legend extends StatelessWidget {
           const SizedBox(width: 5),
           Text(text, style: Theme.of(context).textTheme.bodySmall),
         ]);
-    return SizedBox(
-      height: 40,
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -757,8 +758,8 @@ class _BottomBar extends StatelessWidget {
     final t = L10n.of(context);
     final theme = Theme.of(context);
     return Material(
-      elevation: 8,
       color: theme.colorScheme.surface,
+      shape: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -779,6 +780,10 @@ class _BottomBar extends StatelessWidget {
                         key: Key('chip-${layout.seats[i].seatKey}'),
                         label: Text(layout.seats[i].labelFor(lang), style: const TextStyle(fontSize: 12)),
                         visualDensity: VisualDensity.compact,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        shape: const StadiumBorder(),
+                        side: BorderSide.none,
+                        deleteIconColor: theme.colorScheme.onPrimaryContainer,
                         onDeleted: () => onRemove(i),
                       ),
                   ]),
@@ -801,7 +806,7 @@ class _BottomBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                OutlinedButton(key: const Key('promoApply'), onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
+                OutlinedButton(key: const Key('promoApply'), style: E360Buttons.outline, onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
                 const SizedBox(width: 4),
                 TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
               ]),
@@ -831,7 +836,7 @@ class _BottomBar extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   key: const Key('bestAvailable'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
                   onPressed: busy ? null : onBest,
                   child: Text(t.bestAvailable),
                 ),
@@ -840,6 +845,7 @@ class _BottomBar extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   key: const Key('seatContinue'),
+                  style: E360Buttons.gold,
                   onPressed: busy || selected.isEmpty || !canContinue ? null : onContinue,
                   child: busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.continueLabel),
                 ),
@@ -919,14 +925,15 @@ class _BestSheetState extends ConsumerState<_BestSheet> {
           ),
         Row(children: [
           Expanded(child: Text(t.quantity)),
-          IconButton.outlined(key: const Key('bestMinus'), onPressed: qty > 1 ? () => setState(() => _qty = qty - 1) : null, icon: const Icon(Icons.remove)),
+          StepperButton(key: const Key('bestMinus'), icon: Icons.remove, semanticLabel: t.fewerTickets(widget.types[_type].label(lang)), onPressed: qty > 1 ? () => setState(() => _qty = qty - 1) : null),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$qty', key: const Key('bestQty'), style: theme.textTheme.titleLarge)),
-          IconButton.outlined(key: const Key('bestPlus'), onPressed: qty < _max ? () => setState(() => _qty = qty + 1) : null, icon: const Icon(Icons.add)),
+          StepperButton(key: const Key('bestPlus'), icon: Icons.add, semanticLabel: t.moreTickets(widget.types[_type].label(lang)), onPressed: qty < _max ? () => setState(() => _qty = qty + 1) : null),
         ]),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, key: const Key('bestError'), style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 12),
         FilledButton(
           key: const Key('bestFind'),
+          style: E360Buttons.gold,
           onPressed: _busy || widget.available.every((n) => n == 0) ? null : _find,
           child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.findSeats),
         ),

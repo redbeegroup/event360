@@ -213,5 +213,10 @@
   "groupTierLine": "{n} စောင်နှင့်အထက် {percent}% လျှော့",
   "ticketsTotal": "လက်မှတ် {n} စောင် · စုစုပေါင်း",
   "fewerTickets": "{type} လက်မှတ် တစ်စောင် လျှော့ရန်",
-  "moreTickets": "{type} လက်မှတ် တစ်စောင် တိုးရန်"
+  "moreTickets": "{type} လက်မှတ် တစ်စောင် တိုးရန်",
+  "ticketDate": "ရက်စွဲ",
+  "ticketTime": "အချိန်",
+  "ticketSeatLabel": "ခုံ",
+  "ticketKind": "လက်မှတ်",
+  "getDirections": "လမ်းညွှန်"
 }

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1695,7 +1696,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.byKey(const Key('ticketSeat'))).data, 'Stalls · Row 2 · Seat 2');
     expect(find.byKey(const Key('ticketComp')), findsOneWidget);
-    expect(find.text('Complimentary · Press'), findsOneWidget);
+    expect(find.text('COMPLIMENTARY · PRESS'), findsOneWidget); // the badge is uppercase in English
     expect(find.byKey(const Key('transfer')), findsNothing); // comps can't be transferred
   });
 
@@ -2332,4 +2333,104 @@ void main() {
     expect(find.byKey(const Key('readMore')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+
+  // ───── Tickets and remaining screens (visual refresh) ─────
+  Future<void> openTicket(WidgetTester tester, String title) async {
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/tickets');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(title).first);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('ticket screen shows the detail grid (date, doors, venue, seat) and the QR on a navy background', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket]);
+    await openTicket(tester, 'Opera Night');
+    expect(tester.widget<Scaffold>(find.byType(Scaffold).last).backgroundColor, E360Colors.night);
+    final card = find.byKey(const Key('ticketCard'));
+    expect(card, findsOneWidget);
+    expect(find.descendant(of: card, matching: find.byType(QrImageView)), findsOneWidget);
+    for (final label in ['Date', 'Time', 'Venue', 'Seat']) {
+      expect(find.descendant(of: card, matching: find.text(label)), findsOneWidget, reason: label);
+    }
+    expect(find.descendant(of: card, matching: find.text('National Theatre, Yangon')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('ticketSeat'))).data, 'Stalls · Row 1 · Seat 1');
+    // The mockup's gold button is Directions, and it is the only one
+    expect(goldButtons(tester), hasLength(1));
+    expect(goldButtons(tester).single.widget.key, const Key('ticketDirections'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('ticket screen has no overflow at 360 dp in EN and MY, with and without a seat', (tester) async {
+    final longTicket = {
+      ...seatTicket,
+      'id': 'ticket-long-0003',
+      'event': {...(seatTicket['event'] as Map<String, dynamic>), 'title': 'Yangon International New Year Countdown Gala Night with the Philharmonic Orchestra', 'titleMy': 'ရန်ကုန် နိုင်ငံတကာ နှစ်သစ်ကူး ဂါလာညနေ ဂီတပွဲတော်ကြီး'},
+    };
+    for (final lang in ['en', 'my']) {
+      // seated, long title, and the plain default ticket (no seat)
+      for (final id in ['ticket-seat-0001', 'ticket-long-0003', 'ticket-0001-abcd']) {
+        await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.extraTickets = [seatTicket, longTicket]);
+        await phoneWidth(tester);
+        GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/$id');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('ticketCard')), findsOneWidget, reason: '$lang $id');
+        expect(tester.takeException(), isNull, reason: '$lang $id');
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$lang $id scrolled');
+        await tester.pumpWidget(const SizedBox());
+      }
+    }
+  }, variant: phoneWidths);
+
+  testWidgets('existing ticket behaviours still present', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket, compTicket]);
+    // Complimentary: the label and no cancel / transfer
+    await openTicket(tester, 'Gala Dinner');
+    expect(find.byKey(const Key('ticketComp')), findsOneWidget);
+    expect(find.text('COMPLIMENTARY · PRESS'), findsOneWidget);
+    expect(find.byKey(const Key('cancelTicket')), findsNothing);
+    expect(find.byKey(const Key('transfer')), findsNothing);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
+    await tester.pumpAndSettle();
+    // Cancelable: the cancel link asks first, then cancels
+    await tester.tap(find.text('Opera Night'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketComp')), findsNothing);
+    await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byKey(const Key('cancelTicket')));
+    await tester.pumpAndSettle();
+    expect(find.text('Cancel this ticket?'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('cancelTicketConfirm')));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, ['ticket-seat-0001']);
+    await tester.pumpWidget(const SizedBox());
+    // Myanmar seat label
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.extraTickets = [seatTicket]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-seat-0001');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('ticketSeat'))).data, 'ရှေ့ခန်း · အတန်း 1 · ခုံ 1');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('login and language screens render with pill buttons', (tester) async {
+    phoneScreen(tester);
+    SharedPreferences.setMockInitialValues({});
+    final sp = await SharedPreferences.getInstance();
+    await tester.pumpWidget(ProviderScope(overrides: [prefsProvider.overrideWithValue(sp), apiProvider.overrideWithValue(FakeApi(MemoryTokenStore()))], child: const UserApp()));
+    await tester.pumpAndSettle();
+    expect(find.byType(E360Mark), findsOneWidget);
+    expect(goldButtons(tester), hasLength(1));
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).style?.shape?.resolve({}), isA<StadiumBorder>());
+    await tester.pumpWidget(const SizedBox());
+
+    await pumpApp(tester);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/login');
+    await tester.pumpAndSettle();
+    expect(find.byType(E360Mark), findsOneWidget);
+    expect(goldButtons(tester), hasLength(1));
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).style?.shape?.resolve({}), isA<StadiumBorder>());
+    await tester.pumpWidget(const SizedBox());
+  });
+
 }

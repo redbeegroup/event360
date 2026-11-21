@@ -2,10 +2,12 @@ import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app/format.dart';
 import '../app/providers.dart';
@@ -69,101 +71,434 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     context.go('/tickets');
   }
 
+  Uri _directionsUri(MyTicket x) => Uri.parse(
+    'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent([x.venueName, x.venueCity].whereType<String>().where((p) => p.isNotEmpty).join(', '))}',
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     final tickets = ref.watch(myTicketsProvider);
-    final MyTicket? ticket = tickets.value?.where((x) => x.id == widget.ticketId).firstOrNull;
+    final MyTicket? ticket = tickets.value
+        ?.where((x) => x.id == widget.ticketId)
+        .firstOrNull;
+    const onNavy = Colors.white;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(t.myTickets)),
-      body: ticket == null
-          ? (tickets.isLoading ? const Center(child: CircularProgressIndicator()) : MessageView(icon: Icons.confirmation_number_outlined, message: t.noTickets))
-          : ListView(padding: const EdgeInsets.all(20), children: [
-              Text(pickLang(lang, ticket.eventTitle, ticket.eventTitleMy),
-                  textAlign: TextAlign.center, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              Text(formatEventDate(ticket.startsAt, lang), textAlign: TextAlign.center),
-              if (ticket.venueName != null) Text('${ticket.venueName}, ${ticket.venueCity ?? ''}', textAlign: TextAlign.center),
-              const SizedBox(height: 20),
-              if (ticket.qr != null && ticket.status == 'VALID') ...[
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                    child: QrImageView(
-                      data: ticket.qr!,
-                      size: 260,
-                      errorCorrectionLevel: QrErrorCorrectLevel.M,
-                      semanticsLabel: 'Ticket QR code',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(t.showAtEntrance, textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.offline_pin, size: 16, color: theme.colorScheme.primary),
-                  const SizedBox(width: 4),
-                  Text(t.offlineReady, style: theme.textTheme.bodySmall),
-                ]),
-              ] else
-                MessageView(icon: Icons.block, message: ticket.status == 'REFUNDED' ? t.ticketRefunded : t.ticketCancelled),
-              const SizedBox(height: 20),
-              if (ticket.seatText(lang) != null)
-                Card(
-                  color: theme.colorScheme.primaryContainer,
-                  child: ListTile(
-                    leading: Icon(Icons.event_seat, color: theme.colorScheme.onPrimaryContainer),
-                    title: Text(ticket.seatText(lang)!, key: const Key('ticketSeat'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.onPrimaryContainer)),
-                  ),
-                ),
-              if (ticket.isComplimentary)
+    // Outline pill for the navy page: white text and a 60% white border (the mockup's secondary buttons)
+    final ghost = E360Buttons.outline.copyWith(
+      minimumSize: const WidgetStatePropertyAll(Size(64, 52)),
+      foregroundColor: const WidgetStatePropertyAll(onNavy),
+      side: WidgetStateProperty.all(
+        const BorderSide(color: Color(0x99FFFFFF), width: 1.5),
+      ),
+    );
+
+    Widget bar() => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+            icon: const Icon(Icons.arrow_back, color: onNavy),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/tickets'),
+          ),
+          Expanded(
+            child: Text(
+              t.myTickets,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium?.copyWith(color: onNavy),
+            ),
+          ),
+          const SizedBox(width: 44),
+        ],
+      ),
+    );
+
+    Widget content(MyTicket x) {
+      final seat = x.seatText(lang);
+      final valid = x.qr != null && x.status == 'VALID';
+      void openCalendar() => launchUrl(
+        ref.read(apiProvider).calendarUri(x.eventId),
+        mode: LaunchMode.externalApplication,
+      );
+      final hasVenue = x.venueName != null && x.venueName!.isNotEmpty;
+      final venue = hasVenue
+          ? [
+              x.venueName!,
+              if (x.venueCity != null && x.venueCity!.isNotEmpty) x.venueCity!,
+            ].join(', ')
+          : null;
+      Widget cell(String label, String value, {Key? key}) => Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+            ),
+            Text(
+              value,
+              key: key,
+              style: theme.textTheme.titleMedium?.copyWith(fontSize: 15),
+            ),
+          ],
+        ),
+      );
+      final typeName = pickLang(lang, x.ticketTypeName, x.ticketTypeNameMy);
+      final isMy = Localizations.localeOf(context).languageCode == 'my';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            key: const Key('ticketCard'),
+            decoration: BoxDecoration(
+              color: E360Colors.card,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Pill(
-                      key: const Key('ticketComp'),
-                      ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
-                      color: theme.colorScheme.tertiary,
-                    ),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        [
+                          typeName,
+                          if (seat != null) t.reservedSeating,
+                        ].join(' · '),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: E360Colors.amberInk,
+                          letterSpacing: isMy ? 0 : 0.96,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        pickLang(lang, x.eventTitle, x.eventTitleMy),
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontSize: isMy ? 20 : 24,
+                          color: E360Colors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        x.organizer,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: E360Colors.muted,
+                        ),
+                      ),
+                      if (x.isComplimentary) ...[
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: E360Badge(
+                            key: const Key('ticketComp'),
+                            x.compLabel == null || x.compLabel!.isEmpty
+                                ? t.complimentary
+                                : t.complimentaryLabel(x.compLabel!),
+                            kind: E360BadgeKind.success,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      // Myanmar dates are long: the date gets a full row there, so it never breaks mid-word
+                      if (isMy) ...[
+                        Row(
+                          children: [
+                            cell(t.ticketDate, formatDay(x.startsAt, lang)),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            cell(t.ticketTime, formatTime(x.startsAt, lang)),
+                            const SizedBox(width: 16),
+                            if (seat != null)
+                              cell(t.ticketKind, typeName)
+                            else
+                              const Expanded(child: SizedBox.shrink()),
+                          ],
+                        ),
+                      ] else
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            cell(t.ticketDate, formatDay(x.startsAt, lang)),
+                            const SizedBox(width: 16),
+                            cell(t.ticketTime, formatTime(x.startsAt, lang)),
+                          ],
+                        ),
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          cell(t.venue, venue ?? '-'),
+                          const SizedBox(width: 16),
+                          if (seat != null)
+                            cell(
+                              t.ticketSeatLabel,
+                              seat,
+                              key: const Key('ticketSeat'),
+                            )
+                          else if (!isMy)
+                            cell(t.ticketKind, typeName)
+                          else
+                            const Expanded(child: SizedBox.shrink()),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              Card(
-                margin: const EdgeInsets.only(top: 8),
-                child: ListTile(
-                  title: Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy)),
-                  subtitle: Text(ticket.organizer),
-                  trailing: Pill('#${ticket.id.substring(0, 8).toUpperCase()}'),
+                // Tear line: two notches in the page colour and a dashed rule
+                SizedBox(
+                  height: 24,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Positioned(left: -12, top: 0, child: _Notch()),
+                      const Positioned(right: -12, top: 0, child: _Notch()),
+                      Positioned(
+                        left: 22,
+                        right: 22,
+                        top: 11,
+                        child: CustomPaint(
+                          painter: _DashPainter(E360Colors.line),
+                          size: const Size(double.infinity, 2),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
+                  child: valid
+                      ? Column(
+                          children: [
+                            QrImageView(
+                              data: x.qr!,
+                              size: 220,
+                              padding: EdgeInsets.zero,
+                              errorCorrectionLevel: QrErrorCorrectLevel.M,
+                              semanticsLabel: 'Ticket QR code',
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              t.showAtEntrance,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: E360Colors.muted,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.offline_pin,
+                                  size: 16,
+                                  color: E360Colors.success,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    t.offlineReady,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: E360Colors.success,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            E360Badge('#${x.id.substring(0, 8).toUpperCase()}'),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            const Icon(
+                              Icons.block,
+                              size: 48,
+                              color: E360Colors.muted,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              x.status == 'REFUNDED'
+                                  ? t.ticketRefunded
+                                  : t.ticketCancelled,
+                              key: const Key('ticketVoid'),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: E360Colors.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // One gold button: Directions, or the calendar when the ticket has no venue
+          if (valid)
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: hasVenue
+                        ? OutlinedButton(
+                            key: const Key('addToCalendar'),
+                            style: ghost,
+                            onPressed: openCalendar,
+                            child: Text(
+                              t.addToCalendar,
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : FilledButton(
+                            key: const Key('addToCalendar'),
+                            style: E360Buttons.gold,
+                            onPressed: openCalendar,
+                            child: Text(
+                              t.addToCalendar,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                  ),
+                  if (hasVenue) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        key: const Key('ticketDirections'),
+                        style: E360Buttons.gold.copyWith(
+                          padding: const WidgetStatePropertyAll(
+                            EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        ),
+                        onPressed: () => launchUrl(
+                          _directionsUri(x),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        child: Text(
+                          t.getDirections,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              if (ticket.canTransfer)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: OutlinedButton.icon(
-                    key: const Key('transfer'),
-                    onPressed: () => _transfer(ticket),
-                    icon: const Icon(Icons.send_outlined),
-                    label: Text(t.transferTicket),
-                  ),
+            ),
+          if (x.canTransfer)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: OutlinedButton.icon(
+                key: const Key('transfer'),
+                style: ghost,
+                onPressed: () => _transfer(x),
+                icon: const Icon(Icons.send_outlined),
+                label: Text(t.transferTicket),
+              ),
+            ),
+          if (x.canCancel)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: TextButton.icon(
+                key: const Key('cancelTicket'),
+                style: TextButton.styleFrom(
+                  foregroundColor: E360DarkColors.danger,
+                  minimumSize: const Size(44, 48),
                 ),
-              if (ticket.canCancel)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: TextButton.icon(
-                    key: const Key('cancelTicket'),
-                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
-                    onPressed: () => _cancel(ticket),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: Text(t.cancelTicket),
-                  ),
-                ),
-            ]),
+                onPressed: () => _cancel(x),
+                icon: const Icon(Icons.cancel_outlined),
+                label: Text(t.cancelTicket),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: E360Colors.night,
+        body: SafeArea(
+          child: Column(
+            children: [
+              bar(),
+              Expanded(
+                child: ticket == null
+                    ? (tickets.isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            )
+                          : Theme(
+                              data: theme.copyWith(
+                                textTheme: theme.textTheme.apply(
+                                  bodyColor: onNavy,
+                                ),
+                                colorScheme: theme.colorScheme.copyWith(
+                                  outline: onNavy,
+                                ),
+                              ),
+                              child: MessageView(
+                                icon: Icons.confirmation_number_outlined,
+                                message: t.noTickets,
+                              ),
+                            ))
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                        children: [content(ticket)],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+}
+
+class _Notch extends StatelessWidget {
+  const _Notch();
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 24,
+    height: 24,
+    decoration: const BoxDecoration(
+      color: E360Colors.night,
+      shape: BoxShape.circle,
+    ),
+  );
+}
+
+class _DashPainter extends CustomPainter {
+  const _DashPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2;
+    for (double x = 0; x < size.width; x += 10) {
+      canvas.drawLine(Offset(x, 1), Offset((x + 6).clamp(0, size.width), 1), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashPainter old) => old.color != color;
 }
 
 /// Asks for the recipient's number and sends the ticket; pops with the masked number on success.
