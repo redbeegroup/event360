@@ -30,7 +30,26 @@ export interface EventCard {
   soldOut: boolean;
 }
 
+export interface SeatsType {
+  id: string;
+  name: string;
+  nameMy: string | null;
+  priceMmk: number;
+  color: string;
+}
+/** GET /v1/events/:id/seats (seated events only). */
+export interface PublicSeats {
+  versionId: string;
+  layout: import('./seat-layout').Layout;
+  types: SeatsType[];
+  /** One char per seat in expandSeats() order: 0-9a-zA-Z index into `types`, '-' for none. */
+  seatTypes: string;
+  status: string;
+}
+
 export interface EventDetail extends EventCard {
+  /** Present when the event has a seat map. */
+  seating?: { seatMapVersionId: string; venueName: string | null } | null;
   description: string | null;
   descriptionMy: string | null;
   ageMin?: number | null;
@@ -105,3 +124,6 @@ export const getEvents = (q: { q?: string; category?: string; city?: string; fre
 export const getEvent = (slug: string) => get<EventDetail>(`/events/${encodeURIComponent(slug)}`);
 export const getCategories = () => get<Category[]>('/categories', 600).then((r) => r ?? []);
 export const getOrganizer = (slug: string) => get<Organizer>(`/organizers/${encodeURIComponent(slug)}`);
+
+/** Seat map for a seated event. Null when the event is not seated or the endpoint fails: the page then shows nothing. */
+export const getSeats = (slug: string) => get<PublicSeats>(`/events/${encodeURIComponent(slug)}/seats`, 30).catch(() => null);

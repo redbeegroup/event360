@@ -77,6 +77,8 @@ class CrewTicket {
     required this.ticketTypeName,
     this.ticketTypeNameMy,
     this.checkedIn,
+    this.seat,
+    this.seatMy,
   });
 
   final String id;
@@ -87,6 +89,10 @@ class CrewTicket {
   final String ticketTypeName;
   final String? ticketTypeNameMy;
   final CheckedInInfo? checkedIn;
+
+  /// Seat label ("Balcony · Row C · Seat 12") for seated events, English and Myanmar.
+  final String? seat;
+  final String? seatMy;
 
   bool get isCheckedIn => status == 'CHECKED_IN';
 
@@ -101,6 +107,8 @@ class CrewTicket {
       ticketTypeName: tt['name'] as String,
       ticketTypeNameMy: tt['nameMy'] as String?,
       checkedIn: j['checkedIn'] == null ? null : CheckedInInfo.fromJson(j['checkedIn'] as Map<String, dynamic>),
+      seat: j['seat'] as String?,
+      seatMy: j['seatMy'] as String?,
     );
   }
 }
@@ -131,7 +139,7 @@ class ScanOutcome {
 }
 
 class ManifestTicket {
-  ManifestTicket({required this.id, required this.code, required this.ticketTypeId, required this.version, required this.status, required this.holderName, this.phoneLast4, this.checkedInAt});
+  ManifestTicket({required this.id, required this.code, required this.ticketTypeId, required this.version, required this.status, required this.holderName, this.phoneLast4, this.checkedInAt, this.seat, this.seatMy});
 
   final String id;
   final String code;
@@ -141,6 +149,8 @@ class ManifestTicket {
   final String holderName;
   final String? phoneLast4;
   final DateTime? checkedInAt;
+  final String? seat;
+  final String? seatMy;
 
   factory ManifestTicket.fromJson(Map<String, dynamic> j) => ManifestTicket(
         id: j['id'] as String,
@@ -151,6 +161,8 @@ class ManifestTicket {
         holderName: j['holderName'] as String,
         phoneLast4: j['phoneLast4'] as String?,
         checkedInAt: _dtOrNull(j['checkedInAt']),
+        seat: j['seat'] as String?,
+        seatMy: j['seatMy'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -162,6 +174,8 @@ class ManifestTicket {
         'holderName': holderName,
         'phoneLast4': phoneLast4,
         'checkedInAt': checkedInAt?.toIso8601String(),
+        'seat': seat,
+        'seatMy': seatMy,
       };
 }
 

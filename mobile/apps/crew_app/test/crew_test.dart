@@ -72,7 +72,7 @@ class FakeCrewApi extends Event360Api {
         {'id': ttId, 'name': 'General', 'nameMy': null},
       ],
       'tickets': [
-        {'id': 'aaaaaaaa-0000-0000-0000-000000000001', 'code': 'AAAAAAAA', 'tt': ttId, 'v': 1, 'status': 'VALID', 'holderName': 'Su Su', 'phoneLast4': '5678', 'checkedInAt': null},
+        {'id': 'aaaaaaaa-0000-0000-0000-000000000001', 'code': 'AAAAAAAA', 'tt': ttId, 'v': 1, 'status': 'VALID', 'holderName': 'Su Su', 'phoneLast4': '5678', 'checkedInAt': null, 'seat': 'Balcony · Row C · Seat 12', 'seatMy': 'ဝရန်တာ · အတန်း C · ခုံ 12'},
       ],
     });
   }
@@ -88,7 +88,10 @@ class FakeCrewApi extends Event360Api {
       });
     }
     if (qr == 'bad.qr') return ScanOutcome.fromJson({'result': 'INVALID', 'reason': 'signature', 'ticket': null});
-    return ScanOutcome.fromJson({'result': 'ACCEPTED', 'ticket': ticketJson('cccccccc-0000-0000-0000-000000000003')});
+    return ScanOutcome.fromJson({
+      'result': 'ACCEPTED',
+      'ticket': {...ticketJson('cccccccc-0000-0000-0000-000000000003'), 'seat': 'Stalls · Row A · Seat 5', 'seatMy': 'ကြမ်းခင်း · အတန်း A · ခုံ 5'},
+    });
   }
 
   @override
@@ -292,6 +295,25 @@ void main() {
     expect(container.read(checkinProvider).pending, isEmpty);
     expect(find.byKey(const Key('attendance')), findsOneWidget);
     expect(find.text('12 / 40 checked in'), findsOneWidget);
+  });
+
+  testWidgets('scan result shows seat (online, and offline from the manifest)', (tester) async {
+    final (qr, key) = await tester.runAsync(() => signedQr('aaaaaaaa-0000-0000-0000-000000000001')) as (String, String);
+    final api = await pumpCrew(tester, prefs: readySession());
+    api.publicKey = key;
+    // Online: the seat comes with the scan result
+    await typeScan(tester, 'good.qr');
+    expect(find.byKey(const Key('resultSeat')), findsOneWidget);
+    expect(find.text('Stalls · Row A · Seat 5'), findsOneWidget);
+    // Offline: the seat comes from the cached manifest
+    final container = ProviderScope.containerOf(tester.element(find.byType(CrewApp)));
+    await tester.runAsync(() => container.read(checkinProvider.notifier).refreshManifest());
+    api.offline = true;
+    await tester.runAsync(() => container.read(checkinProvider.notifier).scan(qr));
+    await tester.pumpAndSettle();
+    expect(find.text('Checked offline'), findsOneWidget);
+    expect(find.text('Balcony · Row C · Seat 12'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('manual lookup checks a guest in; activity shows recent scans with undo', (tester) async {

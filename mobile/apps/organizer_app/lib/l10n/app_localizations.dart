@@ -295,6 +295,42 @@ abstract class L10n {
   /// **'By ticket type'**
   String get byTicketType;
 
+  /// No description provided for @seatsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Seats'**
+  String get seatsTitle;
+
+  /// No description provided for @seatsAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Available'**
+  String get seatsAvailable;
+
+  /// No description provided for @seatsHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Held at checkout'**
+  String get seatsHeld;
+
+  /// No description provided for @seatsGuest.
+  ///
+  /// In en, this message translates to:
+  /// **'Held for guests'**
+  String get seatsGuest;
+
+  /// No description provided for @seatsSold.
+  ///
+  /// In en, this message translates to:
+  /// **'Sold'**
+  String get seatsSold;
+
+  /// No description provided for @seatsComp.
+  ///
+  /// In en, this message translates to:
+  /// **'Complimentary'**
+  String get seatsComp;
+
   /// No description provided for @byGate.
   ///
   /// In en, this message translates to:

@@ -70,16 +70,32 @@ class DashboardTotals {
       );
 }
 
+/// Seat counts for one ticket type of a seated event.
+class SeatCounts {
+  const SeatCounts({required this.available, required this.held, required this.guest, required this.sold, required this.comp});
+  final int available, held, guest, sold, comp;
+  factory SeatCounts.fromJson(Map<String, dynamic> j) =>
+      SeatCounts(available: _i(j['available']), held: _i(j['held']), guest: _i(j['guest']), sold: _i(j['sold']), comp: _i(j['comp']));
+}
+
 class EventDashboard {
   EventDashboard({required this.totals, required this.ticketTypes, required this.byGate, required this.daily});
   final DashboardTotals totals;
-  final List<({String name, int sold, int quota, int priceMmk})> ticketTypes;
+  final List<({String name, int sold, int quota, int priceMmk, SeatCounts? seats})> ticketTypes;
+
+  /// Seat totals across ticket types; null for unseated events.
+  SeatCounts? get seatTotals {
+    final all = [for (final t in ticketTypes) if (t.seats != null) t.seats!];
+    if (all.isEmpty) return null;
+    int sum(int Function(SeatCounts) f) => all.fold(0, (a, c) => a + f(c));
+    return SeatCounts(available: sum((c) => c.available), held: sum((c) => c.held), guest: sum((c) => c.guest), sold: sum((c) => c.sold), comp: sum((c) => c.comp));
+  }
   final List<({String gate, int count})> byGate;
   final List<({String day, int orders, int revenueMmk})> daily;
   factory EventDashboard.fromJson(Map<String, dynamic> j) => EventDashboard(
         totals: DashboardTotals.fromJson(j['totals'] as Map<String, dynamic>),
         ticketTypes: [
-          for (final t in (j['ticketTypes'] as List).cast<Map<String, dynamic>>()) (name: t['name'] as String, sold: _i(t['sold']), quota: _i(t['quota']), priceMmk: _i(t['priceMmk'])),
+          for (final t in (j['ticketTypes'] as List).cast<Map<String, dynamic>>()) (name: t['name'] as String, sold: _i(t['sold']), quota: _i(t['quota']), priceMmk: _i(t['priceMmk']), seats: t['seats'] == null ? null : SeatCounts.fromJson(t['seats'] as Map<String, dynamic>)),
         ],
         byGate: [for (final g in (j['checkinsByGate'] as List).cast<Map<String, dynamic>>()) (gate: g['gate'] as String, count: _i(g['count']))],
         daily: [for (final d in (j['daily'] as List).cast<Map<String, dynamic>>()) (day: d['day'] as String, orders: _i(d['orders']), revenueMmk: _i(d['revenueMmk']))],

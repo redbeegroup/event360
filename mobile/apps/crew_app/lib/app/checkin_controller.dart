@@ -250,6 +250,8 @@ class CheckinController extends Notifier<CheckinState> {
       phoneLast4: t.phoneLast4,
       ticketTypeName: tt?.name ?? '',
       ticketTypeNameMy: tt?.nameMy,
+      seat: t.seat,
+      seatMy: t.seatMy,
       checkedIn: at == null ? null : CheckedInInfo(at: at, gate: checkedAt != null ? _session.gate : null),
     );
   }

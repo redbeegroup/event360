@@ -56,6 +56,11 @@ class ResultCard extends StatelessWidget {
               ]),
               if (tk != null) ...[
                 const SizedBox(height: 10),
+                if (tk.seat != null && tk.seat!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(pickLang(lang, tk.seat, tk.seatMy), key: const Key('resultSeat'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ),
                 Text(tk.holderName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
                 Text('${pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy)} · #${tk.code}', style: const TextStyle(fontSize: 15, color: Colors.white)),
               ],

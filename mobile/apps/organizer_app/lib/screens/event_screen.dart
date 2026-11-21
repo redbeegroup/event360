@@ -139,6 +139,14 @@ class _OverviewState extends ConsumerState<_Overview> {
             const SizedBox(height: 8),
             Text(t.byTicketType, style: theme.textTheme.titleMedium),
             for (final tt in d.ticketTypes) bar(tt.name, tt.sold, tt.quota),
+            if (d.seatTotals case final st?) ...[
+              const SizedBox(height: 12),
+              Text(t.seatsTitle, style: theme.textTheme.titleMedium),
+              Wrap(key: const Key('seatCounts'), spacing: 8, children: [
+                for (final (label, n) in [(t.seatsAvailable, st.available), (t.seatsHeld, st.held), (t.seatsGuest, st.guest), (t.seatsSold, st.sold), (t.seatsComp, st.comp)])
+                  Chip(label: Text('$label · ${formatAmount(n, lang)}')),
+              ]),
+            ],
             if (att != null && att.byGate.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(t.byGate, style: theme.textTheme.titleMedium),

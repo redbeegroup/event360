@@ -109,6 +109,24 @@ class L10nMy extends L10n {
   String get byTicketType => 'အမျိုးအစားအလိုက်';
 
   @override
+  String get seatsTitle => 'ထိုင်ခုံများ';
+
+  @override
+  String get seatsAvailable => 'လွတ်';
+
+  @override
+  String get seatsHeld => 'ဝယ်နေဆဲ';
+
+  @override
+  String get seatsGuest => 'ဧည့်သည်အတွက်';
+
+  @override
+  String get seatsSold => 'ရောင်းပြီး';
+
+  @override
+  String get seatsComp => 'အခမဲ့';
+
+  @override
   String get byGate => 'ဂိတ်အလိုက် ဝင်ရောက်မှု';
 
   @override

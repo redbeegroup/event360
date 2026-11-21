@@ -46,7 +46,7 @@ class FakeApi extends Event360Api {
         'totals': {'views': 120, 'orders': 9, 'ticketsSold': 13, 'capacity': 300, 'revenueMmk': 138000, 'discountMmk': 57000, 'checkedIn': 9, 'conversion': 7.5},
         'ticketTypes': [
           {'name': 'Standing', 'sold': 4, 'quota': 200, 'priceMmk': 0},
-          {'name': 'VIP deck', 'sold': 3, 'quota': 20, 'priceMmk': 35000},
+          {'name': 'VIP deck', 'sold': 3, 'quota': 20, 'priceMmk': 35000, 'seats': {'available': 11, 'held': 2, 'guest': 3, 'sold': 3, 'comp': 1}},
         ],
         'checkinsByGate': [],
         'daily': [],
@@ -203,6 +203,9 @@ void main() {
     expect(find.text('VIP deck'), findsOneWidget);
     expect(find.text('Gate A'), findsOneWidget);
     expect(find.text('No gate'), findsOneWidget);
+    expect(find.text('Available · 11'), findsOneWidget);
+    expect(find.text('Held for guests · 3'), findsOneWidget);
+    expect(find.text('Complimentary · 1'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('2 × · 30,000 MMK'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('2 × · 30,000 MMK'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); // stop the refresh timer

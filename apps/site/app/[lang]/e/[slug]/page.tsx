@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getEvent, getOrganizer } from '../../../lib/api';
+import { getEvent, getOrganizer, getSeats } from '../../../lib/api';
 import { SITE_URL, ticketsUrl } from '../../../lib/config';
 import { dict, fmtDayLong, fmtMmk, fmtTime, href, isLang, pick, type Lang } from '../../../lib/i18n';
 import { TicketCard, place } from '../../../components/Cards';
+import { SeatMapStatic } from '../../../components/SeatMapStatic';
 
 type P = { params: Promise<{ lang: string; slug: string }> };
 
@@ -42,6 +43,8 @@ export default async function EventPage({ params }: P) {
   const e = await getEvent(slug);
   if (!e) notFound();
   const more = (await getOrganizer(e.organization.slug).catch(() => null))?.events.filter((x) => x.id !== e.id).slice(0, 3) ?? [];
+
+  const seatMap = e.seating ? await getSeats(e.slug) : null;
 
   const ended = new Date(e.endsAt) < new Date();
   const cancelled = e.status === 'CANCELLED';
@@ -107,6 +110,14 @@ export default async function EventPage({ params }: P) {
             <section aria-labelledby="about">
               <h2 id="about">{t.about}</h2>
               <p className="prose">{pick(lang, e.description, e.descriptionMy)}</p>
+            </section>
+          )}
+
+          {seatMap && (
+            <section aria-labelledby="seating">
+              <h2 id="seating">{t.seatMapTitle}</h2>
+              <p><span className="badge">{t.reservedSeating}</span></p>
+              <SeatMapStatic seats={seatMap} lang={lang} t={t} />
             </section>
           )}
 
@@ -243,6 +254,7 @@ export default async function EventPage({ params }: P) {
             <div className="ticket-tear" aria-hidden="true" />
             <div className="pass-bottom">
               <h2 style={{ fontSize: '1.1rem' }}>{t.tickets}</h2>
+              {seatMap && <div className="badge">{t.reservedSeating}</div>}
               {e.ticketTypes.map((tt) => (
                 <div className="tt" key={tt.id}>
                   <div>

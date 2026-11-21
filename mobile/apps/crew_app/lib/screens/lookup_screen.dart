@@ -117,6 +117,7 @@ class _LookupScreenState extends ConsumerState<LookupScreen> {
                           ),
                           title: Text(tk.holderName, style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text([
+                            if (tk.seat != null && tk.seat!.isNotEmpty) pickLang(lang, tk.seat, tk.seatMy),
                             pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy),
                             '#${tk.code}',
                             if (tk.phoneLast4 != null && !tk.holderName.contains(tk.phoneLast4!)) '••${tk.phoneLast4}',

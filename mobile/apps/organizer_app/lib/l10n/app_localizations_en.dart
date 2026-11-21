@@ -109,6 +109,24 @@ class L10nEn extends L10n {
   String get byTicketType => 'By ticket type';
 
   @override
+  String get seatsTitle => 'Seats';
+
+  @override
+  String get seatsAvailable => 'Available';
+
+  @override
+  String get seatsHeld => 'Held at checkout';
+
+  @override
+  String get seatsGuest => 'Held for guests';
+
+  @override
+  String get seatsSold => 'Sold';
+
+  @override
+  String get seatsComp => 'Complimentary';
+
+  @override
   String get byGate => 'Check-ins by gate';
 
   @override
