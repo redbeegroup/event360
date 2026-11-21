@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { RecordPayout, VoidPayout, type PayoutLabels } from '../../components/PayoutAdmin';
 import { api } from '../../lib/api';
-import { fmtDate, fmtMmk, t } from '../../lib/i18n';
-import { completeRefundAction, refundOrderAction, retryRefundAction, saveFeeAction } from '../actions';
+import { fmtDate, fmtMmk, t, toLocalInput } from '../../lib/i18n';
+import { completeRefundAction, recordPayoutAction, refundOrderAction, retryRefundAction, saveFeeAction, voidPayoutAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,18 @@ interface Balance {
   grossMmk: number;
   refundedMmk: number;
   commissionMmk: number;
+  paidOutMmk: number;
   owedMmk: number;
+}
+interface PayoutRow {
+  id: string;
+  amountMmk: number;
+  paidAt: string;
+  method: string;
+  reference: string | null;
+  note: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
 }
 
 const STATUSES = ['PENDING_PAYMENT', 'PAID', 'REFUNDED', 'EXPIRED', 'CANCELLED'];
@@ -60,6 +72,18 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     api<OrderRow[]>(`/admin/finance/orders?${qs}`),
     api<Balance[]>('/admin/finance/balances'),
   ]);
+  const payoutLists = await Promise.all(balances.map((b) => api<PayoutRow[]>(`/admin/finance/organizations/${b.organizationId}/payouts`)));
+  const payoutsOf = new Map(balances.map((b, i) => [b.organizationId, payoutLists[i]]));
+  const methods = Object.fromEntries(['BANK', 'KBZPAY', 'WAVEPAY', 'CASH', 'OTHER'].map((m) => [m, String((tr as Record<string, unknown>)[`pyMethod${m}`])]));
+  const pl: PayoutLabels = {
+    record: tr.pyRecord, amount: tr.pyAmount, paidAt: tr.pyDate, method: tr.pyMethod, reference: tr.pyReference, note: tr.note,
+    review: tr.pyReview, confirmLine: tr.pyConfirmLine, confirm: tr.pyConfirm, back: tr.pyBack, overWarn: tr.pyOverWarn,
+    recorded: tr.pyRecorded, newOwed: tr.pyNewOwed, newOwing: tr.pyNewOwing, voidBtn: tr.pyVoidBtn, voidReasonPh: tr.pyVoidReasonPh,
+    voidConfirm: tr.pyVoidConfirm, voidDone: tr.pyVoidDone, alreadyVoided: tr.pyAlreadyVoided, methods,
+    currency: tr.lang === 'my' ? 'ကျပ်' : 'MMK', locale: tr.lang === 'my' ? 'my-MM' : 'en-US',
+  };
+  const payoutErrors = { alreadyVoided: tr.pyAlreadyVoided };
+  const nowLocal = toLocalInput(new Date());
   const okText = { saved: tr.saved, refunded: tr.refundStarted };
   const openRefunds = orders.concat(review).flatMap((o) => o.refunds.filter((r) => r.status === 'MANUAL' || r.status === 'FAILED').map((r) => ({ ...r, order: o })));
   const seen = new Set<string>();
@@ -161,7 +185,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         ) : (
           <>
             <table>
-              <thead><tr><th>{tr.organization}</th><th>{tr.paidOrders}</th><th>{tr.gross}</th><th>{tr.refunded}</th><th>{tr.commission}</th><th>{tr.owed}</th></tr></thead>
+              <thead><tr><th>{tr.organization}</th><th>{tr.paidOrders}</th><th>{tr.gross}</th><th>{tr.refunded}</th><th>{tr.commission}</th><th>{tr.pyPaidOutCol}</th><th>{tr.owed}</th></tr></thead>
               <tbody>
                 {balances.map((b) => (
                   <tr key={b.organizationId}>
@@ -170,12 +194,50 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                     <td>{fmtMmk(b.grossMmk, tr.lang)}</td>
                     <td>{fmtMmk(b.refundedMmk, tr.lang)}</td>
                     <td>{fmtMmk(b.commissionMmk, tr.lang)}</td>
+                    <td>{fmtMmk(b.paidOutMmk, tr.lang)}</td>
                     <td><strong>{fmtMmk(b.owedMmk, tr.lang)}</strong></td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p><a className="btn secondary" href="/admin/finance/balances.csv">{tr.downloadCsv}</a></p>
+            <h2>{tr.pyPayoutsFor}</h2>
+            {balances.map((b) => (
+              <div className="card" key={b.organizationId} data-testid={`payouts-${b.organizationId}`}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <strong>{b.organization}</strong>
+                  <span>{tr.owed}: <strong>{fmtMmk(b.owedMmk, tr.lang)}</strong></span>
+                </div>
+                <RecordPayout orgId={b.organizationId} orgName={b.organization} owedMmk={b.owedMmk} defaultPaidAt={nowLocal} action={recordPayoutAction} labels={pl} errorText={payoutErrors} />
+                {(payoutsOf.get(b.organizationId) ?? []).length === 0 ? (
+                  <p className="muted">{tr.pyNone}</p>
+                ) : (
+                  <table>
+                    <thead><tr><th>{tr.pyDate}</th><th>{tr.pyAmount}</th><th>{tr.pyMethod}</th><th>{tr.pyReference}</th><th /></tr></thead>
+                    <tbody>
+                      {payoutsOf.get(b.organizationId)!.map((p) => {
+                        const strike = p.voidedAt ? { textDecoration: 'line-through' } : undefined;
+                        return (
+                          <tr key={p.id}>
+                            <td style={strike}>{fmtDate(p.paidAt, tr.lang)}</td>
+                            <td style={strike}>{fmtMmk(p.amountMmk, tr.lang)}</td>
+                            <td style={strike}>{methods[p.method] ?? p.method}</td>
+                            <td><span style={strike}>{p.reference ?? ''}</span>{p.note && <div className="muted" style={{ fontSize: 12 }}>{p.note}</div>}</td>
+                            <td style={{ minWidth: 220 }}>
+                              {p.voidedAt ? (
+                                <span className="error-text" style={{ fontSize: 12 }}><span className="badge REJECTED">{tr.pyVoided}</span> {p.voidReason}</span>
+                              ) : (
+                                <VoidPayout id={p.id} action={voidPayoutAction} labels={pl} errorText={payoutErrors} />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))}
           </>
         )}
       </div>

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { FormState } from '../actions';
 import { api, ApiError } from '../lib/api';
+import { fromLocalInput } from '../lib/i18n';
 
 const err = (e: unknown): FormState => (e instanceof ApiError ? { error: e.message, problems: e.problems } : { error: (e as Error).message });
 
@@ -316,6 +317,38 @@ export async function publishSeatMapAction(id: string): Promise<FormState> {
     revalidatePath('/admin/venues');
     return { ok: 'published' };
   } catch (e) {
+    return err(e);
+  }
+}
+
+export async function recordPayoutAction(_: FormState, fd: FormData): Promise<FormState> {
+  const paidAt = String(fd.get('paidAt') ?? '');
+  try {
+    const r = await api<{ owedMmk: number }>(`/admin/finance/organizations/${fd.get('orgId')}/payouts`, {
+      method: 'POST',
+      json: {
+        amountMmk: Number(fd.get('amountMmk')),
+        paidAt: paidAt ? fromLocalInput(paidAt) : new Date().toISOString(),
+        method: fd.get('method'),
+        reference: String(fd.get('reference') ?? '').trim() || undefined,
+        note: String(fd.get('note') ?? '').trim() || undefined,
+      },
+    });
+    revalidatePath('/admin/finance');
+    return { ok: 'recorded', data: { owedMmk: r.owedMmk } };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function voidPayoutAction(_: FormState, fd: FormData): Promise<FormState> {
+  try {
+    await api(`/admin/finance/payouts/${fd.get('id')}/void`, { method: 'POST', json: { reason: String(fd.get('reason') ?? '').trim() } });
+    revalidatePath('/admin/finance');
+    return { ok: 'voided' };
+  } catch (e) {
+    // 409: already voided (another admin, or a double click). Keep the message on screen; the next load shows the voided row.
+    if (e instanceof ApiError && e.status === 409) return { error: 'alreadyVoided' };
     return err(e);
   }
 }

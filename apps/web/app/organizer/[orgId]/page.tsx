@@ -23,6 +23,7 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
     api<EventDto[]>(`/organizations/${orgId}/events`),
   ]);
   const myRole = me.organizations.find((o) => o.id === orgId)?.role;
+  const canSeePayouts = myRole === 'ORG_OWNER' || myRole === 'ORG_FINANCE';
   const canEdit = myRole === 'ORG_OWNER' || myRole === 'ORG_MANAGER' || me.platformRoles.includes('PLATFORM_ADMIN');
   return (
     <>
@@ -34,10 +35,13 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>{tr.events}</h2>
-        {canEdit && (
+        {(canEdit || canSeePayouts) && (
           <div className="row">
+            {canSeePayouts && <Link className="btn secondary" href={`/organizer/${orgId}/payouts`}>{tr.pyNav}</Link>}
+            {canEdit && (<>
             <Link className="btn secondary" href={`/organizer/${orgId}/profile`}>{tr.profile}</Link>
             <Link className="btn" href={`/organizer/${orgId}/events/new`}>{tr.newEvent}</Link>
+            </>)}
           </div>
         )}
       </div>
