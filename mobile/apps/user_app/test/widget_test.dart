@@ -100,6 +100,10 @@ class FakeApi extends Event360Api {
   final promoSeatChecks = <List<String>>[];
   int? promoError; // checkPromo throws this status
   List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
+  ApiException? nextOrderError; // the next order (seated or not) fails with this
+  int stallsPrice = 20000; // the seat map's Stalls price (a poll can change it)
+  String? seatTypesNow; // overrides the seat map's per-seat types (a poll can change them)
+  Completer<void>? eventGate; // event() waits for this
   final cancelled = <String>[];
   List<Map<String, dynamic>> extraTickets = [];
 
@@ -128,10 +132,10 @@ class FakeApi extends Event360Api {
       'versionId': 'v1',
       'layout': seatedLayout,
       'types': [
-        {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'color': '#f2b632'},
+        {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': stallsPrice, 'color': '#f2b632'},
         if (two) {'id': 'tt-circle', 'name': 'Circle', 'nameMy': null, 'priceMmk': 30000, 'color': '#3b6fd8'},
       ],
-      'seatTypes': two ? '0000011111' : '0' * 10,
+      'seatTypes': seatTypesNow ?? (two ? '0000011111' : '0' * 10),
       'status': seatStatus,
     });
   }
@@ -148,6 +152,11 @@ class FakeApi extends Event360Api {
   @override
   Future<Order> createOrder(String eventId, Map<String, int> quantities,
       {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const []}) async {
+    final err = nextOrderError;
+    if (err != null) {
+      nextOrderError = null;
+      throw err;
+    }
     if (seats.isNotEmpty) {
       final taken = takenOnNextOrder;
       if (taken != null) {
@@ -266,7 +275,12 @@ class FakeApi extends Event360Api {
       };
 
   @override
-  Future<EventSummary> event(String idOrSlug) async => EventSummary.fromJson(
+  Future<EventSummary> event(String idOrSlug) async {
+    if (eventGate != null) await eventGate!.future;
+    return _event(idOrSlug);
+  }
+
+  EventSummary _event(String idOrSlug) => EventSummary.fromJson(
       idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2')));
 
   @override
@@ -349,6 +363,13 @@ void phoneScreen(WidgetTester tester) {
   tester.view.physicalSize = const Size(1236, 2745);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
+}
+
+/// The test font draws every Myanmar code point as a full square, so a Myanmar discounted total (struck-through
+/// price plus new price) is far wider than on a device: tests that show one use a wider screen.
+Future<void> wideScreen(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(2400, 2745);
+  await tester.pump();
 }
 
 final openedUrls = <String>[];
@@ -949,6 +970,48 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a code used up at order time is shown in Myanmar; other order errors keep the API message', (tester) async {
+    await openPicker(tester, lang: 'my');
+    await wideScreen(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    pickerApi.nextOrderError = ApiException(400, 'This code has been used up', reasonCode: 'USED_UP');
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
+    expect(find.text('This code has been used up'), findsNothing);
+    pickerApi.nextOrderError = ApiException(409, 'Sales for Stalls have closed');
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Sales for Stalls have closed'), findsOneWidget);
+    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('ticket sheet: a code used up at order time is shown in Myanmar', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    await wideScreen(tester);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('promoField')), 'save20');
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    api.nextOrderError = ApiException(400, 'This code has been used up', reasonCode: 'USED_UP');
+    await tester.tap(find.byKey(const Key('sheetSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
+    expect(find.text('This code has been used up'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('invalid promo shows reason', (tester) async {
     await openPicker(tester);
     await zoomIntoStalls(tester);
@@ -1016,6 +1079,60 @@ void main() {
     await tester.pump();
     expect(pickerApi.promoSeatChecks.last, ['A:1:1']);
     expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a poll that changes a selected seat\'s price or type re-checks the promo', (tester) async {
+    await openPicker(tester, event: 'seated2');
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    expect(pickerApi.promoSeatChecks, hasLength(1));
+    Future<void> nextPoll() async {
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+    }
+
+    await nextPoll(); // nothing changed: no re-check
+    expect(pickerApi.promoSeatChecks, hasLength(1));
+    pickerApi.stallsPrice = 25000; // the seat's type is repriced
+    await nextPoll();
+    expect(pickerApi.promoSeatChecks, [
+      ['A:1:1'],
+      ['A:1:1'],
+    ]);
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    pickerApi.seatTypesNow = '1000011111'; // the seat is now sold as Circle
+    await nextPoll();
+    expect(pickerApi.promoSeatChecks, hasLength(3));
+    expect(pickerApi.promoSeatChecks.last, ['A:1:1']);
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a code applied before the event loads is checked once it does', (tester) async {
+    final gate = Completer<void>();
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    api.eventGate = gate;
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await applyPromo(tester, 'SAVE20');
+    expect(api.promoSeatChecks, isEmpty); // no event yet
+    expect(find.textContaining('Code applied'), findsNothing);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('seatContinue'))).onPressed, isNull);
+    gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(api.promoSeatChecks, [
+      ['A:1:1']
+    ]);
+    expect(find.text('Code applied: 4,000 MMK off'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('seatContinue'))).onPressed, isNotNull);
     await tester.pumpWidget(const SizedBox());
   });
 

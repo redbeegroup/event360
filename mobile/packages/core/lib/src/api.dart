@@ -11,9 +11,12 @@ import 'token_store.dart';
 
 /// Error with a user-presentable message from the API (`message` field) and the HTTP status.
 class ApiException implements Exception {
-  ApiException(this.status, this.message, {this.takenSeats = const []});
+  ApiException(this.status, this.message, {this.takenSeats = const [], this.reasonCode});
   final int? status;
   final String message;
+
+  /// A machine-readable reason from the error body (e.g. a rejected promo code's `USED_UP`), for localized text.
+  final String? reasonCode;
 
   /// Seat keys that were just taken (409 on a seated order).
   final List<String> takenSeats;
@@ -92,7 +95,8 @@ class Event360Api {
         msg = 'HTTP ${e.response!.statusCode}';
       }
       final taken = data is Map && data['takenSeats'] is List ? (data['takenSeats'] as List).whereType<String>().toList() : const <String>[];
-      throw ApiException(e.response?.statusCode, msg, takenSeats: taken);
+      final reasonCode = data is Map && data['reasonCode'] is String ? data['reasonCode'] as String : null;
+      throw ApiException(e.response?.statusCode, msg, takenSeats: taken, reasonCode: reasonCode);
     }
   }
 

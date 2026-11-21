@@ -447,7 +447,8 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         _seatsChanged();
         await _load(force: true); // the map may look unchanged to us, but those seats are gone
       } else {
-        setState(() => _error = e.message);
+        // A promo code rejected at order time (e.g. used up meanwhile) carries a reasonCode: show our own text
+        setState(() => _error = e.reasonCode != null ? promoReasonText(t, e.reasonCode) : e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);

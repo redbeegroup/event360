@@ -458,7 +458,9 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
         if (mounted) Navigator.of(context).pop(o.id); // → checkout
       }
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (!mounted) return;
+      // A promo code rejected at order time (e.g. used up meanwhile) carries a reasonCode: show our own text
+      setState(() => _error = e.reasonCode != null ? promoReasonText(L10n.of(context), e.reasonCode) : e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
