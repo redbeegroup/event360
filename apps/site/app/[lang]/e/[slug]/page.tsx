@@ -9,17 +9,6 @@ import { SeatMapStatic } from '../../../components/SeatMapStatic';
 
 type P = { params: Promise<{ lang: string; slug: string }> };
 
-const Icon = ({ d }: { d: string }) => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d={d} />
-  </svg>
-);
-const ICON = {
-  cal: 'M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
-  pin: 'M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
-  org: 'M4 20V9l8-5 8 5v11M9 20v-6h6v6',
-};
-
 export async function generateMetadata({ params }: P): Promise<Metadata> {
   const { lang, slug } = await params;
   const e = await getEvent(slug);
@@ -89,185 +78,55 @@ export default async function EventPage({ params }: P) {
     })),
   };
 
+  const minPrice = e.isFree ? t.free : e.minPriceMmk != null ? fmtMmk(e.minPriceMmk, lang) : null;
+  const venueLine = e.venue ? e.venue.city : null;
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
-      <section className="event-hero">
+      <div className="wrap event-page">
+        <p className="crumbs">
+          <Link href={href(lang, '/events')}>{t.eventsTitle}</Link> / {pick(lang, e.category.nameEn, e.category.nameMy)}
+        </p>
         {e.coverImageUrl && <img className="event-cover" src={e.coverImageUrl} alt="" />}
-        <div className="wrap event-title">
-          <p className="crumbs">
-            <Link href={href(lang, '/events')}>{t.eventsTitle}</Link> / {pick(lang, e.category.nameEn, e.category.nameMy)}
-          </p>
-          <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.4rem)', maxWidth: '22ch' }}>{title}</h1>
-          {pick(lang, e.summary, e.summaryMy) && <p>{pick(lang, e.summary, e.summaryMy)}</p>}
-        </div>
-      </section>
 
-      <div className="wrap event-layout">
-        <div className="event-main">
-          {(cancelled || ended) && <p className="notice">{cancelled ? t.cancelled : t.ended}</p>}
-
-          {pick(lang, e.description, e.descriptionMy) && (
-            <section aria-labelledby="about">
-              <h2 id="about">{t.about}</h2>
-              <p className="prose">{pick(lang, e.description, e.descriptionMy)}</p>
-            </section>
-          )}
-
-          {seatMap && (
-            <section aria-labelledby="seating">
-              <h2 id="seating">{t.seatMapTitle}</h2>
-              <p><span className="badge">{t.reservedSeating}</span></p>
-              <SeatMapStatic seats={seatMap} lang={lang} t={t} />
-            </section>
-          )}
-
-          {e.sessions.length > 0 && (
-            <section aria-labelledby="schedule">
-              <h2 id="schedule">{t.schedule}</h2>
-              <ol className="timeline">
-                {e.sessions.map((s) => (
-                  <li key={s.id}>
-                    <time dateTime={s.startsAt}>{fmtTime(s.startsAt, lang)}</time>
-                    <div>
-                      <strong>{pick(lang, s.title, s.titleMy)}</strong>
-                      {s.location && <div className="muted small">{s.location}</div>}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
-
-          {e.performers.length > 0 && (
-            <section aria-labelledby="lineup">
-              <h2 id="lineup">{t.lineup}</h2>
-              <div className="lineup">
-                {e.performers.map((p) => (
-                  <div className="person" key={p.id}>
-                    {p.photoUrl ? <img src={p.photoUrl} alt="" loading="lazy" /> : <span className="ph" aria-hidden="true" />}
-                    <div>
-                      <strong>{pick(lang, p.name, p.nameMy)}</strong>
-                      {p.role && <div className="muted small">{pick(lang, p.role, p.roleMy)}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {e.media.length > 0 && (
-            <section aria-labelledby="photos">
-              <h2 id="photos">{t.photos}</h2>
-              <div className="gallery">
-                {e.media.map((m) => (
-                  <figure key={m.id}>
-                    <img src={m.url} alt={pick(lang, m.caption, m.captionMy)} loading="lazy" />
-                    {m.caption && <figcaption>{pick(lang, m.caption, m.captionMy)}</figcaption>}
-                  </figure>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {shownFacts.length > 0 && (
-            <section aria-labelledby="good">
-              <h2 id="good">{t.goodToKnow}</h2>
-              <dl className="facts">
-                {shownFacts.map(([k, v]) => (
-                  <div key={k + v}>
-                    {k && <dt>{k}</dt>}
-                    <dd>{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          )}
-
-          {e.venue && (
-            <section aria-labelledby="directions">
-              <h2 id="directions">{t.directions}</h2>
-              <p>
-                <strong>{venueName}</strong>
-                {e.venue.address && <><br />{e.venue.address}</>}
-                <br />
-                {e.venue.city}
-              </p>
-              {pick(lang, e.venue.directions, e.venue.directionsMy) && <p className="prose muted" style={{ marginTop: 8 }}>{pick(lang, e.venue.directions, e.venue.directionsMy)}</p>}
-              {mapUrl && <a className="btn btn-ghost" style={{ marginTop: 14 }} href={mapUrl} target="_blank" rel="noopener noreferrer">{t.openMap}</a>}
-            </section>
-          )}
-
-          {e.faqs.length > 0 && (
-            <section aria-labelledby="faq">
-              <h2 id="faq">{t.faq}</h2>
-              {e.faqs.map((f) => (
-                <details className="faq" key={f.id}>
-                  <summary>{pick(lang, f.question, f.questionMy)}</summary>
-                  <p>{pick(lang, f.answer, f.answerMy)}</p>
-                </details>
-              ))}
-            </section>
-          )}
-
-          {pick(lang, e.refundPolicy, e.refundPolicyMy) && (
-            <section aria-labelledby="refund">
-              <h2 id="refund">{t.refundPolicy}</h2>
-              <p className="prose">{pick(lang, e.refundPolicy, e.refundPolicyMy)}</p>
-            </section>
-          )}
-
-          {more.length > 0 && (
-            <section aria-labelledby="more">
-              <h2 id="more">{t.moreFrom}</h2>
-              <div className="tickets">{more.map((x) => <TicketCard key={x.id} e={x} lang={lang} />)}</div>
-            </section>
-          )}
-        </div>
-
-        <aside className="aside" aria-label={t.tickets}>
-          <div className="pass">
-            <div className="pass-top">
-              <div className="pass-row">
-                <Icon d={ICON.cal} />
-                <div>
-                  <div className="label">{t.when}</div>
-                  <div>{fmtDayLong(e.startsAt, lang)}</div>
-                  <div className="muted">{fmtTime(e.startsAt, lang)} – {fmtTime(e.endsAt, lang)}</div>
-                </div>
-              </div>
-              <div className="pass-row">
-                <Icon d={ICON.pin} />
-                <div>
-                  <div className="label">{t.where}</div>
-                  <div>{place(e, lang)}</div>
-                </div>
-              </div>
-              <div className="pass-row">
-                <Icon d={ICON.org} />
-                <div>
-                  <div className="label">{t.organizer}</div>
-                  <Link href={href(lang, `/o/${e.organization.slug}`)}>{e.organization.name}</Link>
-                  {e.organization.kycStatus === 'APPROVED' && <div className="badge">{t.verified}</div>}
-                </div>
-              </div>
+        <div className="event-layout">
+          <header className="event-head">
+            <div className="badges">
+              {seatMap && <span className="badge badge-gold">{t.reservedSeating}</span>}
+              <span className="badge">{pick(lang, e.category.nameEn, e.category.nameMy)}</span>
             </div>
-            <div className="ticket-tear" aria-hidden="true" />
-            <div className="pass-bottom">
-              <h2 style={{ fontSize: '1.1rem' }}>{t.tickets}</h2>
-              {seatMap && <div className="badge">{t.reservedSeating}</div>}
-              {e.ticketTypes.map((tt) => (
-                <div className="tt" key={tt.id}>
-                  <div>
-                    <div>{pick(lang, tt.name, tt.nameMy)}</div>
-                    <div className="left">{tt.remaining > 0 ? t.left(tt.remaining) : t.soldOut}</div>
-                    {tt.nextPrice && tt.priceMmk > 0 && (
-                      <div className="left">{t.priceRises(fmtMmk(tt.nextPrice.priceMmk, lang), `${fmtDay(tt.nextPrice.startsAt, lang)}, ${fmtTime(tt.nextPrice.startsAt, lang)}`)}</div>
-                    )}
-                  </div>
-                  <strong style={{ color: tt.priceMmk === 0 ? 'var(--jade)' : undefined }}>{tt.priceMmk === 0 ? t.free : fmtMmk(tt.priceMmk, lang)}</strong>
+            <h1 className="event-h1">{title}</h1>
+            <p className="event-by">
+              {t.by} <Link href={href(lang, `/o/${e.organization.slug}`)}>{e.organization.name}</Link>
+              {e.organization.kycStatus === 'APPROVED' && <span className="badge badge-ok">{t.verified}</span>}
+            </p>
+            {pick(lang, e.summary, e.summaryMy) && <p className="event-summary">{pick(lang, e.summary, e.summaryMy)}</p>}
+          </header>
+
+          <div className="event-aside-cell">
+            <aside className="ticket-box" aria-label={t.tickets}>
+              <h2 className="visually-hidden">{t.tickets}</h2>
+              {minPrice && (
+                <div className="from">
+                  <span>{t.ticketsFrom}</span>
+                  <span className={`price-big${e.isFree ? ' free' : ''}`}>{minPrice}</span>
                 </div>
-              ))}
+              )}
+              <div className="tt-list">
+                {e.ticketTypes.map((tt) => (
+                  <div className="tt" key={tt.id}>
+                    <div>
+                      <div className="name">{pick(lang, tt.name, tt.nameMy)}</div>
+                      <div className="left">{tt.remaining > 0 ? t.left(tt.remaining) : t.soldOut}</div>
+                      {tt.nextPrice && tt.priceMmk > 0 && (
+                        <div className="left">{t.priceRises(fmtMmk(tt.nextPrice.priceMmk, lang), `${fmtDay(tt.nextPrice.startsAt, lang)}, ${fmtTime(tt.nextPrice.startsAt, lang)}`)}</div>
+                      )}
+                    </div>
+                    <span className={`price${tt.priceMmk === 0 ? ' free' : ''}`}>{tt.priceMmk === 0 ? t.free : fmtMmk(tt.priceMmk, lang)}</span>
+                  </div>
+                ))}
+              </div>
               {tiers.length > 0 && (
                 <div className="group-tiers">
                   <div className="label">{t.groupTitle}</div>
@@ -277,10 +136,143 @@ export default async function EventPage({ params }: P) {
               {canBuy && (
                 <a className="btn btn-gold" href={ticketsUrl(e.slug)}>{e.isFree ? t.registerFree : t.getTickets}</a>
               )}
-              <p className="muted small">{t.ticketsInApp}</p>
-            </div>
+              <p className="note">{t.ticketsInApp}</p>
+            </aside>
           </div>
-        </aside>
+
+          <div className="event-body">
+            <div className="info-cards">
+              <div className="info-card">
+                <span className="label">{t.when}</span>
+                <span className="strong">{fmtDayLong(e.startsAt, lang)}</span>
+                <span className="sub">{fmtTime(e.startsAt, lang)} – {fmtTime(e.endsAt, lang)}</span>
+              </div>
+              <div className="info-card">
+                <span className="label">{t.where}</span>
+                <span className="strong">{e.format === 'ONLINE' ? t.online : venueName ?? place(e, lang)}</span>
+                {e.format !== 'ONLINE' && venueLine && <span className="sub">{venueLine}{e.format === 'HYBRID' ? ` · ${t.hybrid}` : ''}</span>}
+              </div>
+            </div>
+        {(cancelled || ended) && <p className="notice">{cancelled ? t.cancelled : t.ended}</p>}
+
+        {pick(lang, e.description, e.descriptionMy) && (
+          <section aria-labelledby="about">
+            <h2 id="about">{t.overview}</h2>
+            <p className="prose">{pick(lang, e.description, e.descriptionMy)}</p>
+          </section>
+        )}
+
+        {seatMap && (
+          <section aria-labelledby="seating">
+            <h2 id="seating">{t.seatMapTitle}</h2>
+            <p><span className="badge badge-gold">{t.reservedSeating}</span></p>
+            <SeatMapStatic seats={seatMap} lang={lang} t={t} />
+          </section>
+        )}
+
+        {e.sessions.length > 0 && (
+          <section aria-labelledby="schedule">
+            <h2 id="schedule">{t.schedule}</h2>
+            <ol className="timeline">
+              {e.sessions.map((s) => (
+                <li key={s.id}>
+                  <time dateTime={s.startsAt}>{fmtTime(s.startsAt, lang)}</time>
+                  <div>
+                    <strong>{pick(lang, s.title, s.titleMy)}</strong>
+                    {s.location && <div className="muted small">{s.location}</div>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {e.performers.length > 0 && (
+          <section aria-labelledby="lineup">
+            <h2 id="lineup">{t.lineup}</h2>
+            <div className="lineup">
+              {e.performers.map((p) => (
+                <div className="person" key={p.id}>
+                  {p.photoUrl ? <img src={p.photoUrl} alt="" loading="lazy" /> : <span className="ph" aria-hidden="true" />}
+                  <div>
+                    <strong>{pick(lang, p.name, p.nameMy)}</strong>
+                    {p.role && <div className="muted small">{pick(lang, p.role, p.roleMy)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {e.media.length > 0 && (
+          <section aria-labelledby="photos">
+            <h2 id="photos">{t.photos}</h2>
+            <div className="gallery">
+              {e.media.map((m) => (
+                <figure key={m.id}>
+                  <img src={m.url} alt={pick(lang, m.caption, m.captionMy)} loading="lazy" />
+                  {m.caption && <figcaption>{pick(lang, m.caption, m.captionMy)}</figcaption>}
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {shownFacts.length > 0 && (
+          <section aria-labelledby="good">
+            <h2 id="good">{t.goodToKnow}</h2>
+            <dl className="facts">
+              {shownFacts.map(([k, v]) => (
+                <div className="fact" key={k + v}>
+                  {k && <dt>{k}</dt>}
+                  <dd>{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
+
+        {e.venue && (
+          <section aria-labelledby="directions">
+            <h2 id="directions">{t.directions}</h2>
+            <p>
+              <strong>{venueName}</strong>
+              {e.venue.address && <><br />{e.venue.address}</>}
+              <br />
+              {e.venue.city}
+            </p>
+            {pick(lang, e.venue.directions, e.venue.directionsMy) && <p className="prose muted" style={{ marginTop: 8 }}>{pick(lang, e.venue.directions, e.venue.directionsMy)}</p>}
+            {mapUrl && <a className="btn btn-ghost" style={{ marginTop: 14, minHeight: 44 }} href={mapUrl} target="_blank" rel="noopener noreferrer">{t.openMap}</a>}
+          </section>
+        )}
+
+        {e.faqs.length > 0 && (
+          <section aria-labelledby="faq">
+            <h2 id="faq">{t.faq}</h2>
+            {e.faqs.map((f) => (
+              <details className="faq" key={f.id}>
+                <summary>{pick(lang, f.question, f.questionMy)}</summary>
+                <p>{pick(lang, f.answer, f.answerMy)}</p>
+              </details>
+            ))}
+          </section>
+        )}
+
+        {pick(lang, e.refundPolicy, e.refundPolicyMy) && (
+          <section aria-labelledby="refund">
+            <h2 id="refund">{t.refundPolicy}</h2>
+            <p className="prose">{pick(lang, e.refundPolicy, e.refundPolicyMy)}</p>
+          </section>
+        )}
+
+        {more.length > 0 && (
+          <section aria-labelledby="more">
+            <h2 id="more">{t.moreFrom}</h2>
+            <div className="tickets">{more.map((x) => <TicketCard key={x.id} e={x} lang={lang} />)}</div>
+          </section>
+        )}
+          </div>
+        </div>
       </div>
     </>
   );

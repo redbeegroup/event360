@@ -9,7 +9,7 @@ export function Legal({ lang, title, updated, summaryMy, children }: { lang: Lan
       <h1>{title}</h1>
       <p className="muted">{t.lastUpdated}: {updated}</p>
       {lang === 'my' && (
-        <div style={{ marginTop: 20, padding: 16, background: '#fff', border: '1px solid var(--line)', borderRadius: 12 }}>
+        <div className="legal-summary">
           {summaryMy}
           <p className="muted small" style={{ marginTop: 10 }}>အောက်ပါ အင်္ဂလိပ်ဘာသာ စာသားသည် အပြည့်အစုံ ဖြစ်ပါသည်။</p>
         </div>

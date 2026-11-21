@@ -3,8 +3,8 @@
 /** Shown when the event data can't be loaded (API down or slow). */
 export default function ErrorPage({ reset }: { reset: () => void }) {
   return (
-    <div className="wrap" style={{ padding: '80px 0' }}>
-      <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)' }}>Events couldn’t be loaded</h1>
+    <div className="wrap status-page">
+      <h1 className="page-title">Events couldn’t be loaded</h1>
       <p className="muted" style={{ marginTop: 12, maxWidth: '50ch' }}>
         Please try again in a moment.
         <br />

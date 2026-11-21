@@ -29,7 +29,6 @@ export function TicketCard({ e, lang }: { e: EventCard; lang: Lang }) {
           <span className="m">{month}</span>
         </span>
       </div>
-      <div className="ticket-tear" aria-hidden="true" />
       <div className="ticket-body">
         <h3>{pick(lang, e.title, e.titleMy)}</h3>
         <p className="ticket-meta">
@@ -56,7 +55,7 @@ export function TicketStub({ e, lang }: { e: EventCard; lang: Lang }) {
       <span className="stub-body">
         <strong>{pick(lang, e.title, e.titleMy)}</strong>
         <span className="meta">{fmtTime(e.startsAt, lang)} · {place(e, lang)}</span>
-        <span className="meta" style={{ color: price.cls === 'free' ? 'var(--jade)' : undefined, fontWeight: 600 }}>{price.text}</span>
+        <span className={`meta ${price.cls}`}>{price.text}</span>
       </span>
     </Link>
   );

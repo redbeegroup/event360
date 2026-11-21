@@ -356,3 +356,7 @@
 "ticketKind","Ticket","လက်မှတ်","user_app"
 "getDirections","Directions","လမ်းညွှန်","user_app"
 "openFailed","Couldn't open that. Try again.","ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။","user_app"
+"site.overview","Overview","အနှစ်ချုပ်","site"
+"site.ticketsFrom","Tickets from","လက်မှတ်ဈေး စတင်","site"
+"site.by","By","စီစဉ်သူ","site"
+"site.searchEvents","Search events","ပွဲ ရှာမည်","site"

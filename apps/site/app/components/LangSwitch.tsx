@@ -9,7 +9,7 @@ export function LangSwitch({ lang }: { lang: Lang }) {
   const bare = path === '/my' ? '/' : path.startsWith('/my/') ? path.slice(3) : path.replace(/^\/en(?=\/|$)/, '') || '/';
   const to = lang === 'en' ? `/my${bare === '/' ? '' : bare}` : bare;
   return (
-    <a className="lang-switch" href={to} hrefLang={lang === 'en' ? 'my' : 'en'} lang={lang === 'en' ? 'my' : 'en'}>
+    <a href={to} hrefLang={lang === 'en' ? 'my' : 'en'} lang={lang === 'en' ? 'my' : 'en'}>
       {lang === 'en' ? 'မြန်မာ' : 'English'}
     </a>
   );

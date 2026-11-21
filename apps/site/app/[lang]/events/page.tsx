@@ -38,7 +38,7 @@ export default async function Events({ params, searchParams }: { params: Promise
   return (
     <div className="wrap">
       <div className="page-head">
-        <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>{t.eventsTitle}</h1>
+        <h1 className="page-title">{t.eventsTitle}</h1>
         <p className="muted">{t.eventsIntro}</p>
       </div>
       <form className="filters" action={base} role="search" aria-label={t.filters}>

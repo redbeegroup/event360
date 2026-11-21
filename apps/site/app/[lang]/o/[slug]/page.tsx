@@ -31,13 +31,13 @@ export default async function OrganizerPage({ params }: P) {
       <div className="org-head">
         {o.logoUrl ? <img src={o.logoUrl} alt="" /> : <span className="ph" aria-hidden="true" />}
         <div>
-          <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.6rem)' }}>{o.name}</h1>
-          {o.verified && <div className="badge">{t.verified}</div>}
+          <h1 className="page-title">{o.name}</h1>
+          {o.verified && <div className="badges" style={{ marginTop: 8 }}><span className="badge badge-ok">{t.verified}</span></div>}
         </div>
       </div>
       {pick(lang, o.description, o.descriptionMy) && <p className="prose" style={{ marginTop: 12 }}>{pick(lang, o.description, o.descriptionMy)}</p>}
       {(o.website || o.facebookUrl) && (
-        <p style={{ marginTop: 12, display: 'flex', gap: 16 }}>
+        <p className="org-links">
           {o.website && <a href={o.website} rel="noopener noreferrer nofollow" target="_blank">{t.website}</a>}
           {o.facebookUrl && <a href={o.facebookUrl} rel="noopener noreferrer nofollow" target="_blank">{t.facebook}</a>}
         </p>
