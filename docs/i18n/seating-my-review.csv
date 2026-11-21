@@ -362,3 +362,8 @@
 "site.searchEvents","Search events","ပွဲ ရှာမည်","site"
 "site.freeAvailable","Free tickets available","အခမဲ့လက်မှတ် ရနိုင်သည်","site"
 "site.paidFrom","Paid tickets from {price}","ငွေပေးလက်မှတ် {price} မှ စ","site"
+"portal.menuOrgProfile","Organization profile","အဖွဲ့အစည်း ပရိုဖိုင်","portal"
+"portal.menuLabel","Menu","မီနူး","portal"
+"portal.tabEdit","Edit","ပြင်ဆင်ရန်","portal"
+"portal.tabSeats","Seats","ထိုင်ခုံများ","portal"
+"portal.eventSections","Event sections","ပွဲ၏ အပိုင်းများ","portal"

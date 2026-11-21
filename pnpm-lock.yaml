@@ -166,6 +166,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource-variable/bricolage-grotesque':
+        specifier: 5.2.8
+        version: 5.2.8
+      '@fontsource-variable/figtree':
+        specifier: 5.2.8
+        version: 5.2.8
+      '@fontsource/noto-sans-myanmar':
+        specifier: 5.2.6
+        version: 5.2.6
       hls.js:
         specifier: 1.5.17
         version: 1.5.17

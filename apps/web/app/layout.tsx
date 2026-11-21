@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
-import { Inter, Noto_Sans_Myanmar } from 'next/font/google';
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/figtree';
+import '@fontsource/noto-sans-myanmar/400.css';
+import '@fontsource/noto-sans-myanmar/700.css';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { setLangAction, logoutAction } from './actions';
@@ -8,19 +11,16 @@ import { t } from './lib/i18n';
 import { cookies } from 'next/headers';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
-const myanmar = Noto_Sans_Myanmar({ subsets: ['myanmar'], weight: ['400', '600', '700'], variable: '--font-my' });
-
 export const metadata: Metadata = { title: 'Event 360 Portal', description: 'Admin & organizer portal' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const tr = await t();
   const signedIn = Boolean((await cookies()).get(ACCESS_COOKIE)?.value);
   return (
-    <html lang={tr.lang === 'my' ? 'my' : 'en'} className={`${inter.variable} ${myanmar.variable}`}>
+    <html lang={tr.lang === 'my' ? 'my' : 'en'}>
       <body>
         <header className="top">
-          <Link href="/" className="brand">Event 360</Link>
+          <Link href="/" className="brand"><span className="brand-mark" aria-hidden="true" />Event 360</Link>
           {signedIn && (
             <nav>
               <Link href="/organizer">{tr.organizer}</Link>
