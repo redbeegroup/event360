@@ -17,8 +17,11 @@ import type { EventSeat } from '@prisma/client';
  * 7. promo_codes row (orders with a code; TicketsService.cancel locks it FOR UPDATE here);
  * 8. seat rows: claims lock them in seat_key order; the other functions only touch seats the order already owns;
  * 9. seated ticket_types rows, in id order, in the recount (the last step before commit).
- * One exception: TicketsService.cancel takes its (free) order's row last, after the recount, only to serialise
- * cancels within that order; no other path holds a free order's row while waiting for a counter or seat.
+ * Two exceptions, both safe:
+ * - TicketsService.cancel takes its (free) order's row last, after the recount, only to serialise cancels within
+ *   that order; no other path holds a free order's row while waiting for a counter or seat.
+ * - GuestsService.revoke takes the comp order's row after the ticket and seat rows; it holds the event row
+ *   FOR UPDATE first, which serialises it against every other seat path of that event.
  */
 type Tx = Prisma.TransactionClient;
 

@@ -44,6 +44,11 @@ type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] }
  */
 const byTypeId = <T>(rows: T[], id: (r: T) => string): T[] => [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
 
+/** Flags an order for admin review, keeping any earlier note (one line per reason) so no refund reason is lost. */
+async function flagForReview(tx: Prisma.TransactionClient, orderId: string, note: string) {
+  await tx.$executeRaw`UPDATE orders SET needs_review = true, review_note = CASE WHEN review_note IS NULL OR review_note = '' THEN ${note} ELSE review_note || E'\n' || ${note} END WHERE id = ${orderId}::uuid`;
+}
+
 @Injectable()
 export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PaymentsService.name);
@@ -519,12 +524,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
       if (amountMmk !== undefined && amountMmk !== pay.amountMmk) {
         await journal(tx, 'payment', pay.id, [{ account: clearing, debit: amountMmk }, { account: ACC.unallocated, credit: amountMmk }]);
-        await tx.order.update({ where: { id: order.id }, data: { needsReview: true, reviewNote: `Amount mismatch: paid ${amountMmk}, expected ${pay.amountMmk} (payment ${pay.id})` } });
+        await flagForReview(tx, order.id, `Amount mismatch: paid ${amountMmk}, expected ${pay.amountMmk} (payment ${pay.id})`);
         return;
       }
       if (status === 'PAID' || status === 'REFUNDED' || status === 'CONFIRMED') {
         await journal(tx, 'payment', pay.id, [{ account: clearing, debit: pay.amountMmk }, { account: ACC.unallocated, credit: pay.amountMmk }]);
-        await tx.order.update({ where: { id: order.id }, data: { needsReview: true, reviewNote: `Paid twice: extra payment ${pay.id} (${pay.provider}) must be refunded` } });
+        await flagForReview(tx, order.id, `Paid twice: extra payment ${pay.id} (${pay.provider}) must be refunded`);
         return;
       }
 
