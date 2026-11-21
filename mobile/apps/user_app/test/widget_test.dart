@@ -2127,6 +2127,8 @@ void main() {
     final all = within == null ? find.bySubtype<ButtonStyleButton>() : find.descendant(of: within, matching: find.bySubtype<ButtonStyleButton>());
     return all.evaluate().where((el) {
       final b = el.widget as ButtonStyleButton;
+      // Test-only: read the same theme and default styles the button itself resolves.
+      // ignore: invalid_use_of_protected_member
       final style = (b.style ?? const ButtonStyle()).merge(b.themeStyleOf(el)).merge(b.defaultStyleOf(el)); // the widget's own style wins
       return style.backgroundColor?.resolve({}) == E360Colors.gold;
     }).toList();
