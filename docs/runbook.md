@@ -198,3 +198,16 @@ The fixes:
 - the readiness check has more slack.
 
 Scans during the rush are still slow on dev's single pod, because sign-ins and orders compete for the same CPU. The crew app falls back to offline checking after 4 s, so the door keeps moving. Prod runs 2 API pods.
+
+### Seated scenario
+
+A second private event, `loadtest-seated`, with a published throwaway seat map (venue name `loadtest map`, 600 seats). Only 500 seats are on sale (Stalls and Circle, one free ticket type, 4 per order); the 100 Balcony seats are unassigned and must never sell. The theatre fixture file is not in the API image, so `data.js` builds a layout of the same shape inline.
+
+1. **Create the data.** Run `MODE=seated node /scripts/data.js` as the same one-off Job (run it from the image's working dir, where `dist/` is). It prints `LOADTEST_SEATED {eventId, ticketTypeId, slug}`.
+2. **Run k6** with `SCENARIOS=seated,seats_read` and `LT` set to the JSON from step 1. 1,000 buyers sign in; half pick 1 to 2 random available seats from `GET /seats`, half use `POST /seats/best`, then everyone orders. At the same time `GET /seats` is hit at 50 req/s for 60 s. It counts `seated_claimed` (seats ordered) and `seated_conflict` (409s). Thresholds: no 5xx, p95 of `GET /seats` under 300 ms.
+3. **Check.** Run `MODE=seated-check node /scripts/data.js`. It must print `"ok":true`: sold seats at most 500, no seat with two valid tickets, no ticket whose seat is not sold, and the ticket type's sold counter equal to the sold seats.
+4. **Remove everything.** `node /scripts/data.js cleanup` also removes the seated event, its seats and rules, and the map.
+
+To try it on a local database, set `LOADTEST_ALLOW_LOCAL=1` (accepted for localhost URLs only), and `BUYERS`, `SEATS_RATE` and `SEATS_DURATION` for k6 to scale down.
+
+Results: (pending dev run)
