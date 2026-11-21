@@ -13,6 +13,7 @@ import '../app/format.dart';
 import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/discount_lines.dart';
 import '../widgets/event_card.dart';
 import '../widgets/total_amounts.dart';
 
@@ -221,7 +222,11 @@ class _Detail extends ConsumerWidget {
                   child: ListTile(
                     leading: tt.seated ? Icon(Icons.event_seat, color: parseHexColor(tt.color)) : null,
                     title: Text(pickLang(lang, tt.name, tt.nameMy)),
-                    subtitle: Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
+                      if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null)
+                        Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('priceRise-${tt.id}'), style: theme.textTheme.bodySmall),
+                    ]),
                     trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   ),
@@ -480,6 +485,13 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     final free = _options;
+    final view = resolveDiscount(
+      tiers: widget.event.groupDiscounts,
+      paidQty: _type.isFree ? 0 : _qty,
+      paidSubtotalMmk: _type.isFree ? 0 : _type.priceMmk * _qty,
+      totalMmk: _type.priceMmk * _qty,
+      promo: _promoResult,
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: _done
@@ -509,7 +521,10 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                     _resetPromo();
                   }),
                   title: Text(pickLang(lang, tt.name, tt.nameMy)),
-                  subtitle: Text(t.remaining(tt.remaining)),
+                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t.remaining(tt.remaining)),
+                    if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null) Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('sheetRise-${tt.id}')),
+                  ]),
                   secondary: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)), style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               const SizedBox(height: 8),
@@ -555,15 +570,18 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: _promoResult!.valid
-                        ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                        ? (_promoResult!.promoApplied
+                            ? Text(t.promoApplied(t.mmk(formatAmount(_promoResult!.discountMmk, lang))), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                            : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
                         : Text(promoReasonText(t, _promoResult!.reasonCode), style: TextStyle(color: theme.colorScheme.error)),
                   ),
+                DiscountLines(view: view, lang: lang),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: TotalRow(
                     label: Text(t.total, style: theme.textTheme.titleMedium),
-                    original: _promoResult?.valid == true ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
-                    total: t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
+                    original: view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+                    total: t.mmk(formatAmount(view.totalMmk, lang)),
                     totalKey: const Key('sheetTotal'),
                   ),
                 ),

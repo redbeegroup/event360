@@ -435,6 +435,25 @@ class L10nEn extends L10n {
   String get promoNotApplicable => 'This code does not apply to these tickets';
 
   @override
+  String priceRisesTo(String price, String date) {
+    return 'Price rises to $price on $date';
+  }
+
+  @override
+  String groupDiscountLine(String amount) {
+    return 'Group discount −$amount';
+  }
+
+  @override
+  String groupDiscountHint(int n, String percent) {
+    return 'Buy $n+ tickets to save $percent%';
+  }
+
+  @override
+  String get promoLostToGroup =>
+      'Your code isn\'t applied — the group discount is bigger';
+
+  @override
   String promoApplied(String amount) {
     return 'Code applied: $amount off';
   }

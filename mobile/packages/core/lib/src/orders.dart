@@ -48,6 +48,7 @@ class Order {
     required this.items,
     required this.totalMmk,
     this.discountMmk = 0,
+    this.discountSource,
     this.holdExpiresAt,
     this.paymentProvider,
     this.paymentAction,
@@ -61,6 +62,9 @@ class Order {
   final List<OrderLine> items;
   final int totalMmk;
   final int discountMmk;
+
+  /// What the discount came from: GROUP (group discount), PROMO (a code) or null.
+  final String? discountSource;
   final DateTime? holdExpiresAt;
   final String? paymentProvider;
   final PaymentAction? paymentAction;
@@ -82,6 +86,7 @@ class Order {
       items: (j['items'] as List).map((x) => OrderLine.fromJson(x as Map<String, dynamic>)).toList(),
       totalMmk: (j['totalMmk'] as num).toInt(),
       discountMmk: (j['discountMmk'] as num?)?.toInt() ?? 0,
+      discountSource: j['discountSource'] as String?,
       holdExpiresAt: _dtn(j['holdExpiresAt']),
       paymentProvider: pay?['provider'] as String?,
       paymentAction: pay?['action'] == null ? null : PaymentAction.fromJson(pay!['action'] as Map<String, dynamic>),
@@ -92,17 +97,24 @@ class Order {
 
 /// Result of checking a promo code against the chosen tickets (nothing reserved).
 class PromoCheck {
-  PromoCheck({required this.valid, this.reason, this.reasonCode, required this.discountMmk, required this.totalMmk});
+  PromoCheck({required this.valid, this.reason, this.reasonCode, required this.discountMmk, required this.totalMmk, this.discountSource, bool? promoApplied}) : promoApplied = promoApplied ?? valid && discountSource != 'GROUP';
   final bool valid;
   final String? reason; // English, for old clients
   final String? reasonCode; // USED_UP | EXPIRED | NOT_STARTED | NOT_APPLICABLE | INVALID
   final int discountMmk;
   final int totalMmk;
+
+  /// GROUP, PROMO or null: which discount the amounts above come from. A valid code that loses to a bigger group
+  /// discount is still [valid], but [promoApplied] is false and the source is GROUP.
+  final String? discountSource;
+  final bool promoApplied;
   factory PromoCheck.fromJson(Map<String, dynamic> j) => PromoCheck(
         valid: j['valid'] as bool,
         reason: j['reason'] as String?,
         reasonCode: j['reasonCode'] as String?,
         discountMmk: (j['discountMmk'] as num).toInt(),
         totalMmk: (j['totalMmk'] as num).toInt(),
+        discountSource: j['discountSource'] as String?,
+        promoApplied: j['promoApplied'] as bool?,
       );
 }

@@ -17,6 +17,8 @@ import {
   cancelEventAction,
   deleteTicketTypeAction,
   saveListAction,
+  setPriceStepsAction,
+  setGroupDiscountsAction,
   createPromoAction,
   togglePromoAction,
   sendAnnouncementAction,
@@ -178,7 +180,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
             {e.ticketTypes.map((tt) => (
               <tr key={tt.id}>
                 <td>{pick(tr.lang, tt.name, tt.nameMy)}</td>
-                <td>{tt.priceMmk === 0 ? tr.free : fmtMmk(tt.priceMmk, tr.lang)}</td>
+                <td>
+                  {tt.priceMmk === 0 ? tr.free : fmtMmk(tt.priceMmk, tr.lang)}
+                  {tt.nextPrice && <div className="muted" style={{ fontSize: 12 }}>{tr.risesTo(fmtMmk(tt.nextPrice.priceMmk, tr.lang), fmtDate(tt.nextPrice.startsAt, tr.lang))}</div>}
+                </td>
                 <td>{tt.sold ?? 0}</td>
                 <td>{tt.quota}</td>
                 <td>{tt.maxPerOrder}</td>
@@ -194,6 +199,39 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
             ))}
           </tbody>
         </table>
+        {!closed && paidTypes.length > 0 && (
+          <>
+            <h2>{tr.priceStepsTitle}</h2>
+            <p className="muted">{tr.priceStepsHint}</p>
+            {paidTypes.map((tt) => {
+              const nowMs = Date.now();
+              const steps = tt.priceSteps ?? [];
+              const inEffect = steps.filter((x) => new Date(x.startsAt).getTime() <= nowMs);
+              const future = steps.filter((x) => new Date(x.startsAt).getTime() > nowMs);
+              return (
+                <div key={tt.id} className="card" style={{ background: 'var(--bg)' }}>
+                  <h3>{tr.priceStepsFor(pick(tr.lang, tt.name, tt.nameMy))}</h3>
+                  <p className="muted">
+                    {tr.priceBase}: {fmtMmk(tt.basePriceMmk ?? tt.priceMmk, tr.lang)}
+                    {inEffect.map((x) => <span key={x.startsAt}> · {tr.priceInEffect}: {fmtMmk(x.priceMmk, tr.lang)} ({fmtDate(x.startsAt, tr.lang)})</span>)}
+                  </p>
+                  <ActionForm action={setPriceStepsAction} submitLabel={tr.save} okText={okText} errorText={{ conflict: tr.stepsConflict, badStep: tr.stepsBad }}>
+                    {hidden}
+                    <input type="hidden" name="ticketTypeId" value={tt.id} />
+                    <ListEditor
+                      fields={[
+                        { name: 'startsAt', label: tr.priceFrom, type: 'datetime', required: true },
+                        { name: 'priceMmk', label: tr.priceNew, type: 'number', required: true, min: 100, step: 100 },
+                      ]}
+                      initial={future.map((x) => ({ startsAt: toLocalInput(x.startsAt), priceMmk: String(x.priceMmk) }))}
+                      labels={{ add: tr.addStep, remove: tr.remove, up: tr.moveUp, empty: tr.nothingYet }}
+                    />
+                  </ActionForm>
+                </div>
+              );
+            })}
+          </>
+        )}
         {!closed && (
           <>
             <h2>{tr.addTicketType}</h2>
@@ -314,6 +352,30 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                   </div>
                 )}
               </ActionForm>
+            )}
+          </div>
+        </>
+      )}
+
+      {hasPaid && (e.groupDiscounts?.length || (codes !== null && !closed)) && (
+        <>
+          <h2>{tr.groupTitle}</h2>
+          <div className="card">
+            <p className="muted">{tr.groupHint}</p>
+            {codes !== null && !closed ? (
+              <ActionForm action={setGroupDiscountsAction} submitLabel={tr.groupSave} okText={okText} errorText={{ badTier: tr.tierBad }}>
+                {hidden}
+                <ListEditor
+                  fields={[
+                    { name: 'minQuantity', label: tr.groupMinQty, type: 'number', required: true, min: 2, max: 100, step: 1 },
+                    { name: 'percent', label: tr.groupPercent, type: 'number', required: true, min: 1, max: 90, step: 'any' },
+                  ]}
+                  initial={(e.groupDiscounts ?? []).map((g) => ({ minQuantity: String(g.minQuantity), percent: String(g.percentBp / 100) }))}
+                  labels={{ add: tr.addTier, remove: tr.remove, up: tr.moveUp, empty: tr.nothingYet }}
+                />
+              </ActionForm>
+            ) : (
+              <ul>{e.groupDiscounts?.map((g) => <li key={g.minQuantity}>{g.minQuantity}+ → {g.percentBp / 100}%</li>)}</ul>
             )}
           </div>
         </>

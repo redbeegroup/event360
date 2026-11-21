@@ -133,6 +133,22 @@ class LocalizedText {
   String of(String lang) => pickLang(lang, (en?.isEmpty ?? true) ? null : en, (my?.isEmpty ?? true) ? null : my);
 }
 
+/// The next timed price of a ticket type, once its start has not passed yet.
+class NextPrice {
+  NextPrice({required this.priceMmk, required this.startsAt});
+  final int priceMmk;
+  final DateTime startsAt;
+  factory NextPrice.fromJson(Map<String, dynamic> j) => NextPrice(priceMmk: (j['priceMmk'] as num).toInt(), startsAt: _dt(j['startsAt']));
+}
+
+/// One group discount tier: buy [minQuantity] or more paid tickets in an order, take [percentBp] (basis points, 1000 = 10%) off.
+class GroupTier {
+  const GroupTier({required this.minQuantity, required this.percentBp});
+  final int minQuantity;
+  final int percentBp;
+  factory GroupTier.fromJson(Map<String, dynamic> j) => GroupTier(minQuantity: (j['minQuantity'] as num).toInt(), percentBp: (j['percentBp'] as num).toInt());
+}
+
 class TicketType {
   TicketType({
     required this.id,
@@ -144,11 +160,21 @@ class TicketType {
     required this.maxPerOrder,
     this.seated = false,
     this.color,
-  });
+    int? basePriceMmk,
+    this.nextPrice,
+  }) : basePriceMmk = basePriceMmk ?? priceMmk;
   final String id;
   final String name;
   final String? nameMy;
+
+  /// The price right now (after any timed step that has started).
   final int priceMmk;
+
+  /// The price before any timed step.
+  final int basePriceMmk;
+
+  /// The next timed price, if one is scheduled.
+  final NextPrice? nextPrice;
   final int quota;
   final int remaining;
   final int maxPerOrder;
@@ -172,6 +198,8 @@ class TicketType {
         maxPerOrder: (j['maxPerOrder'] as num).toInt(),
         seated: j['seated'] as bool? ?? false,
         color: j['color'] as String?,
+        basePriceMmk: (j['basePriceMmk'] as num?)?.toInt(),
+        nextPrice: j['nextPrice'] == null ? null : NextPrice.fromJson(j['nextPrice'] as Map<String, dynamic>),
       );
 }
 
@@ -185,11 +213,12 @@ class EventSeating {
 
 /// One seated ticket type on the map (ordered by price; its index is the character in [SeatMapData.seatTypes]).
 class SeatTypeInfo {
-  SeatTypeInfo({required this.id, required this.name, this.nameMy, required this.priceMmk, required this.color});
+  SeatTypeInfo({required this.id, required this.name, this.nameMy, required this.priceMmk, required this.color, this.nextPrice});
   final String id;
   final String name;
   final String? nameMy;
   final int priceMmk;
+  final NextPrice? nextPrice;
   final String color;
   String label(String lang) => pickLang(lang, name, nameMy);
   factory SeatTypeInfo.fromJson(Map<String, dynamic> j) => SeatTypeInfo(
@@ -198,6 +227,7 @@ class SeatTypeInfo {
         nameMy: j['nameMy'] as String?,
         priceMmk: (j['priceMmk'] as num).toInt(),
         color: j['color'] as String,
+        nextPrice: j['nextPrice'] == null ? null : NextPrice.fromJson(j['nextPrice'] as Map<String, dynamic>),
       );
 }
 
@@ -263,6 +293,7 @@ class EventSummary {
     this.performers = const [],
     this.gallery = const [],
     this.faqs = const [],
+    this.groupDiscounts = const [],
   });
 
   final String id;
@@ -304,6 +335,9 @@ class EventSummary {
   final List<Performer> performers;
   final List<GalleryImage> gallery;
   final List<Faq> faqs;
+
+  /// Group discount tiers (empty when the organizer set none).
+  final List<GroupTier> groupDiscounts;
 
   bool get hasPracticalInfo =>
       ageMin != null || !dressCode.isEmpty || !languages.isEmpty || !parking.isEmpty || !accessibility.isEmpty || !whatToBring.isEmpty;
@@ -348,6 +382,7 @@ class EventSummary {
       faqs: ((j['faqs'] as List?) ?? const []).map((x) => Faq.fromJson(x as Map<String, dynamic>)).toList(),
       ticketTypes: ((j['ticketTypes'] as List?) ?? const []).map((t) => TicketType.fromJson(t as Map<String, dynamic>)).toList(),
       soldOut: (j['soldOut'] as bool?) ?? false,
+      groupDiscounts: ((j['groupDiscounts'] as List?) ?? const []).map((g) => GroupTier.fromJson(g as Map<String, dynamic>)).toList(),
       seating: j['seating'] == null ? null : EventSeating.fromJson(j['seating'] as Map<String, dynamic>),
     );
   }

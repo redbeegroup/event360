@@ -2,7 +2,12 @@ export interface TicketTypeDto {
   id: string;
   name: string;
   nameMy: string | null;
+  /** Price right now (after any timed step). */
   priceMmk: number;
+  basePriceMmk?: number;
+  nextPrice?: { priceMmk: number; startsAt: string } | null;
+  /** Organizer view only: every timed step, past and future. */
+  priceSteps?: { startsAt: string; priceMmk: number }[];
   quota: number;
   remaining: number;
   sold?: number;
@@ -65,6 +70,7 @@ export interface EventDto {
   media?: { id: string; key: string; url: string; caption: string | null; captionMy: string | null }[];
   faqs?: { id: string; question: string; questionMy: string | null; answer: string; answerMy: string | null }[];
   ticketTypes: TicketTypeDto[];
+  groupDiscounts?: { minQuantity: number; percentBp: number }[];
   /** Set when the event has a venue seat map */
   seating?: { seatMapVersionId: string; venueName: string | null } | null;
   soldOut: boolean;

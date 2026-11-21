@@ -883,6 +883,30 @@ abstract class L10n {
   /// **'This code does not apply to these tickets'**
   String get promoNotApplicable;
 
+  /// No description provided for @priceRisesTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Price rises to {price} on {date}'**
+  String priceRisesTo(String price, String date);
+
+  /// No description provided for @groupDiscountLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Group discount −{amount}'**
+  String groupDiscountLine(String amount);
+
+  /// No description provided for @groupDiscountHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy {n}+ tickets to save {percent}%'**
+  String groupDiscountHint(int n, String percent);
+
+  /// No description provided for @promoLostToGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Your code isn\'t applied — the group discount is bigger'**
+  String get promoLostToGroup;
+
   /// No description provided for @promoApplied.
   ///
   /// In en, this message translates to:

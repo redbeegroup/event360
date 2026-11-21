@@ -225,6 +225,27 @@
   "promoExpired": "This code has expired",
   "promoNotStarted": "This code is not active yet",
   "promoNotApplicable": "This code does not apply to these tickets",
+  "priceRisesTo": "Price rises to {price} on {date}",
+  "@priceRisesTo": {
+    "placeholders": {
+      "price": {"type": "String"},
+      "date": {"type": "String"}
+    }
+  },
+  "groupDiscountLine": "Group discount −{amount}",
+  "@groupDiscountLine": {
+    "placeholders": {
+      "amount": {"type": "String"}
+    }
+  },
+  "groupDiscountHint": "Buy {n}+ tickets to save {percent}%",
+  "@groupDiscountHint": {
+    "placeholders": {
+      "n": {"type": "int"},
+      "percent": {"type": "String"}
+    }
+  },
+  "promoLostToGroup": "Your code isn't applied — the group discount is bigger",
   "promoApplied": "Code applied: {amount} off",
   "@promoApplied": {
     "placeholders": {

@@ -195,6 +195,15 @@ class FakeApi extends Event360Api {
               : PromoCheck(valid: false, reason: 'This code has expired', reasonCode: 'EXPIRED', discountMmk: 0, totalMmk: sub);
     }
     final sub = 5000 * quantities.values.first;
+    if (code.toUpperCase() == 'SAVE20' && groupTiers.isNotEmpty) {
+      // Like the API: the larger of the group discount and the code wins; a tie goes to the group discount
+      final tiers = [for (final g in groupTiers) GroupTier.fromJson(g)];
+      final group = groupDiscountMmk(tiers, quantities.values.first, sub);
+      final promo = sub ~/ 5;
+      return group > 0 && group >= promo
+          ? PromoCheck(valid: true, discountMmk: group, totalMmk: sub - group, discountSource: 'GROUP', promoApplied: false)
+          : PromoCheck(valid: true, discountMmk: promo, totalMmk: sub - promo, discountSource: 'PROMO', promoApplied: true);
+    }
     return code.toUpperCase() == 'SAVE20'
         ? PromoCheck(valid: true, discountMmk: sub ~/ 5, totalMmk: sub - sub ~/ 5)
         : PromoCheck(valid: false, reason: 'This code is not valid', discountMmk: 0, totalMmk: sub);
@@ -280,8 +289,18 @@ class FakeApi extends Event360Api {
     return _event(idOrSlug);
   }
 
-  EventSummary _event(String idOrSlug) => EventSummary.fromJson(
-      idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2')));
+  /// Group discount tiers every event reports, and a scheduled next price for paid ticket types ({priceMmk, startsAt}).
+  List<Map<String, dynamic>> groupTiers = [];
+  Map<String, dynamic>? nextPriceJson;
+
+  EventSummary _event(String idOrSlug) {
+    final j = idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+    return EventSummary.fromJson({
+      ...j,
+      'groupDiscounts': groupTiers,
+      if (nextPriceJson != null) 'ticketTypes': [for (final t in j['ticketTypes'] as List) (t as Map<String, dynamic>)['priceMmk'] == 0 ? t : {...t, 'nextPrice': nextPriceJson}],
+    });
+  }
 
   @override
   Future<OrganizerProfile> organizer(String slug) async => OrganizerProfile.fromJson({
@@ -734,6 +753,107 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('price rise hint shows next price and date', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.nextPriceJson = {'priceMmk': 7000, 'startsAt': '2027-01-10T08:00:00.000Z'}; // 14:30 in Yangon
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('priceRise-tt-e2')), 300, scrollable: find.byType(Scrollable).first);
+    final rise = tester.widget<Text>(find.byKey(const Key('priceRise-tt-e2'))).data!;
+    expect(rise, startsWith('Price rises to 7,000 MMK on Sun, 10 Jan 2027 · 2:30')); // Yangon time (UTC+6:30), then AM/PM
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('sheetRise-tt-e2')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('price rise hint is in Myanmar and absent for free tickets', (tester) async {
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.nextPriceJson = {'priceMmk': 7000, 'startsAt': '2027-01-10T08:00:00.000Z'});
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('priceRise-tt-e2')), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.textContaining('တွင် ဈေးနှုန်း'), findsOneWidget);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e1'); // free
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('priceRise-tt-e1')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('group discount line appears at the threshold and the hint below it', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.groupTiers = [
+        {'minQuantity': 2, 'percentBp': 1000},
+        {'minQuantity': 4, 'percentBp': 2000},
+      ];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    // 1 ticket: below the first tier
+    expect(find.text('Buy 2+ tickets to save 10%'), findsOneWidget);
+    expect(find.byKey(const Key('groupDiscountLine')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '5,000 MMK');
+    // 2 tickets: first tier reached; the hint now points at the next one
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    expect(find.text('Group discount −1,000 MMK'), findsOneWidget);
+    expect(find.text('Buy 4+ tickets to save 20%'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '9,000 MMK');
+    // 4 tickets: the top tier, nothing left to hint
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    expect(find.text('Group discount −4,000 MMK'), findsOneWidget);
+    expect(find.byKey(const Key('groupDiscountHint')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '16,000 MMK');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('group discount rounds half up like the API', (tester) async {
+    expect(groupDiscountMmk(const [GroupTier(minQuantity: 2, percentBp: 750)], 2, 10100), 758); // 757.5 → 758
+    expect(groupDiscountMmk(const [GroupTier(minQuantity: 2, percentBp: 750)], 1, 10100), 0);
+    expect(groupDiscountMmk(const [GroupTier(minQuantity: 2, percentBp: 1000), GroupTier(minQuantity: 5, percentBp: 500)], 6, 6000), 600); // best tier, not the highest count
+  });
+
+  testWidgets('group discount and promo: only the larger shows, labelled', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.groupTiers = [
+        {'minQuantity': 2, 'percentBp': 1500},
+        {'minQuantity': 3, 'percentBp': 3000},
+      ];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    // 2 tickets: the code (20% = 2,000) beats the group discount (15% = 1,500)
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    expect(find.text('Group discount −1,500 MMK'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('promoField')), 'save20');
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    expect(find.text('Code applied: 2,000 MMK off'), findsOneWidget);
+    expect(find.byKey(const Key('groupDiscountLine')), findsNothing);
+    expect(find.byKey(const Key('promoLostNote')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '8,000 MMK');
+    // 3 tickets: the group discount (30% = 4,500) beats the code (3,000): the code is not applied, and the sheet says so
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('promoApply')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Code applied'), findsNothing);
+    expect(find.text('Group discount −4,500 MMK'), findsOneWidget);
+    expect(find.text("Your code isn't applied — the group discount is bigger"), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '10,500 MMK');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('send a ticket to someone: bad number shown, then the ticket leaves my list', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true);
     await tester.tap(find.text('My tickets'));
@@ -904,6 +1024,20 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
   }
+
+  testWidgets('seat picker bar: group discount counts the chosen seats', (tester) async {
+    await openPicker(tester, setup: (a) => a.groupTiers = [
+          {'minQuantity': 2, 'percentBp': 1000}
+        ]);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    expect(find.text('Buy 2+ tickets to save 10%'), findsOneWidget);
+    await tapSeat(tester, 1, 2);
+    expect(find.text('Group discount −4,000 MMK'), findsOneWidget);
+    expect(find.text('36,000 MMK'), findsOneWidget);
+    expect(find.text('40,000 MMK'), findsOneWidget); // struck-through original
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('seat picker applies promo and sends it with the order', (tester) async {
     await openPicker(tester);

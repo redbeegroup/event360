@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getEvent, getOrganizer, getSeats } from '../../../lib/api';
 import { SITE_URL, ticketsUrl } from '../../../lib/config';
-import { dict, fmtDayLong, fmtMmk, fmtTime, href, isLang, pick, type Lang } from '../../../lib/i18n';
+import { dict, fmtDayLong, fmtMmk, fmtPct, fmtTime, fmtDay, href, isLang, pick, type Lang } from '../../../lib/i18n';
 import { TicketCard, place } from '../../../components/Cards';
 import { SeatMapStatic } from '../../../components/SeatMapStatic';
 
@@ -44,6 +44,7 @@ export default async function EventPage({ params }: P) {
   if (!e) notFound();
   const more = (await getOrganizer(e.organization.slug).catch(() => null))?.events.filter((x) => x.id !== e.id).slice(0, 3) ?? [];
 
+  const tiers = e.ticketTypes.some((tt) => tt.priceMmk > 0) ? (e.groupDiscounts ?? []) : [];
   const seatMap = e.seating ? await getSeats(e.slug) : null;
 
   const ended = new Date(e.endsAt) < new Date();
@@ -260,10 +261,19 @@ export default async function EventPage({ params }: P) {
                   <div>
                     <div>{pick(lang, tt.name, tt.nameMy)}</div>
                     <div className="left">{tt.remaining > 0 ? t.left(tt.remaining) : t.soldOut}</div>
+                    {tt.nextPrice && tt.priceMmk > 0 && (
+                      <div className="left">{t.priceRises(fmtMmk(tt.nextPrice.priceMmk, lang), `${fmtDay(tt.nextPrice.startsAt, lang)}, ${fmtTime(tt.nextPrice.startsAt, lang)}`)}</div>
+                    )}
                   </div>
                   <strong style={{ color: tt.priceMmk === 0 ? 'var(--jade)' : undefined }}>{tt.priceMmk === 0 ? t.free : fmtMmk(tt.priceMmk, lang)}</strong>
                 </div>
               ))}
+              {tiers.length > 0 && (
+                <div className="group-tiers">
+                  <div className="label">{t.groupTitle}</div>
+                  {tiers.map((g) => <div className="left" key={g.minQuantity}>{t.groupTier(g.minQuantity, fmtPct(g.percentBp))}</div>)}
+                </div>
+              )}
               {canBuy && (
                 <a className="btn btn-gold" href={ticketsUrl(e.slug)}>{e.isFree ? t.registerFree : t.getTickets}</a>
               )}

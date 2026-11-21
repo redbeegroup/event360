@@ -436,6 +436,25 @@ class L10nMy extends L10n {
   String get promoNotApplicable => 'ဤကုဒ်သည် ဤလက်မှတ်များနှင့် မသက်ဆိုင်ပါ';
 
   @override
+  String priceRisesTo(String price, String date) {
+    return '$date တွင် ဈေးနှုန်း $price သို့ တက်မည်';
+  }
+
+  @override
+  String groupDiscountLine(String amount) {
+    return 'အုပ်စုလျှော့စျေး −$amount';
+  }
+
+  @override
+  String groupDiscountHint(int n, String percent) {
+    return 'လက်မှတ် $n စောင်နှင့်အထက် ဝယ်လျှင် $percent% ချွေတာနိုင်သည်';
+  }
+
+  @override
+  String get promoLostToGroup =>
+      'သင့်ကုဒ်ကို မသုံးပါ — အုပ်စုလျှော့စျေးက ပိုများသည်';
+
+  @override
   String promoApplied(String amount) {
     return 'ကုဒ်သုံးပြီး — $amount လျှော့';
   }

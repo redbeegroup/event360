@@ -9,4 +9,5 @@ export 'src/models.dart';
 export 'src/notifications.dart';
 export 'src/org.dart';
 export 'src/orders.dart';
+export 'src/pricing.dart';
 export 'src/token_store.dart';

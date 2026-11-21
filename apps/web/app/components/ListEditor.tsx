@@ -5,11 +5,15 @@ import { useState } from 'react';
 export interface FieldDef {
   name: string;
   label: string;
-  type?: 'text' | 'textarea' | 'datetime' | 'image';
+  type?: 'text' | 'textarea' | 'datetime' | 'image' | 'number';
   required?: boolean;
   lang?: 'my';
   /** For image fields: the row key holding the current image URL (for the preview). */
   previewKey?: string;
+  /** For number fields. */
+  min?: number;
+  max?: number;
+  step?: number | 'any';
 }
 
 type Row = Record<string, string>;
@@ -55,7 +59,8 @@ export function ListEditor({
                   </>
                 ) : (
                   <input
-                    type={f.type === 'datetime' ? 'datetime-local' : 'text'}
+                    type={f.type === 'datetime' ? 'datetime-local' : f.type === 'number' ? 'number' : 'text'}
+                    {...(f.type === 'number' ? { min: f.min, max: f.max, step: f.step } : {})}
                     lang={f.lang}
                     required={f.required}
                     value={row[f.name] ?? ''}

@@ -18,6 +18,8 @@ export const dayParts = (d: string | Date) => {
   const p = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: 'numeric', month: 'short' }).formatToParts(new Date(d));
   return { day: p.find((x) => x.type === 'day')!.value, month: p.find((x) => x.type === 'month')!.value };
 };
+/** Basis points as a percentage string: 1000 → "10", 750 → "7.5". */
+export const fmtPct = (bp: number) => String(bp / 100);
 export const fmtMmk = (n: number, lang: Lang) => `${new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US').format(n)} ${lang === 'my' ? 'ကျပ်' : 'MMK'}`;
 
 const en = {
@@ -76,6 +78,9 @@ const en = {
   seatMapNote: 'Choose your exact seats when you buy in the app.',
   seatUnavailable: 'Sold / unavailable',
   left: (n: number) => `${n} left`,
+  priceRises: (price: string, date: string) => `Price rises to ${price} on ${date}`,
+  groupTitle: 'Group discount',
+  groupTier: (n: number, pct: string) => `Buy ${n}+ tickets to save ${pct}%`,
   about: 'About',
   schedule: 'Schedule',
   lineup: 'Line-up',
@@ -169,6 +174,9 @@ const my: Dict = {
   seatMapNote: 'အက်ပ်တွင် ဝယ်ယူသည့်အခါ ကိုယ်ထိုင်မည့်ခုံကို တိတိကျကျ ရွေးနိုင်ပါသည်။',
   seatUnavailable: 'ရောင်းပြီး / မရနိုင်',
   left: (n: number) => `${n} စောင် ကျန်`,
+  priceRises: (price: string, date: string) => `${date} တွင် ဈေးနှုန်း ${price} သို့ တက်မည်`,
+  groupTitle: 'အုပ်စုလျှော့စျေး',
+  groupTier: (n: number, pct: string) => `လက်မှတ် ${n} စောင်နှင့်အထက် ဝယ်လျှင် ${pct}% ချွေတာနိုင်သည်`,
   about: 'အကြောင်း',
   schedule: 'အစီအစဉ်',
   lineup: 'တင်ဆက်သူများ',

@@ -442,6 +442,59 @@ export async function togglePromoAction(_: FormState, fd: FormData): Promise<For
   }
 }
 
+/** Timed prices of one ticket type. The API replaces the whole list, so steps already in effect are sent back as stored. */
+export async function setPriceStepsAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  const ttId = String(fd.get('ticketTypeId'));
+  try {
+    const rows = JSON.parse(String(fd.get('items') ?? '[]')) as Record<string, string>[];
+    const ev = await api<{ ticketTypes: { id: string; priceSteps?: { startsAt: string; priceMmk: number }[] }[] }>(`/organizations/${orgId}/events/${id}`);
+    const now = Date.now();
+    const keep = (ev.ticketTypes.find((x) => x.id === ttId)?.priceSteps ?? []).filter((x) => new Date(x.startsAt).getTime() <= now);
+    const steps = keep.map((x) => ({ startsAt: x.startsAt, priceMmk: x.priceMmk }));
+    for (const r of rows) {
+      const at = String(r.startsAt ?? '').trim();
+      const price = String(r.priceMmk ?? '').trim();
+      if (!at && !price) continue;
+      if (!at || !price || !Number.isInteger(Number(price)) || Number(price) <= 0) return { error: 'badStep' };
+      const iso = fromLocalInput(at);
+      if (steps.some((x) => new Date(x.startsAt).getTime() === new Date(iso).getTime())) continue; // came into effect while editing
+      steps.push({ startsAt: iso, priceMmk: Number(price) });
+    }
+    await api(`/organizations/${orgId}/events/${id}/ticket-types/${ttId}/price-steps`, { method: 'PUT', json: { steps } });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'saved' };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return { error: 'conflict' };
+    return err(e);
+  }
+}
+
+/** Group discount tiers of an event (replaces all tiers). Percent is entered as a number, sent as basis points. */
+export async function setGroupDiscountsAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const id = String(fd.get('eventId'));
+  try {
+    const rows = JSON.parse(String(fd.get('items') ?? '[]')) as Record<string, string>[];
+    const tiers: { minQuantity: number; percentBp: number }[] = [];
+    for (const r of rows) {
+      const q = String(r.minQuantity ?? '').trim();
+      const p = String(r.percent ?? '').trim();
+      if (!q && !p) continue;
+      const minQuantity = Number(q);
+      const percentBp = Math.round(Number(p) * 100);
+      if (!q || !p || !Number.isInteger(minQuantity) || minQuantity < 2 || minQuantity > 100 || !(percentBp >= 100 && percentBp <= 9000)) return { error: 'badTier' };
+      tiers.push({ minQuantity, percentBp });
+    }
+    await api(`/organizations/${orgId}/events/${id}/group-discounts`, { method: 'PUT', json: { tiers } });
+    revalidatePath(`/organizer/${orgId}/events/${id}`);
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
 // ───────────── Seats: map, assignments, guest holds and comps ─────────────
 
 export interface SeatRule {

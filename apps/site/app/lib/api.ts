@@ -6,6 +6,9 @@ export interface TicketType {
   name: string;
   nameMy: string | null;
   priceMmk: number;
+  /** Price before any timed step; `priceMmk` is the price right now. */
+  basePriceMmk?: number;
+  nextPrice?: { priceMmk: number; startsAt: string } | null;
   remaining: number;
 }
 
@@ -48,6 +51,7 @@ export interface PublicSeats {
 }
 
 export interface EventDetail extends EventCard {
+  groupDiscounts?: { minQuantity: number; percentBp: number }[];
   /** Present when the event has a seat map. */
   seating?: { seatMapVersionId: string; venueName: string | null } | null;
   description: string | null;

@@ -11,6 +11,7 @@ import '../app/format.dart';
 import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/discount_lines.dart';
 import '../widgets/total_amounts.dart';
 
 /// Seats are tappable from this zoom (screen px per layout unit); below it a tap on a section zooms into it.
@@ -310,6 +311,8 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     m.showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
   }
 
+  /// Seats of paid types: the only ones a group discount counts.
+  int get _paidSeats => _selected.where((i) => _typeOf[i] != null && _data!.types[_typeOf[i]!].priceMmk > 0).length;
   int get _total => _selected.fold(0, (sum, i) => sum + (_typeOf[i] == null ? 0 : _data!.types[_typeOf[i]!].priceMmk));
 
   // ───── Zoom ─────
@@ -550,6 +553,13 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           selected: _selected,
           lang: lang,
           totalMmk: _total,
+          view: resolveDiscount(
+            tiers: event?.groupDiscounts ?? const [],
+            paidQty: _paidSeats,
+            paidSubtotalMmk: _total,
+            totalMmk: _total,
+            promo: _promo,
+          ),
           notice: _notice,
           error: _error,
           busy: _busy,
@@ -605,7 +615,10 @@ class _Legend extends StatelessWidget {
           for (final ty in types)
             Padding(
               padding: const EdgeInsets.only(right: 14),
-              child: Center(child: dot(parseHexColor(ty.color) ?? Colors.deepPurple, '${ty.label(lang)} · ${t.mmk(formatAmount(ty.priceMmk, lang))}')),
+              child: Center(child: dot(parseHexColor(ty.color) ?? Colors.deepPurple, [
+                '${ty.label(lang)} · ${t.mmk(formatAmount(ty.priceMmk, lang))}',
+                if (priceRiseText(t, lang, ty.priceMmk, ty.nextPrice) != null) priceRiseText(t, lang, ty.priceMmk, ty.nextPrice)!,
+              ].join(' · '))),
             ),
           Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(const Color(0xFFBDBDBD), t.legendTaken))),
           Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(Colors.grey, t.legendWheelchair, icon: Icons.accessible))),
@@ -622,6 +635,7 @@ class _BottomBar extends StatelessWidget {
     required this.selected,
     required this.lang,
     required this.totalMmk,
+    required this.view,
     required this.notice,
     required this.error,
     required this.busy,
@@ -642,6 +656,7 @@ class _BottomBar extends StatelessWidget {
   final List<int> selected;
   final String lang;
   final int totalMmk;
+  final DiscountView view;
   final String? notice;
   final String? error;
   final bool busy;
@@ -717,15 +732,18 @@ class _BottomBar extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: promo!.valid
-                      ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                      ? (promo!.promoApplied
+                          ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                          : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
                       : Text(promoReasonText(t, promo!.reasonCode), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
                 ),
             ],
+            if (selected.isNotEmpty) DiscountLines(view: view, lang: lang),
             const SizedBox(height: 6),
             TotalRow(
               label: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium),
-              original: promo?.valid == true ? t.mmk(formatAmount(totalMmk, lang)) : null,
-              total: t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)),
+              original: view.discountMmk > 0 ? t.mmk(formatAmount(totalMmk, lang)) : null,
+              total: t.mmk(formatAmount(view.totalMmk, lang)),
               totalKey: const Key('seatTotal'),
             ),
             const SizedBox(height: 8),
