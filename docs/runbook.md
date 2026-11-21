@@ -210,4 +210,16 @@ A second private event, `loadtest-seated`, with a published throwaway seat map (
 
 To try it on a local database, set `LOADTEST_ALLOW_LOCAL=1` (accepted for localhost URLs only), and `BUYERS`, `SEATS_RATE` and `SEATS_DURATION` for k6 to scale down.
 
-Results: (pending dev run)
+Results on dev (2026-11-21, one api pod, 1,000 buyers for 500 assigned seats, plus `GET /seats` at 50 req/s for 60 s):
+
+| Run | Seats sold | Conflicts (409) | 5xx | `GET /seats` p95 | Consistency check |
+|---|---|---|---|---|---|
+| 9a6f026 | 500 | 653 | 0 | 1.16 s ✗ | ok: 0 seats with two tickets, counters match |
+| d835e33 (stale-while-revalidate) | 490 | 654 | 0 | 117 ms ✓ | ok: 0 seats with two tickets, counters match |
+
+- `GET /seats` on its own at 50 req/s: p95 5 ms.
+- In the first run, every 2 s cache refresh made all readers wait on a database load stuck behind seat-claim transactions.
+  - The fix: the seat availability cache now serves the previous value (at most about 10 s old) while one refresh runs.
+  - Orders always re-check seats in the database, so a stale map can't oversell.
+- Not every seat sells in one run: buyers pick random seats from a map up to a few seconds old, and give up after a conflict.
+- The rush itself (OTP login plus order) had a p95 of about 3.5 s on the single dev api pod, which was CPU-bound. Prod runs more replicas.
