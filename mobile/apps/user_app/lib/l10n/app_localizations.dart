@@ -888,6 +888,150 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Ticket sent to {phone}'**
   String transferDone(String phone);
+
+  /// No description provided for @chooseSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose seats'**
+  String get chooseSeats;
+
+  /// No description provided for @seatPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your seats'**
+  String get seatPickerTitle;
+
+  /// No description provided for @standingTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'Standing tickets'**
+  String get standingTickets;
+
+  /// No description provided for @tapSeatHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a seat to select it'**
+  String get tapSeatHint;
+
+  /// No description provided for @zoomToPick.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom in to pick seats, or tap a section'**
+  String get zoomToPick;
+
+  /// No description provided for @bestAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Best available'**
+  String get bestAvailable;
+
+  /// No description provided for @bestAvailableHint.
+  ///
+  /// In en, this message translates to:
+  /// **'We\'ll pick the best seats together that are still free.'**
+  String get bestAvailableHint;
+
+  /// No description provided for @findSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Find seats'**
+  String get findSeats;
+
+  /// No description provided for @ticketTypeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket type'**
+  String get ticketTypeLabel;
+
+  /// No description provided for @seatLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'You can choose up to {n} seats'**
+  String seatLimit(int n);
+
+  /// No description provided for @seatsJustTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'Just taken: {seats}. They were removed from your choice. Pick others to continue.'**
+  String seatsJustTaken(String seats);
+
+  /// No description provided for @seatNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'That seat isn\'t available'**
+  String get seatNotAvailable;
+
+  /// No description provided for @seatsChosen.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} seats'**
+  String seatsChosen(int n);
+
+  /// No description provided for @legendYours.
+  ///
+  /// In en, this message translates to:
+  /// **'Yours'**
+  String get legendYours;
+
+  /// No description provided for @legendTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken'**
+  String get legendTaken;
+
+  /// No description provided for @legendWheelchair.
+  ///
+  /// In en, this message translates to:
+  /// **'Wheelchair space'**
+  String get legendWheelchair;
+
+  /// No description provided for @legendRestricted.
+  ///
+  /// In en, this message translates to:
+  /// **'Restricted view'**
+  String get legendRestricted;
+
+  /// No description provided for @complimentary.
+  ///
+  /// In en, this message translates to:
+  /// **'Complimentary'**
+  String get complimentary;
+
+  /// No description provided for @complimentaryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Complimentary · {label}'**
+  String complimentaryLabel(String label);
+
+  /// No description provided for @cancelTicket.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel ticket'**
+  String get cancelTicket;
+
+  /// No description provided for @cancelTicketTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel this ticket?'**
+  String get cancelTicketTitle;
+
+  /// No description provided for @cancelTicketBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your seat goes back on sale. This can\'t be undone.'**
+  String get cancelTicketBody;
+
+  /// No description provided for @keepTicket.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep ticket'**
+  String get keepTicket;
+
+  /// No description provided for @ticketCancelledDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket cancelled'**
+  String get ticketCancelledDone;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

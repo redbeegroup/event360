@@ -239,5 +239,57 @@
         "type": "String"
       }
     }
-  }
+  },
+  "chooseSeats": "Choose seats",
+  "seatPickerTitle": "Choose your seats",
+  "standingTickets": "Standing tickets",
+  "tapSeatHint": "Tap a seat to select it",
+  "zoomToPick": "Zoom in to pick seats, or tap a section",
+  "bestAvailable": "Best available",
+  "bestAvailableHint": "We'll pick the best seats together that are still free.",
+  "findSeats": "Find seats",
+  "ticketTypeLabel": "Ticket type",
+  "seatLimit": "You can choose up to {n} seats",
+  "@seatLimit": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "seatsJustTaken": "Just taken: {seats}. They were removed from your choice. Pick others to continue.",
+  "@seatsJustTaken": {
+    "placeholders": {
+      "seats": {
+        "type": "String"
+      }
+    }
+  },
+  "seatNotAvailable": "That seat isn't available",
+  "seatsChosen": "{n} seats",
+  "@seatsChosen": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "legendYours": "Yours",
+  "legendTaken": "Taken",
+  "legendWheelchair": "Wheelchair space",
+  "legendRestricted": "Restricted view",
+  "complimentary": "Complimentary",
+  "complimentaryLabel": "Complimentary · {label}",
+  "@complimentaryLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "cancelTicket": "Cancel ticket",
+  "cancelTicketTitle": "Cancel this ticket?",
+  "cancelTicketBody": "Your seat goes back on sale. This can't be undone.",
+  "keepTicket": "Keep ticket",
+  "ticketCancelledDone": "Ticket cancelled"
 }

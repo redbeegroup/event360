@@ -42,6 +42,33 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     context.go('/tickets');
   }
 
+  Future<void> _cancel(MyTicket ticket) async {
+    final t = L10n.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(t.cancelTicketTitle),
+        content: Text(t.cancelTicketBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(t.keepTicket)),
+          FilledButton(key: const Key('cancelTicketConfirm'), onPressed: () => Navigator.of(context).pop(true), child: Text(t.cancelTicket)),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(apiProvider).cancelTicket(ticket.id);
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+    ref.invalidate(eventProvider(ticket.eventId));
+    await ref.read(myTicketsProvider.notifier).refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.ticketCancelledDone)));
+    context.go('/tickets');
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = L10n.of(context);
@@ -85,7 +112,28 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
               ] else
                 MessageView(icon: Icons.block, message: ticket.status == 'REFUNDED' ? t.ticketRefunded : t.ticketCancelled),
               const SizedBox(height: 20),
+              if (ticket.seatText(lang) != null)
+                Card(
+                  color: theme.colorScheme.primaryContainer,
+                  child: ListTile(
+                    leading: Icon(Icons.event_seat, color: theme.colorScheme.onPrimaryContainer),
+                    title: Text(ticket.seatText(lang)!, key: const Key('ticketSeat'), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.onPrimaryContainer)),
+                  ),
+                ),
+              if (ticket.isComplimentary)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Pill(
+                      key: const Key('ticketComp'),
+                      ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
+                      color: theme.colorScheme.tertiary,
+                    ),
+                  ),
+                ),
               Card(
+                margin: const EdgeInsets.only(top: 8),
                 child: ListTile(
                   title: Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy)),
                   subtitle: Text(ticket.organizer),
@@ -100,6 +148,17 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                     onPressed: () => _transfer(ticket),
                     icon: const Icon(Icons.send_outlined),
                     label: Text(t.transferTicket),
+                  ),
+                ),
+              if (ticket.canCancel)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: TextButton.icon(
+                    key: const Key('cancelTicket'),
+                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                    onPressed: () => _cancel(ticket),
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: Text(t.cancelTicket),
                   ),
                 ),
             ]),

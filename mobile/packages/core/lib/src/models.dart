@@ -142,6 +142,8 @@ class TicketType {
     required this.quota,
     required this.remaining,
     required this.maxPerOrder,
+    this.seated = false,
+    this.color,
   });
   final String id;
   final String name;
@@ -150,6 +152,12 @@ class TicketType {
   final int quota;
   final int remaining;
   final int maxPerOrder;
+
+  /// Bought by choosing seats on the map (never by quantity).
+  final bool seated;
+
+  /// `#rrggbb` the organizer picked, if any.
+  final String? color;
 
   bool get isFree => priceMmk == 0;
   bool get soldOut => remaining <= 0;
@@ -162,6 +170,57 @@ class TicketType {
         quota: (j['quota'] as num).toInt(),
         remaining: (j['remaining'] as num).toInt(),
         maxPerOrder: (j['maxPerOrder'] as num).toInt(),
+        seated: j['seated'] as bool? ?? false,
+        color: j['color'] as String?,
+      );
+}
+
+/// An event with a seat map. Events without one have no [EventSeating].
+class EventSeating {
+  EventSeating({required this.seatMapVersionId, this.venueName});
+  final String seatMapVersionId;
+  final String? venueName;
+  factory EventSeating.fromJson(Map<String, dynamic> j) => EventSeating(seatMapVersionId: j['seatMapVersionId'] as String, venueName: j['venueName'] as String?);
+}
+
+/// One seated ticket type on the map (ordered by price; its index is the character in [SeatMapData.seatTypes]).
+class SeatTypeInfo {
+  SeatTypeInfo({required this.id, required this.name, this.nameMy, required this.priceMmk, required this.color});
+  final String id;
+  final String name;
+  final String? nameMy;
+  final int priceMmk;
+  final String color;
+  String label(String lang) => pickLang(lang, name, nameMy);
+  factory SeatTypeInfo.fromJson(Map<String, dynamic> j) => SeatTypeInfo(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        nameMy: j['nameMy'] as String?,
+        priceMmk: (j['priceMmk'] as num).toInt(),
+        color: j['color'] as String,
+      );
+}
+
+/// GET /events/:id/seats: the layout (immutable per version) plus per-seat type and availability strings, one
+/// character per seat in layout order. Decode [layout] with `SeatLayout.fromJson` (event360_ui).
+class SeatMapData {
+  SeatMapData({required this.versionId, required this.layout, required this.types, required this.seatTypes, required this.status});
+  final String versionId;
+  final Map<String, dynamic> layout;
+  final List<SeatTypeInfo> types;
+
+  /// 0-9a-zA-Z = index into [types], '-' = no type.
+  final String seatTypes;
+
+  /// A available, T taken, G held for guests, U unavailable.
+  final String status;
+
+  factory SeatMapData.fromJson(Map<String, dynamic> j) => SeatMapData(
+        versionId: j['versionId'] as String,
+        layout: j['layout'] as Map<String, dynamic>,
+        types: (j['types'] as List).map((t) => SeatTypeInfo.fromJson(t as Map<String, dynamic>)).toList(),
+        seatTypes: j['seatTypes'] as String,
+        status: j['status'] as String,
       );
 }
 
@@ -191,6 +250,7 @@ class EventSummary {
     this.organizerLogoUrl,
     required this.ticketTypes,
     required this.soldOut,
+    this.seating,
     this.ageMin,
     this.dressCode = const LocalizedText(null, null),
     this.languages = const LocalizedText(null, null),
@@ -229,6 +289,9 @@ class EventSummary {
   final String? organizerLogoUrl;
   final List<TicketType> ticketTypes;
   final bool soldOut;
+
+  /// Set for reserved-seating events.
+  final EventSeating? seating;
   final int? ageMin;
   final LocalizedText dressCode;
   final LocalizedText languages;
@@ -285,6 +348,7 @@ class EventSummary {
       faqs: ((j['faqs'] as List?) ?? const []).map((x) => Faq.fromJson(x as Map<String, dynamic>)).toList(),
       ticketTypes: ((j['ticketTypes'] as List?) ?? const []).map((t) => TicketType.fromJson(t as Map<String, dynamic>)).toList(),
       soldOut: (j['soldOut'] as bool?) ?? false,
+      seating: j['seating'] == null ? null : EventSeating.fromJson(j['seating'] as Map<String, dynamic>),
     );
   }
 }
@@ -323,6 +387,12 @@ class MyTicket {
     required this.organizer,
     this.qr,
     this.canTransfer = false,
+    this.seatKey,
+    this.seatLabel,
+    this.seatLabelMy,
+    this.isComplimentary = false,
+    this.compLabel,
+    this.canCancel = false,
   });
 
   final String id;
@@ -342,6 +412,20 @@ class MyTicket {
 
   /// The holder may send this ticket to someone else (organizer allows it, not used, not too close to the start).
   final bool canTransfer;
+
+  /// Reserved seat ("Balcony · Row C · Seat 12"), null for unseated tickets.
+  final String? seatKey;
+  final String? seatLabel;
+  final String? seatLabelMy;
+
+  /// Guest ticket from the organizer: can't be transferred or cancelled by the holder.
+  final bool isComplimentary;
+  final String? compLabel;
+
+  /// The holder may give this free ticket back (free, own, valid, before the event starts).
+  final bool canCancel;
+
+  String? seatText(String lang) => pickLang(lang, seatLabel, seatLabelMy).isEmpty ? null : pickLang(lang, seatLabel, seatLabelMy);
 
   bool get isUpcoming => endsAt.isAfter(DateTime.now());
 
@@ -365,6 +449,12 @@ class MyTicket {
       organizer: e['organization'] as String,
       qr: j['qr'] as String?,
       canTransfer: j['canTransfer'] as bool? ?? false,
+      seatKey: j['seatKey'] as String?,
+      seatLabel: j['seatLabel'] as String?,
+      seatLabelMy: j['seatLabelMy'] as String?,
+      isComplimentary: j['isComplimentary'] as bool? ?? false,
+      compLabel: j['compLabel'] as String?,
+      canCancel: j['canCancel'] as bool? ?? false,
     );
   }
 
@@ -384,6 +474,12 @@ class MyTicket {
         'organizer': organizer,
         'qr': qr,
         'canTransfer': canTransfer,
+        'seatKey': seatKey,
+        'seatLabel': seatLabel,
+        'seatLabelMy': seatLabelMy,
+        'isComplimentary': isComplimentary,
+        'compLabel': compLabel,
+        'canCancel': canCancel,
       };
 
   factory MyTicket.fromJson(Map<String, dynamic> j) => MyTicket(
@@ -402,6 +498,12 @@ class MyTicket {
         organizer: j['organizer'] as String,
         qr: j['qr'] as String?,
         canTransfer: j['canTransfer'] as bool? ?? false,
+        seatKey: j['seatKey'] as String?,
+        seatLabel: j['seatLabel'] as String?,
+        seatLabelMy: j['seatLabelMy'] as String?,
+        isComplimentary: j['isComplimentary'] as bool? ?? false,
+        compLabel: j['compLabel'] as String?,
+        canCancel: j['canCancel'] as bool? ?? false,
       );
 }
 

@@ -73,6 +73,7 @@ class _TicketTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     return Opacity(
@@ -92,6 +93,13 @@ class _TicketTile extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(formatEventDate(ticket.startsAt, lang), style: theme.textTheme.bodySmall),
                   Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy), style: theme.textTheme.bodySmall),
+                  if (ticket.seatText(lang) != null)
+                    Text(ticket.seatText(lang)!, key: Key('seat-${ticket.id}'), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.primary)),
+                  if (ticket.isComplimentary)
+                    Text(
+                      ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.tertiary),
+                    ),
                 ]),
               ),
             ),

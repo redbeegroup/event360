@@ -2,6 +2,9 @@ library event360_ui;
 
 import 'package:flutter/material.dart';
 
+export 'src/seat_layout.dart';
+export 'src/seat_map_painter.dart';
+
 /// Event 360 look: one brand violet, warm neutrals, Myanmar-safe line heights.
 class Event360Theme {
   static const Color brand = Color(0xFF6C2BD9);

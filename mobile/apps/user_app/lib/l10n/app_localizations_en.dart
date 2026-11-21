@@ -441,4 +441,86 @@ class L10nEn extends L10n {
   String transferDone(String phone) {
     return 'Ticket sent to $phone';
   }
+
+  @override
+  String get chooseSeats => 'Choose seats';
+
+  @override
+  String get seatPickerTitle => 'Choose your seats';
+
+  @override
+  String get standingTickets => 'Standing tickets';
+
+  @override
+  String get tapSeatHint => 'Tap a seat to select it';
+
+  @override
+  String get zoomToPick => 'Zoom in to pick seats, or tap a section';
+
+  @override
+  String get bestAvailable => 'Best available';
+
+  @override
+  String get bestAvailableHint =>
+      'We\'ll pick the best seats together that are still free.';
+
+  @override
+  String get findSeats => 'Find seats';
+
+  @override
+  String get ticketTypeLabel => 'Ticket type';
+
+  @override
+  String seatLimit(int n) {
+    return 'You can choose up to $n seats';
+  }
+
+  @override
+  String seatsJustTaken(String seats) {
+    return 'Just taken: $seats. They were removed from your choice. Pick others to continue.';
+  }
+
+  @override
+  String get seatNotAvailable => 'That seat isn\'t available';
+
+  @override
+  String seatsChosen(int n) {
+    return '$n seats';
+  }
+
+  @override
+  String get legendYours => 'Yours';
+
+  @override
+  String get legendTaken => 'Taken';
+
+  @override
+  String get legendWheelchair => 'Wheelchair space';
+
+  @override
+  String get legendRestricted => 'Restricted view';
+
+  @override
+  String get complimentary => 'Complimentary';
+
+  @override
+  String complimentaryLabel(String label) {
+    return 'Complimentary · $label';
+  }
+
+  @override
+  String get cancelTicket => 'Cancel ticket';
+
+  @override
+  String get cancelTicketTitle => 'Cancel this ticket?';
+
+  @override
+  String get cancelTicketBody =>
+      'Your seat goes back on sale. This can\'t be undone.';
+
+  @override
+  String get keepTicket => 'Keep ticket';
+
+  @override
+  String get ticketCancelledDone => 'Ticket cancelled';
 }

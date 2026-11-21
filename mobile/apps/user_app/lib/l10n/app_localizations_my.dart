@@ -442,4 +442,87 @@ class L10nMy extends L10n {
   String transferDone(String phone) {
     return 'လက်မှတ်ကို $phone ထံ ပို့ပြီးပါပြီ';
   }
+
+  @override
+  String get chooseSeats => 'ထိုင်ခုံ ရွေးမည်';
+
+  @override
+  String get seatPickerTitle => 'ထိုင်ခုံ ရွေးပါ';
+
+  @override
+  String get standingTickets => 'ရပ်ကြည့် လက်မှတ်များ';
+
+  @override
+  String get tapSeatHint => 'ရွေးလိုသော ထိုင်ခုံကို ထိပါ';
+
+  @override
+  String get zoomToPick =>
+      'ထိုင်ခုံရွေးရန် ချဲ့ကြည့်ပါ သို့မဟုတ် ဧရိယာကို ထိပါ';
+
+  @override
+  String get bestAvailable => 'အကောင်းဆုံး ခုံများ';
+
+  @override
+  String get bestAvailableHint =>
+      'လက်ကျန်ထဲမှ အတူတကွ အကောင်းဆုံး ခုံများကို ရွေးပေးပါမည်။';
+
+  @override
+  String get findSeats => 'ခုံရှာမည်';
+
+  @override
+  String get ticketTypeLabel => 'လက်မှတ်အမျိုးအစား';
+
+  @override
+  String seatLimit(int n) {
+    return 'ထိုင်ခုံ $n ခုအထိ ရွေးနိုင်ပါသည်';
+  }
+
+  @override
+  String seatsJustTaken(String seats) {
+    return 'ယခုပင် ယူသွားပြီ - $seats။ သင့်ရွေးချယ်မှုမှ ဖယ်ထားပါသည်။ ဆက်သွားရန် အခြားခုံများ ရွေးပါ။';
+  }
+
+  @override
+  String get seatNotAvailable => 'ဤထိုင်ခုံ မရနိုင်ပါ';
+
+  @override
+  String seatsChosen(int n) {
+    return 'ခုံ $n ခု';
+  }
+
+  @override
+  String get legendYours => 'သင်ရွေးထား';
+
+  @override
+  String get legendTaken => 'ယူပြီး';
+
+  @override
+  String get legendWheelchair => 'ဘီးတပ်ကုလားထိုင် နေရာ';
+
+  @override
+  String get legendRestricted => 'မြင်ကွင်း အကန့်အသတ်';
+
+  @override
+  String get complimentary => 'ဧည့်သည် လက်မှတ်';
+
+  @override
+  String complimentaryLabel(String label) {
+    return 'ဧည့်သည် လက်မှတ် · $label';
+  }
+
+  @override
+  String get cancelTicket => 'လက်မှတ် ပယ်ဖျက်မည်';
+
+  @override
+  String get cancelTicketTitle => 'ဤလက်မှတ်ကို ပယ်ဖျက်မလား။';
+
+  @override
+  String get cancelTicketBody =>
+      'သင့်ထိုင်ခုံကို ပြန်လည်ရောင်းချပါမည်။ ပြန်လည်ပြင်၍ မရပါ။';
+
+  @override
+  String get keepTicket => 'ဆက်ထားမည်';
+
+  @override
+  String get ticketCancelledDone => 'လက်မှတ်ကို ပယ်ဖျက်ပြီးပါပြီ';
 }

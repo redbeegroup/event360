@@ -8,6 +8,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 flutter:
   fonts:
     # Noto Sans Myanmar (SIL OFL 1.1, see fonts/OFL.txt) — bundled so Myanmar Unicode renders the same on every phone.

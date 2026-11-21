@@ -68,8 +68,83 @@ class FakeApi extends Event360Api {
   @override
   Future<List<PaymentMethod>> paymentMethods() async => methods;
 
+  // ───── Reserved seating ─────
+  static final seatedLayout = {
+    'width': 300,
+    'height': 220,
+    'stage': {'x': 60, 'y': 5, 'w': 180, 'h': 30, 'label': 'Stage'},
+    'sections': [
+      {
+        'key': 'A',
+        'name': 'Stalls',
+        'nameMy': 'ရှေ့ခန်း',
+        'kind': 'SEATED',
+        'x': 40,
+        'y': 80,
+        'rows': [
+          for (final r in ['1', '2'])
+            {
+              'label': r,
+              'seats': [for (var n = 1; n <= 5; n++) {'n': n}],
+            },
+        ],
+      },
+    ],
+  };
+  String seatStatus = 'AAAAAAAAAA'; // 2 rows x 5 seats of the Stalls type
+  int seatLoads = 0;
+  final bestCalls = <String>[];
+  final seatOrders = <List<String>>[];
+  List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
+  final cancelled = <String>[];
+  List<Map<String, dynamic>> extraTickets = [];
+
+  static Map<String, dynamic> seatedEventJson() => {
+        ...eventJson('seated', free: false),
+        'seating': {'seatMapVersionId': 'v1', 'venueName': 'National Theatre'},
+        'ticketTypes': [
+          {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'quota': 10, 'remaining': 10, 'maxPerOrder': 3, 'seated': true, 'color': '#f2b632'},
+        ],
+      };
+
   @override
-  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP', String? promoCode}) async {
+  Future<SeatMapData> seatMap(String eventId) async {
+    seatLoads++;
+    return SeatMapData.fromJson({
+      'versionId': 'v1',
+      'layout': seatedLayout,
+      'types': [
+        {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'color': '#f2b632'},
+      ],
+      'seatTypes': '0' * 10,
+      'status': seatStatus,
+    });
+  }
+
+  @override
+  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity) async {
+    bestCalls.add('$ticketTypeId:$quantity');
+    return [for (var n = 1; n <= quantity; n++) 'A:2:$n'];
+  }
+
+  @override
+  Future<void> cancelTicket(String ticketId) async => cancelled.add(ticketId);
+
+  @override
+  Future<Order> createOrder(String eventId, Map<String, int> quantities,
+      {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const []}) async {
+    if (seats.isNotEmpty) {
+      final taken = takenOnNextOrder;
+      if (taken != null) {
+        takenOnNextOrder = null;
+        seatStatus = [for (var i = 0; i < 10; i++) taken.contains('A:${i < 5 ? 1 : 2}:${i % 5 + 1}') ? 'T' : seatStatus[i]].join();
+        throw ApiException(409, 'Some seats were just taken', takenSeats: taken);
+      }
+      seatOrders.add(seats);
+      final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 20000 * seats.length, qty: seats.length);
+      orders['ord-1'] = o;
+      return Order.fromJson(o);
+    }
     final e = quantities.entries.first;
     registered.add('$eventId:${e.key}:${e.value}${promoCode != null ? ':$promoCode' : ''}');
     if (eventId == 'e1') return Order.fromJson({...orderJson('free-1', 'CONFIRMED', total: 0, qty: e.value), 'ticketIds': ['t1']});
@@ -164,8 +239,8 @@ class FakeApi extends Event360Api {
       };
 
   @override
-  Future<EventSummary> event(String idOrSlug) async =>
-      EventSummary.fromJson(idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+  Future<EventSummary> event(String idOrSlug) async => EventSummary.fromJson(
+      idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2')));
 
   @override
   Future<OrganizerProfile> organizer(String slug) async => OrganizerProfile.fromJson({
@@ -237,6 +312,7 @@ class FakeApi extends Event360Api {
         'qr': 'eyJ0aWQiOiJ0In0.c2ln',
         'canTransfer': true,
       }),
+      ...extraTickets.map(MyTicket.fromApi),
     ].where((t) => !transferred).toList();
   }
 }
@@ -288,6 +364,8 @@ Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang =
   await tester.pumpAndSettle();
   return (api, sp);
 }
+
+late FakeApi pickerApi;
 
 void main() {
   setUpAll(() async {
@@ -623,5 +701,259 @@ void main() {
     expect(api.transfers, ['ticket-0001-abcd:09790000001']);
     expect(find.text('Ticket sent to +95979•••001'), findsOneWidget);
     expect(find.text('Yangon Food Fair e1'), findsNothing);
+  });
+
+  // ───── Reserved seating ─────
+
+  /// Where a layout point is on screen right now (the map sits inside a zoomable viewer).
+  Offset onScreen(WidgetTester tester, Offset layoutPoint) {
+    final rect = tester.getRect(find.byKey(const Key('seatMap')));
+    final k = rect.width / 300; // layout width
+    return rect.topLeft + layoutPoint * k;
+  }
+
+  Future<void> openPicker(WidgetTester tester, {void Function(FakeApi)? setup, String lang = 'en'}) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, lang: lang, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      setup?.call(a);
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chooseSeats')));
+    await tester.pumpAndSettle();
+    pickerApi = api;
+  }
+
+  Future<void> zoomIntoStalls(WidgetTester tester) async {
+    expect(find.byKey(const Key('zoomHint')), findsOneWidget);
+    await tester.tapAt(onScreen(tester, const Offset(88, 92))); // below the tap zoom: tapping a section zooms in
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('zoomHint')), findsNothing);
+  }
+
+  Future<void> tapSeat(WidgetTester tester, int row, int n) async {
+    await tester.tapAt(onScreen(tester, Offset(40.0 + (n - 1) * 24, 80.0 + (row - 1) * 24)));
+    await tester.pump();
+  }
+
+  testWidgets('seat picker renders and selects up to maxPerOrder', (tester) async {
+    await openPicker(tester);
+    expect(find.text('Stalls · 20,000 MMK'), findsOneWidget); // legend
+    expect(find.text('Tap a seat to select it'), findsOneWidget);
+    await tapSeat(tester, 1, 1); // zoomed out: a tap on seats does nothing
+    expect(find.text('Tap a seat to select it'), findsOneWidget);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 2);
+    await tapSeat(tester, 1, 3);
+    expect(find.byKey(const Key('chip-A:1:1')), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:1:3')), findsOneWidget);
+    expect(find.text('3 seats · Total'), findsOneWidget);
+    expect(find.byKey(const Key('seatTotal')), findsOneWidget);
+    expect(find.text('60,000 MMK'), findsOneWidget);
+    await tapSeat(tester, 2, 1); // the type allows 3 per order
+    expect(find.text('You can choose up to 3 seats'), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:2:1')), findsNothing);
+    await tapSeat(tester, 1, 2); // tapping a selected seat unselects it
+    expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
+    expect(find.text('40,000 MMK'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('continue sends the seats and opens checkout', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 4);
+    await tapSeat(tester, 1, 5);
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(pickerApi.seatOrders, [
+      ['A:1:4', 'A:1:5']
+    ]);
+    expect(find.text('Checkout'), findsWidgets);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('409 drops taken seats and refreshes', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 2);
+    final loads = pickerApi.seatLoads;
+    pickerApi.takenOnNextOrder = ['A:1:2'];
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('Just taken: Stalls · Row 1 · Seat 2'), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
+    expect(find.byKey(const Key('chip-A:1:1')), findsOneWidget); // the other seat is kept
+    expect(pickerApi.seatLoads, greaterThan(loads)); // the map was refreshed
+    expect(find.text('20,000 MMK'), findsOneWidget);
+    // The taken seat can't be picked any more
+    await tapSeat(tester, 1, 2);
+    expect(find.text("That seat isn't available"), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a seat taken by someone else while browsing leaves the selection', (tester) async {
+    await openPicker(tester);
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 3);
+    pickerApi.seatStatus = 'AATAAAAAAA';
+    await tester.pump(const Duration(seconds: 5)); // next poll
+    await tester.pump();
+    expect(find.byKey(const Key('chip-A:1:3')), findsNothing);
+    expect(find.byKey(const Key('chip-A:1:1')), findsOneWidget);
+    expect(find.byKey(const Key('seatNotice')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('best available fills selection', (tester) async {
+    await openPicker(tester);
+    await tester.tap(find.byKey(const Key('bestAvailable')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('bestQty')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bestPlus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('bestPlus'))); // capped at the type's 3 per order
+    await tester.pump();
+    expect(find.text('3'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bestFind')));
+    await tester.pumpAndSettle();
+    expect(pickerApi.bestCalls, ['tt-seat:3']);
+    expect(find.byKey(const Key('chip-A:2:1')), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:2:3')), findsOneWidget);
+    expect(find.text('60,000 MMK'), findsOneWidget);
+    expect(find.byKey(const Key('zoomHint')), findsNothing); // zoomed to the chosen seats
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('availability is polled every 5 s while open, and stops in the background and when closed', (tester) async {
+    await openPicker(tester);
+    pickerApi.seatStatus = 'AAAAAAAAAA';
+    var n = pickerApi.seatLoads;
+    await tester.pump(const Duration(seconds: 5));
+    expect(pickerApi.seatLoads, n + 1);
+    await tester.pump(const Duration(seconds: 5));
+    expect(pickerApi.seatLoads, n + 2);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    n = pickerApi.seatLoads;
+    await tester.pump(const Duration(seconds: 20));
+    expect(pickerApi.seatLoads, n); // backgrounded: no polling
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(pickerApi.seatLoads, n + 1); // refreshed on return
+    await tester.pump(const Duration(seconds: 5));
+    expect(pickerApi.seatLoads, n + 2);
+
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
+    await tester.pumpAndSettle();
+    n = pickerApi.seatLoads;
+    await tester.pump(const Duration(seconds: 20));
+    expect(pickerApi.seatLoads, n); // closed: no polling
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('event page: seated events offer "Choose seats" instead of the quantity sheet', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chooseSeats')), findsOneWidget);
+    expect(find.byKey(const Key('getTickets')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  final seatTicket = {
+    'id': 'ticket-seat-0001',
+    'status': 'VALID',
+    'ticketType': {'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း'},
+    'event': {
+      'id': 'seated',
+      'title': 'Opera Night',
+      'titleMy': null,
+      'startsAt': '2099-01-15T10:30:00.000Z',
+      'endsAt': '2099-01-15T15:30:00.000Z',
+      'venue': {'name': 'National Theatre', 'city': 'Yangon'},
+      'coverImageUrl': null,
+      'organization': 'Yangon Live',
+    },
+    'qr': 'eyJ0aWQiOiJ0In0.c2ln',
+    'seatKey': 'A:1:1',
+    'seatLabel': 'Stalls · Row 1 · Seat 1',
+    'seatLabelMy': 'ရှေ့ခန်း · အတန်း 1 · ခုံ 1',
+    'isComplimentary': false,
+    'canCancel': true,
+    'canTransfer': false,
+  };
+  final compTicket = {
+    ...seatTicket,
+    'id': 'ticket-comp-0002',
+    'event': {...(seatTicket['event'] as Map<String, dynamic>), 'title': 'Gala Dinner'},
+    'seatKey': 'A:2:2',
+    'seatLabel': 'Stalls · Row 2 · Seat 2',
+    'seatLabelMy': 'ရှေ့ခန်း · အတန်း 2 · ခုံ 2',
+    'isComplimentary': true,
+    'compLabel': 'Press',
+    'canCancel': false,
+  };
+
+  testWidgets('ticket shows seat label and complimentary', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket, compTicket]);
+    await tester.tap(find.text('My tickets'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stalls · Row 1 · Seat 1'), findsOneWidget);
+    expect(find.text('Complimentary · Press'), findsOneWidget);
+    await tester.tap(find.text('Gala Dinner'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('ticketSeat'))).data, 'Stalls · Row 2 · Seat 2');
+    expect(find.byKey(const Key('ticketComp')), findsOneWidget);
+    expect(find.text('Complimentary · Press'), findsOneWidget);
+    expect(find.byKey(const Key('transfer')), findsNothing); // comps can't be transferred
+  });
+
+  testWidgets('ticket shows the Myanmar seat label when the app is in Myanmar', (tester) async {
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.extraTickets = [seatTicket]);
+    await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('ရှေ့ခန်း · အတန်း 1 · ခုံ 1'), findsOneWidget);
+    expect(find.text('Stalls · Row 1 · Seat 1'), findsNothing);
+  });
+
+  testWidgets('cancel button only when canCancel', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket, compTicket]);
+    await tester.tap(find.text('My tickets'));
+    await tester.pumpAndSettle();
+    // A comp ticket and the plain default ticket can't be cancelled
+    await tester.tap(find.text('Gala Dinner'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cancelTicket')), findsNothing);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yangon Food Fair e1').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cancelTicket')), findsNothing);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Opera Night'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byKey(const Key('cancelTicket')));
+    await tester.pumpAndSettle();
+    expect(find.text('Cancel this ticket?'), findsOneWidget);
+    await tester.tap(find.text('Keep ticket'));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, isEmpty);
+    await tester.tap(find.byKey(const Key('cancelTicket')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cancelTicketConfirm')));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, ['ticket-seat-0001']);
+    expect(find.text('Ticket cancelled'), findsOneWidget);
   });
 }

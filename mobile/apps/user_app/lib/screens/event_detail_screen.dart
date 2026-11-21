@@ -54,8 +54,10 @@ class _Detail extends ConsumerWidget {
     final summary = pickLang(lang, e.summary, e.summaryMy);
     final payable = (ref.watch(paymentMethodsProvider).value ?? const <PaymentMethod>[]).isNotEmpty;
     bool sellable(TicketType tt) => !tt.soldOut && (tt.isFree || payable);
-    final canRegister = !ended && !cancelled && e.ticketTypes.any(sellable);
-    final sellsPaid = e.ticketTypes.any((tt) => !tt.isFree && sellable(tt));
+    // Seated ticket types are bought on the seat map, the rest (unseated, standing) by quantity
+    final canRegister = !ended && !cancelled && e.ticketTypes.any((tt) => !tt.seated && sellable(tt));
+    final canChooseSeats = !ended && !cancelled && e.ticketTypes.any((tt) => tt.seated && sellable(tt));
+    final sellsPaid = e.ticketTypes.any((tt) => !tt.seated && !tt.isFree && sellable(tt));
     final bold = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
     void open(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
@@ -215,6 +217,7 @@ class _Detail extends ConsumerWidget {
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
+                    leading: tt.seated ? Icon(Icons.event_seat, color: parseHexColor(tt.color)) : null,
                     title: Text(pickLang(lang, tt.name, tt.nameMy)),
                     subtitle: Text(tt.soldOut ? t.soldOut : t.remaining(tt.remaining)),
                     trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
@@ -284,15 +287,33 @@ class _Detail extends ConsumerWidget {
           ]),
         ),
       ]),
-      bottomNavigationBar: canRegister
+      bottomNavigationBar: canRegister || canChooseSeats
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                child: FilledButton(
-                  key: const Key('getTickets'),
-                  onPressed: () => _startRegister(context, ref, payable),
-                  child: Text(sellsPaid ? t.getTickets : t.registerFree),
-                ),
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  if (canChooseSeats)
+                    FilledButton.icon(
+                      key: const Key('chooseSeats'),
+                      onPressed: () => context.push('/event/${e.id}/seats'),
+                      icon: const Icon(Icons.event_seat_outlined),
+                      label: Text(t.chooseSeats),
+                    ),
+                  if (canChooseSeats && canRegister) const SizedBox(height: 8),
+                  if (canRegister)
+                    canChooseSeats
+                        ? OutlinedButton(
+                            key: const Key('getTickets'),
+                            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                            onPressed: () => _startRegister(context, ref, payable),
+                            child: Text(t.standingTickets),
+                          )
+                        : FilledButton(
+                            key: const Key('getTickets'),
+                            onPressed: () => _startRegister(context, ref, payable),
+                            child: Text(sellsPaid ? t.getTickets : t.registerFree),
+                          ),
+                ]),
               ),
             )
           : null,
@@ -383,7 +404,7 @@ class _RegisterSheet extends ConsumerStatefulWidget {
 }
 
 class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
-  late final List<TicketType> _options = widget.event.ticketTypes.where((t) => !t.soldOut && (t.isFree || widget.payable)).toList();
+  late final List<TicketType> _options = widget.event.ticketTypes.where((t) => !t.seated && !t.soldOut && (t.isFree || widget.payable)).toList();
   late TicketType _type = _options.first;
   // Same key for retries of this sheet: the API returns the same order instead of holding seats twice
   final String _idempotencyKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();

@@ -11,9 +11,12 @@ import 'token_store.dart';
 
 /// Error with a user-presentable message from the API (`message` field) and the HTTP status.
 class ApiException implements Exception {
-  ApiException(this.status, this.message);
+  ApiException(this.status, this.message, {this.takenSeats = const []});
   final int? status;
   final String message;
+
+  /// Seat keys that were just taken (409 on a seated order).
+  final List<String> takenSeats;
 
   bool get isRateLimited => status == 429;
   bool get isUnauthorized => status == 401;
@@ -88,7 +91,8 @@ class Event360Api {
       } else if (e.response != null) {
         msg = 'HTTP ${e.response!.statusCode}';
       }
-      throw ApiException(e.response?.statusCode, msg);
+      final taken = data is Map && data['takenSeats'] is List ? (data['takenSeats'] as List).whereType<String>().toList() : const <String>[];
+      throw ApiException(e.response?.statusCode, msg, takenSeats: taken);
     }
   }
 
@@ -178,15 +182,35 @@ class Event360Api {
       );
 
   /// Creates an order (free → confirmed with tickets; paid → seats held for 10 minutes).
-  Future<Order> createOrder(String eventId, Map<String, int> quantities, {required String idempotencyKey, String channel = 'APP', String? promoCode}) => _call(
+  ///
+  /// [seats] (seated events) are seat keys; they are claimed all or none, and a 409 carries [ApiException.takenSeats].
+  Future<Order> createOrder(String eventId, Map<String, int> quantities,
+          {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const []}) =>
+      _call(
         () => _dio.post('/events/$eventId/orders', data: {
           'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
+          if (seats.isNotEmpty) 'seats': seats,
           'idempotencyKey': idempotencyKey,
           'channel': channel,
           if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
         }),
         (d) => Order.fromJson(d as Map<String, dynamic>),
       );
+
+  /// Seat map and live availability of a seated event (cheap to poll: the server caches it for 2 s).
+  Future<SeatMapData> seatMap(String eventId) => _call(
+        () => _dio.get('/events/$eventId/seats', options: Options(extra: {'auth': false})),
+        (d) => SeatMapData.fromJson(d as Map<String, dynamic>),
+      );
+
+  /// Server-picked seats (adjacent where possible). Holds nothing. 409 'Not enough seats together' when none fit.
+  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity) => _call(
+        () => _dio.post('/events/$eventId/seats/best', data: {'ticketTypeId': ticketTypeId, 'quantity': quantity}, options: Options(extra: {'auth': false})),
+        (d) => ((d as Map<String, dynamic>)['seats'] as List).cast<String>(),
+      );
+
+  /// Gives back one of the holder's free tickets before the event starts; its seat goes back on sale.
+  Future<void> cancelTicket(String ticketId) => _call(() => _dio.post('/me/tickets/$ticketId/cancel'), (_) {});
 
   Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities) => _call(
         () => _dio.post('/events/$eventId/promo-check', data: {
