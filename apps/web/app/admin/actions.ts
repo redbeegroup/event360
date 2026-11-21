@@ -250,22 +250,24 @@ const numField = (fd: FormData, k: string) => {
   return v === '' ? undefined : Number(v);
 };
 
-function venueBody(fd: FormData) {
+function venueBody(fd: FormData, clear: boolean) {
+  // On update, cleared optional fields are sent as null (the DTOs allow null via @IsOptional) so they really clear.
+  const none = clear ? null : undefined;
   return {
     venueName: String(fd.get('venueName') ?? '').trim(),
-    venueNameMy: String(fd.get('venueNameMy') ?? '').trim() || undefined,
+    venueNameMy: String(fd.get('venueNameMy') ?? '').trim() || none,
     city: String(fd.get('city') ?? '').trim(),
-    address: String(fd.get('address') ?? '').trim() || undefined,
-    latitude: numField(fd, 'latitude'),
-    longitude: numField(fd, 'longitude'),
-    mapUrl: String(fd.get('mapUrl') ?? '').trim() || undefined,
+    address: String(fd.get('address') ?? '').trim() || none,
+    latitude: numField(fd, 'latitude') ?? none,
+    longitude: numField(fd, 'longitude') ?? none,
+    mapUrl: String(fd.get('mapUrl') ?? '').trim() || none,
   };
 }
 
 export async function createSeatMapAction(_: FormState, fd: FormData): Promise<FormState> {
   let id: string;
   try {
-    id = (await api<{ id: string }>('/admin/seat-maps', { method: 'POST', json: venueBody(fd) })).id;
+    id = (await api<{ id: string }>('/admin/seat-maps', { method: 'POST', json: venueBody(fd, false) })).id;
   } catch (e) {
     return err(e);
   }
@@ -276,7 +278,7 @@ export async function createSeatMapAction(_: FormState, fd: FormData): Promise<F
 export async function updateSeatMapAction(_: FormState, fd: FormData): Promise<FormState> {
   const id = String(fd.get('id'));
   try {
-    await api(`/admin/seat-maps/${id}`, { method: 'PATCH', json: { ...venueBody(fd), isActive: fd.get('isActive') === 'on' } });
+    await api(`/admin/seat-maps/${id}`, { method: 'PATCH', json: { ...venueBody(fd, true), isActive: fd.get('isActive') === 'on' } });
     revalidatePath(`/admin/venues/${id}`);
     revalidatePath('/admin/venues');
     return { ok: '✓' };

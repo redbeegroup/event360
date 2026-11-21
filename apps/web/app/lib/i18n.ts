@@ -504,6 +504,10 @@ const en = {
   smInvalidJson: 'That is not valid JSON.',
   smUnsaved: 'Unsaved changes',
   smNoSections: 'No sections yet.',
+  smInvalidLayout: 'Invalid layout',
+  smSeatMap: 'Seat map',
+  smMultiGapHint: 'This row has several gaps; edit the others via Import/Export JSON.',
+  smAddStage: 'Add stage',
 };
 
 type Dict = typeof en;
@@ -1001,6 +1005,10 @@ const my: Dict = {
   smInvalidJson: 'JSON မမှန်ကန်ပါ။',
   smUnsaved: 'မသိမ်းရသေးသော ပြောင်းလဲမှုများ',
   smNoSections: 'ပိုင်း မရှိသေးပါ။',
+  smInvalidLayout: 'မြေပုံပုံစံ မမှန်ကန်ပါ',
+  smSeatMap: 'ထိုင်ခုံမြေပုံ',
+  smMultiGapHint: 'ဤအတန်းတွင် လမ်းခြားများစွာ ရှိသည်။ အခြားများကို JSON ထည့်သွင်း/ထုတ်ယူ၍ ပြင်ပါ။',
+  smAddStage: 'စင်မြင့် ထည့်မည်',
 };
 
 export async function getLang(): Promise<Lang> {

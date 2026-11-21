@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import type { FormState } from '../actions';
 import { expandSeats, validateLayout, type Layout, type LayoutRow, type LayoutSection, type SeatAttr } from '../lib/seat-layout';
 import { SeatMapView } from './SeatMapView';
@@ -16,6 +16,7 @@ export interface SeatMapEditorProps {
   /** Publishes the saved draft. */
   onPublish?: () => Promise<FormState>;
   labels: Labels;
+  lang?: 'en' | 'my';
 }
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -35,12 +36,10 @@ function buildRows(rows: number, perRow: number, start: number, dir: 'LTR' | 'RT
 }
 
 /** Index of the seat after which a gap sits (0 = none). */
-const gapAfterOf = (row: LayoutRow) => {
-  const i = row.seats.findIndex((s, idx) => idx > 0 && (s.gapBefore ?? 0) > 0);
-  return i < 0 ? 0 : i;
-};
+const gapIndexes = (row: LayoutRow) => row.seats.flatMap((s, idx) => (idx > 0 && (s.gapBefore ?? 0) > 0 ? [idx] : []));
+const gapAfterOf = (row: LayoutRow) => gapIndexes(row)[0] ?? 0;
 
-export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L }: SeatMapEditorProps) {
+export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L, lang }: SeatMapEditorProps) {
   const [layout, setLayout] = useState<Layout>(() => clone(initial));
   const [activeKey, setActiveKey] = useState<string | null>(initial.sections[0]?.key ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -55,6 +54,8 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
   const [nt, setNt] = useState({ key: '', name: '', capacity: '200', w: '300', h: '120' });
 
   const check = useMemo(() => validateLayout(layout), [layout]);
+  const lastValid = useRef<Layout | null>(null);
+  if (check.ok) lastValid.current = check.layout;
   const problems = check.ok ? [] : check.problems;
   const seatCount = useMemo(() => (check.ok ? expandSeats(check.layout).length : 0), [check]);
   const active = layout.sections.find((s) => s.key === activeKey) ?? null;
@@ -157,15 +158,26 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
       const row = s.rows![ri];
       const c = Math.max(1, count);
       while (row.seats.length > c) row.seats.pop();
-      while (row.seats.length < c) row.seats.push({ n: (row.seats[row.seats.length - 1]?.n ?? 0) + 1 });
+      const used = new Set(row.seats.map((x) => x.label ?? String(x.n)));
+      while (row.seats.length < c) {
+        const len = row.seats.length;
+        const last = row.seats[len - 1]?.n ?? 0;
+        // Step from the last two seats (RTL rows descend, odd/even rows step by 2); default +1.
+        let step = len >= 2 ? last - row.seats[len - 2].n : 1;
+        if (!step) step = 1;
+        let n = last + step;
+        while (n < 1 || used.has(String(n))) n = n < 1 ? Math.max(...row.seats.map((x) => x.n), 0) + 1 : n + (step > 0 ? step : 1);
+        used.add(String(n));
+        row.seats.push({ n });
+      }
     });
   const setRowGap = (sec: string, ri: number, after: number) =>
     editSection(sec, (s) => {
       const row = s.rows![ri];
-      row.seats.forEach((seat, i) => {
-        delete seat.gapBefore;
-        if (after > 0 && i === after && i < row.seats.length) seat.gapBefore = 1;
-      });
+      const old = gapIndexes(row)[0];
+      const width = old != null ? row.seats[old].gapBefore || 1 : 1;
+      if (old != null) delete row.seats[old].gapBefore;
+      if (after > 0 && after < row.seats.length) row.seats[after].gapBefore = width;
     });
   const setRowLabel = (sec: string, ri: number, label: string) =>
     editSection(sec, (s) => {
@@ -202,7 +214,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
     }
     const v = validateLayout(parsed);
     if (!v.ok) {
-      setResult({ error: 'Invalid layout', problems: v.problems });
+      setResult({ error: L.smInvalidLayout, problems: v.problems });
       return;
     }
     setLayout(v.layout);
@@ -271,8 +283,11 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
         <details className="card">
           <summary>{L.smCanvas} / {L.smStage}</summary>
           <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="field"><label>{L.smWidth}</label><input type="number" value={layout.width} onChange={(e) => edit((l) => { l.width = numOr(e.target.value, 0)!; })} /></div>
-            <div className="field"><label>{L.smHeight}</label><input type="number" value={layout.height} onChange={(e) => edit((l) => { l.height = numOr(e.target.value, 0)!; })} /></div>
+            <div className="field"><label>{L.smWidth}</label><input type="number" value={layout.width} onChange={(e) => edit((l) => { l.width = Math.max(1, numOr(e.target.value, 1)!); })} /></div>
+            <div className="field"><label>{L.smHeight}</label><input type="number" value={layout.height} onChange={(e) => edit((l) => { l.height = Math.max(1, numOr(e.target.value, 1)!); })} /></div>
+            {!layout.stage && (
+              <div className="field"><button type="button" className="secondary" onClick={() => edit((l) => { l.stage = { x: Math.round(l.width / 2 - 280), y: 40, w: 560, h: 60, label: L.smStage }; })}>{L.smAddStage}</button></div>
+            )}
             {layout.stage && (
               <>
                 {(['x', 'y', 'w', 'h'] as const).map((f) => (
@@ -316,7 +331,8 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
                       <tr key={ri}>
                         <td><input style={{ width: 70 }} value={row.label} onChange={(e) => setRowLabel(active.key, ri, e.target.value)} /></td>
                         <td><input style={{ width: 70 }} type="number" min={1} value={row.seats.length} onChange={(e) => setRowSeatCount(active.key, ri, numOr(e.target.value, 1)!)} /></td>
-                        <td><input style={{ width: 70 }} type="number" min={0} value={gapAfterOf(row)} onChange={(e) => setRowGap(active.key, ri, numOr(e.target.value, 0)!)} /></td>
+                        <td><input style={{ width: 70 }} type="number" min={0} value={gapAfterOf(row)} disabled={gapIndexes(row).length > 1} title={gapIndexes(row).length > 1 ? L.smMultiGapHint : undefined} onChange={(e) => setRowGap(active.key, ri, numOr(e.target.value, 0)!)} />
+                          {gapIndexes(row).length > 1 && <div className="muted" style={{ fontSize: 12 }}>{L.smMultiGapHint}</div>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -361,10 +377,8 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L 
             <span style={{ color: '#d97706' }}>● {L.smRestricted}</span>
             <span style={{ color: '#1d6fd8' }}>● {L.smWheelchair}</span>
           </div>
-          {check.ok ? (
-            <SeatMapView layout={check.layout} selected={selected} onToggle={toggleSeat} onSectionClick={setActiveKey} showRowLabels />
-          ) : (
-            <p className="muted">{L.smProblems}</p>
+          {lastValid.current && (
+            <SeatMapView layout={lastValid.current} selected={selected} onToggle={toggleSeat} onSectionClick={setActiveKey} showRowLabels lang={lang} ariaLabel={L.smSeatMap} stageLabel={L.smStage} />
           )}
         </div>
 

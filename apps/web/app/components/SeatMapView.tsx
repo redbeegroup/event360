@@ -26,6 +26,11 @@ export interface SeatMapViewProps {
   showRowLabels?: boolean;
   /** Outline restricted-view / wheelchair seats. Default true. */
   showAttrs?: boolean;
+  /** Seat tooltips use labelMy when 'my'. */
+  lang?: 'en' | 'my';
+  ariaLabel?: string;
+  /** Stage text when the layout's stage has no label. */
+  stageLabel?: string;
 }
 
 /** SVG renderer for a seat-map layout. Shared by the admin editor and the organizer seats tab. */
@@ -41,6 +46,9 @@ export function SeatMapView({
   onRowClick,
   showRowLabels,
   showAttrs = true,
+  lang = 'en',
+  ariaLabel,
+  stageLabel,
 }: SeatMapViewProps) {
   const pid = useId().replace(/:/g, '');
   const seats = useMemo(() => expandSeats(layout), [layout]);
@@ -52,6 +60,18 @@ export function SeatMapView({
     }
     return [...seen.values()];
   }, [seats]);
+  const rowSpans = useMemo(() => {
+    const m = new Map<string, { sectionKey: string; rowLabel: string; x1: number; x2: number; y1: number; y2: number }>();
+    for (const s of seats) {
+      const k = `${s.sectionKey}:${s.rowLabel}`;
+      const r = m.get(k);
+      if (!r) m.set(k, { sectionKey: s.sectionKey, rowLabel: s.rowLabel, x1: s.x, x2: s.x, y1: s.y, y2: s.y });
+      else {
+        r.x1 = Math.min(r.x1, s.x); r.x2 = Math.max(r.x2, s.x); r.y1 = Math.min(r.y1, s.y); r.y2 = Math.max(r.y2, s.y);
+      }
+    }
+    return [...m.values()];
+  }, [seats]);
   const withRows = showRowLabels ?? !!onRowClick;
   const hatch = `hatch-${pid}`;
 
@@ -59,7 +79,7 @@ export function SeatMapView({
     <svg
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       role="img"
-      aria-label="Seat map"
+      aria-label={ariaLabel}
       style={{ width: '100%', height: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
     >
       <defs>
@@ -72,7 +92,7 @@ export function SeatMapView({
         <g>
           <rect x={layout.stage.x} y={layout.stage.y} width={layout.stage.w} height={layout.stage.h} rx={6} fill="#cfcbe0" stroke="#8b86a3" />
           <text x={layout.stage.x + layout.stage.w / 2} y={layout.stage.y + layout.stage.h / 2} textAnchor="middle" dominantBaseline="middle" fontSize={16} fill="#3a3550">
-            {layout.stage.label ?? 'Stage'}
+            {layout.stage.label ?? stageLabel ?? ''}
           </text>
         </g>
       )}
@@ -124,17 +144,33 @@ export function SeatMapView({
             {r.rowLabel}
           </text>
         ))}
+      {onRowClick &&
+        rowSpans.map((r) => (
+          <rect
+            key={`hit-${r.sectionKey}:${r.rowLabel}`}
+            x={r.x1 - 28}
+            y={r.y1 - SEAT_RADIUS - 2}
+            width={r.x2 - r.x1 + 28 + SEAT_RADIUS + 2}
+            height={r.y2 - r.y1 + 2 * SEAT_RADIUS + 4}
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onClick={() => onRowClick(r.sectionKey, r.rowLabel)}
+          />
+        ))}
       {seats.map((s) => {
         const st = status?.[s.seatKey];
         const unavailable = st != null && UNAVAILABLE.has(st.toUpperCase());
         const typeIdx = seatTypes?.[s.seatKey];
         const fill = unavailable ? '#c9c7d1' : typeIdx != null ? colors[typeIdx % colors.length] : seatTypes ? '#e5e3ee' : colors[0];
-        const attr = showAttrs ? (s.attrs[0] as keyof typeof ATTR_STROKE | undefined) : undefined;
+        const restricted = showAttrs && s.attrs.includes('RESTRICTED_VIEW');
+        const wheel = showAttrs && s.attrs.includes('WHEELCHAIR');
+        const attr = restricted ? 'RESTRICTED_VIEW' : wheel ? 'WHEELCHAIR' : undefined;
         const isSel = selected?.has(s.seatKey);
         return (
           <g key={s.seatKey} onClick={onToggle ? () => onToggle(s.seatKey) : undefined} style={onToggle ? { cursor: 'pointer' } : undefined}>
-            <title>{s.label}</title>
+            <title>{lang === 'my' && s.labelMy ? s.labelMy : s.label}</title>
             {isSel && <circle cx={s.x} cy={s.y} r={SEAT_RADIUS + 4} fill="none" stroke="#111" strokeWidth={2} />}
+            {restricted && wheel && <circle cx={s.x} cy={s.y} r={SEAT_RADIUS + 2} fill="none" stroke={ATTR_STROKE.WHEELCHAIR} strokeWidth={2} />}
             <circle cx={s.x} cy={s.y} r={SEAT_RADIUS} fill={fill} stroke={attr ? ATTR_STROKE[attr] : 'none'} strokeWidth={attr ? 3 : 0} />
             {held?.has(s.seatKey) && <circle cx={s.x} cy={s.y} r={SEAT_RADIUS} fill={`url(#${hatch})`} stroke="#444" strokeWidth={1} />}
           </g>

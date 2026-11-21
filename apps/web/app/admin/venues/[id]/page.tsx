@@ -74,7 +74,7 @@ export default async function VenuePage({ params }: { params: Promise<{ id: stri
       </div>
 
       <h2>{tr.smEditor}</h2>
-      <SeatMapEditor initial={initial} onSave={save} onImport={imp} onPublish={publish} labels={labels} />
+      <SeatMapEditor initial={initial} onSave={save} onImport={imp} onPublish={publish} labels={labels} lang={tr.lang} />
     </>
   );
 }
