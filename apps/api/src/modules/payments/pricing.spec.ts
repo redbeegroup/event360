@@ -53,3 +53,18 @@ describe('chooseDiscount', () => {
     expect(chooseDiscount(l, tiers, 5_001n)).toMatchObject({ source: 'PROMO', discountMmk: 5_001n, groupBp: null, promoApplied: true });
   });
 });
+
+describe('group discount rounding', () => {
+  const tiers = [{ minQuantity: 5, percentBp: 1000 }, { minQuantity: 10, percentBp: 1500 }];
+  it('rounds half up: 16,665 at 10% is 1,666.5 → 1,667', () => {
+    expect(chooseDiscount([{ unitPriceMmk: 3_333n, quantity: 5 }], tiers, null)).toMatchObject({ discountMmk: 1_667n, groupBp: 1000 });
+  });
+  it('rounds a fraction below one half down: 33,330 at 15% is 4,999.5 → 5,000; 3,331 × 10 at 15% is 4,996.5 → 4,997', () => {
+    expect(chooseDiscount([{ unitPriceMmk: 3_333n, quantity: 10 }], tiers, null).discountMmk).toBe(5_000n);
+    expect(chooseDiscount([{ unitPriceMmk: 3_331n, quantity: 10 }], tiers, null).discountMmk).toBe(4_997n);
+  });
+  it('rounds below a half down: 3,334 × 5 at 10% is 1,667 exactly; 3,332 × 5 at 10% is 1,666', () => {
+    expect(chooseDiscount([{ unitPriceMmk: 3_334n, quantity: 5 }], tiers, null).discountMmk).toBe(1_667n);
+    expect(chooseDiscount([{ unitPriceMmk: 3_332n, quantity: 5 }], tiers, null).discountMmk).toBe(1_666n);
+  });
+});

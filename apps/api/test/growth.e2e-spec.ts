@@ -328,4 +328,120 @@ run('Organizer growth', () => {
     expect(comps).toHaveLength(1);
     expect(comps[0]).toMatchObject({ discountMmk: 0n, groupDiscountBp: null, promoCodeId: null, totalMmk: 0n, commissionMmk: 0n });
   });
+
+  // ───────────── group discounts: round 2 ─────────────
+
+  const lateConfirm = async (h: Record<string, string>, orderId: string, url: string) => {
+    const u = new URL(url);
+    await http.post(`${u.pathname}/pay`).type('form').send({ t: u.searchParams.get('t') }).expect(201);
+    return prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+  };
+  const payUrl = async (h: Record<string, string>, orderId: string) => (await http.post(`/v1/orders/${orderId}/pay`).set(h).send({ provider: 'MOCK' }).expect(200)).body.payment.action.url as string;
+
+  it('hold expiry and late payment keep promo uses right for group-win and promo-win orders', async () => {
+    const e = await newEvent('Expiry', 20);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+    for (const [code, value] of [['BIG', 20], ['SMALL', 5], ['TIE', 10]] as const) await promoFor(e, { code, kind: 'PERCENT', value });
+    const items = [{ ticketTypeId: e.paid, quantity: 5 }];
+    const used = async () => [await promoUsed(e.eventId, 'BIG'), await promoUsed(e.eventId, 'SMALL'), await promoUsed(e.eventId, 'TIE')];
+
+    // Group wins over SMALL and TIE: no use is taken, expiry gives none back, late payment takes none
+    for (const code of ['SMALL', 'TIE']) {
+      const h = await consumer();
+      const o = await order(h, e, items, code).expect(201);
+      const url = await payUrl(h, o.body.id);
+      expect(await used()).toEqual([0, 0, 0]);
+      await expireHold(prisma, svc, o.body.id);
+      expect(await used()).toEqual([0, 0, 0]);
+      const late = await lateConfirm(h, o.body.id, url);
+      expect(late).toMatchObject({ status: 'PAID', totalMmk: 45_000n, promoCodeId: null, groupDiscountBp: 1000 });
+      expect(await used()).toEqual([0, 0, 0]);
+    }
+
+    // Promo wins: the use is given back on expiry and taken again by the late payment
+    const h = await consumer();
+    const o = await order(h, e, items, 'BIG').expect(201);
+    const url = await payUrl(h, o.body.id);
+    expect(await used()).toEqual([1, 0, 0]);
+    await expireHold(prisma, svc, o.body.id);
+    expect(await used()).toEqual([0, 0, 0]);
+    const late = await lateConfirm(h, o.body.id, url);
+    expect(late).toMatchObject({ status: 'PAID', totalMmk: 40_000n, groupDiscountBp: null });
+    expect(await used()).toEqual([1, 0, 0]);
+  });
+
+  it('seated paid orders, and seated plus standing, get the group discount', async () => {
+    const hall = { width: 600, height: 400, sections: [{ key: 'A', name: 'Stalls', nameMy: 'ရှေ့ခန်း', kind: 'SEATED', x: 10, y: 10, rows: [{ label: '1', seats: Array.from({ length: 12 }, (_, i) => ({ n: i + 1 })) }] }] };
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Growth Hall2 ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: hall }).expect(200);
+    const versionId = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id as string;
+    const e = await newEvent('Seated', 20);
+    await http.put(`${e.base}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    await http.put(`${e.base}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'A', ticketTypeId: e.paid }] }).expect(200);
+    const floor = (await http.post(`${e.base}/ticket-types`).set(O).send({ name: 'Floor', priceMmk: 10_000, quota: 10, maxPerOrder: 20 }).expect(201)).body.id as string;
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+
+    const seatOrder = (h: Record<string, string>, seats: string[], items: object[] = []) => http.post(`/v1/events/${e.eventId}/orders`).set(h).send({ seats, items });
+    const four = await seatOrder(await consumer(), ['A:1:1', 'A:1:2', 'A:1:3', 'A:1:4']).expect(201);
+    expect(four.body).toMatchObject({ subtotalMmk: 40_000, discountMmk: 0, discountSource: null });
+    const five = await seatOrder(await consumer(), ['A:1:5', 'A:1:6', 'A:1:7', 'A:1:8', 'A:1:9']).expect(201);
+    expect(five.body).toMatchObject({ subtotalMmk: 50_000, discountMmk: 5_000, totalMmk: 45_000, discountSource: 'GROUP', groupDiscountBp: 1000 });
+    const mix = await seatOrder(await consumer(), ['A:1:10', 'A:1:11', 'A:1:12'], [{ ticketTypeId: floor, quantity: 2 }]).expect(201);
+    expect(mix.body).toMatchObject({ subtotalMmk: 50_000, discountMmk: 5_000, totalMmk: 45_000, discountSource: 'GROUP', groupDiscountBp: 1000 });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: mix.body.id } })).groupDiscountBp).toBe(1000);
+  });
+
+  it('a group-discounted order books and refunds the discounted amount and commission', async () => {
+    const e = await newEvent('Ledger', 20);
+    await prisma.feeRule.create({ data: { scope: 'EVENT', scopeId: e.eventId, percentBp: 500 } });
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+    const h = await consumer();
+    const o = await order(h, e, [{ ticketTypeId: e.paid, quantity: 5 }]).expect(201);
+    await confirm(await payMock(h, o.body.id));
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).status).toBe('PAID');
+    const lines = await prisma.ledgerEntry.findMany({ where: { refType: 'order', refId: o.body.id } });
+    const by = (a: string) => lines.find((l) => l.account === a)!;
+    expect(by('provider_clearing:MOCK').debitMmk).toBe(45_000n);
+    expect(by('platform_commission').creditMmk).toBe(2_250n);
+    expect(by(`organizer_payable:${orgId}`).creditMmk).toBe(42_750n);
+
+    const r = await http.post(`/v1/admin/finance/orders/${o.body.id}/refund`).set(A).send({ reason: 'Buyer request' }).expect(200);
+    expect(r.body.refunds[0]).toMatchObject({ status: 'SUCCEEDED', amountMmk: 45_000 });
+    const refundIds = (await prisma.refund.findMany({ where: { orderId: o.body.id }, select: { id: true } })).map((x) => x.id);
+    const rev = await prisma.ledgerEntry.findMany({ where: { refType: 'refund_order', refId: o.body.id } });
+    const debit = (a: string) => rev.filter((l) => l.account === a).reduce((s, l) => s + l.debitMmk, 0n);
+    expect(debit('platform_commission')).toBe(2_250n);
+    expect(debit(`organizer_payable:${orgId}`)).toBe(42_750n);
+    expect(rev.find((l) => l.account === 'refunds_payable')!.creditMmk).toBe(45_000n);
+    const paidOut = await prisma.ledgerEntry.findMany({ where: { refType: 'refund', refId: { in: refundIds } } });
+    expect(paidOut.find((l) => l.account === 'provider_clearing:MOCK')!.creditMmk).toBe(45_000n);
+  });
+
+  it('parallel group-discount replacements leave exactly one request\'s tiers', async () => {
+    const e = await newEvent('TierRace', 20);
+    const sets = [1, 2, 3, 4, 5, 6].map((i) => [{ minQuantity: 2, percentBp: 100 * i }, { minQuantity: 6, percentBp: 100 * i + 50 }]);
+    const rs = await Promise.all(sets.map((tiers) => tiersOf(e, tiers)));
+    expect(rs.map((r) => r.status)).toEqual([200, 200, 200, 200, 200, 200]);
+    const now = (await http.get(`${e.base}/group-discounts`).set(O).expect(200)).body.tiers;
+    expect(sets).toContainEqual(now);
+    expect(await prisma.groupDiscount.count({ where: { eventId: e.eventId } })).toBe(2);
+  });
+
+  it('attendee CSV shows the discount: GROUP %, the promo code, or nothing', async () => {
+    const e = await newEvent('Csv', 20);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+    await promoFor(e, { code: 'CSVBIG', kind: 'PERCENT', value: 20 });
+    const g = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 5 }]).expect(201);
+    const p = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 5 }], 'CSVBIG').expect(201);
+    const n = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 1 }]).expect(201);
+    for (const o of [g, p, n]) await prisma.order.update({ where: { id: o.body.id }, data: { status: 'PAID' } }), await prisma.ticket.createMany({ data: [{ orderId: o.body.id, ticketTypeId: e.paid, holderUserId: (await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).userId }] });
+    const csv = await http.get(`${e.base}/attendees.csv`).set(O).expect(200);
+    const rows = csv.text.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean).map((l: string) => l.replace(/"/g, '').split(','));
+    const col = rows[0].indexOf('discount');
+    expect(col).toBe(rows[0].indexOf('promo_code') + 1);
+    const byOrder = (o: { body: { id: string } }) => rows.find((r: string[]) => r[6] === o.body.id.slice(0, 8))![col];
+    expect(byOrder(g)).toBe('GROUP 10%');
+    expect(byOrder(p)).toBe('CSVBIG');
+    expect(byOrder(n)).toBe('');
+  });
 });

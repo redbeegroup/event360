@@ -230,6 +230,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         const seated = await tx.eventSeat.findFirst({ where: { eventId, ticketTypeId: { in: [...merged.keys()] } }, select: { id: true } });
         if (seated) throw new BadRequestException('Seated tickets are bought by choosing seats');
       }
+      // Last-use race: if another buyer takes the final use after we read the code, this order fails with USED_UP rather than falling back to the group discount (accepted).
       if (promo) {
         const used = await tx.$executeRaw`UPDATE promo_codes SET used = used + 1 WHERE id = ${promo.id}::uuid AND (max_uses IS NULL OR used < max_uses)`;
         if (used !== 1) throw new ConflictException({ message: 'This code has been used up', reasonCode: 'USED_UP' }); // the last use went meanwhile

@@ -61,10 +61,12 @@ export class OrgToolsService {
   async setGroupDiscounts(orgId: string, eventId: string, tiers: { minQuantity: number; percentBp: number }[]) {
     await this.event(orgId, eventId);
     if (new Set(tiers.map((t) => t.minQuantity)).size !== tiers.length) throw new BadRequestException('Each tier needs a different ticket count');
-    await this.prisma.$transaction([
-      this.prisma.groupDiscount.deleteMany({ where: { eventId } }),
-      this.prisma.groupDiscount.createMany({ data: tiers.map((t) => ({ eventId, minQuantity: t.minQuantity, percentBp: t.percentBp })) }),
-    ]);
+    // Serialise concurrent replacements of one event's tiers (the unique key would otherwise reject the loser)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM events WHERE id = ${eventId}::uuid FOR UPDATE`;
+      await tx.groupDiscount.deleteMany({ where: { eventId } });
+      await tx.groupDiscount.createMany({ data: tiers.map((t) => ({ eventId, minQuantity: t.minQuantity, percentBp: t.percentBp })) });
+    });
     return this.groupDiscounts(orgId, eventId);
   }
 
@@ -161,7 +163,7 @@ export class OrgToolsService {
       include: {
         ticketType: { select: { name: true } },
         holder: { select: { displayName: true, phone: true } },
-        order: { select: { id: true, status: true, createdAt: true, discountMmk: true, promoCode: { select: { code: true } }, items: { select: { ticketTypeId: true, unitPriceMmk: true } } } },
+        order: { select: { id: true, status: true, createdAt: true, discountMmk: true, groupDiscountBp: true, promoCode: { select: { code: true } }, items: { select: { ticketTypeId: true, unitPriceMmk: true } } } },
         checkins: { where: { undoneAt: null, isDuplicate: false }, orderBy: { scannedAt: 'asc' }, take: 1 },
       },
     });
@@ -171,7 +173,7 @@ export class OrgToolsService {
       return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const fmt = (d?: Date | null) => (d ? new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ') : '');
-    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers', 'complimentary', 'seat'];
+    const header = ['ticket', 'holder', 'phone', 'ticket_type', 'price_mmk', 'status', 'order', 'order_status', 'promo_code', 'discount', 'purchased_at_mmt', 'checked_in_at_mmt', 'gate', 'transfers', 'complimentary', 'seat'];
     const lines = tickets.map((t) =>
       [
         t.id.slice(0, 8).toUpperCase(),
@@ -183,6 +185,7 @@ export class OrgToolsService {
         t.order.id.slice(0, 8),
         t.order.status,
         t.order.promoCode?.code ?? '',
+        t.order.groupDiscountBp != null ? `GROUP ${t.order.groupDiscountBp / 100}%` : (t.order.promoCode?.code ?? ''),
         fmt(t.order.createdAt),
         fmt(t.checkins[0]?.scannedAt),
         t.checkins[0]?.gate ?? '',
