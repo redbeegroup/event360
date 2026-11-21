@@ -16,8 +16,9 @@ interface Overview {
   seats: SeatRow[];
 }
 
-export default async function SeatsPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
+export default async function SeatsPage({ params, searchParams }: { params: Promise<{ orgId: string; id: string }>; searchParams: Promise<{ pdf?: string }> }) {
   const { orgId, id } = await params;
+  const { pdf } = await searchParams;
   const base = `/organizations/${orgId}/events/${id}`;
   const [tr, e, ov, guests, codes] = await Promise.all([
     t(),
@@ -35,6 +36,7 @@ export default async function SeatsPage({ params }: { params: Promise<{ orgId: s
   return (
     <>
       <p><Link href={`/organizer/${orgId}/events/${id}`}>← {tr.backToEvent}</Link></p>
+      {pdf === 'failed' && <div className="error" role="alert">{tr.stPdfFailed}</div>}
       <h1>{tr.stTitle} · {pick(tr.lang, e.title, e.titleMy)}</h1>
       {!ov.layout ? (
         <div className="card"><p className="muted">{tr.stNoMap}</p></div>

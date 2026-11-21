@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Header, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -199,7 +199,7 @@ export class EventGuestsController {
   }
 
   /** Same tickets as comps.pdf, as JSON for the portal's print page. Editors only: the tokens are live QR codes. */
-  @Get('comps/print') async printData(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Query('ids') ids: string | undefined, @CurrentUser() u: AuthUser) {
+  @Get('comps/print') @Header('Cache-Control', 'no-store') async printData(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Query('ids') ids: string | undefined, @CurrentUser() u: AuthUser) {
     await this.access.assert(u, orgId, ORG_EDITORS);
     return this.guests.printData(orgId, id, ids);
   }

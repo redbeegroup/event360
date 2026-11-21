@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { PrintTickets, type PrintLabels, type PrintTicket } from '../../../../../../components/PrintTickets';
-import { api } from '../../../../../../lib/api';
+import { api, ApiError } from '../../../../../../lib/api';
 import { fmtDate, t } from '../../../../../../lib/i18n';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,10 @@ export default async function PrintPage({
 }) {
   const [{ orgId, id }, q, tr] = await Promise.all([params, searchParams, t()]);
   const qs = q.ids ? `?ids=${encodeURIComponent(q.ids)}` : '';
-  const data = await api<PrintData>(`/organizations/${orgId}/events/${id}/seating/comps/print${qs}`).catch(() => null);
+  const data = await api<PrintData>(`/organizations/${orgId}/events/${id}/seating/comps/print${qs}`).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  });
   const back = `/organizer/${orgId}/events/${id}/seats`;
   if (!data) {
     return (
@@ -40,7 +43,7 @@ export default async function PrintPage({
         venue: data.event.venue,
         venueMy: data.event.venueMy,
       }}
-      tickets={data.tickets}
+      tickets={data.tickets.map((x) => ({ id: x.id, guestName: x.guestName, seatLabel: x.seatLabel, seatLabelMy: x.seatLabelMy, compLabel: x.compLabel, token: x.token, code: x.code }))}
       labels={labels}
       backHref={back}
       auto={q.auto === '1'}

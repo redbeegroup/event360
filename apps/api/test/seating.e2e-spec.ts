@@ -1162,6 +1162,17 @@ run('Guest seats', () => {
     expect(data.body.tickets[0]).toMatchObject({ seatLabel: expect.any(String), compLabel: 'Press' });
     expect(data.body.tickets[0].token).toMatch(/\./);
     await http.get(`${seating(ev.id)}/comps/print`).expect(401);
+    expect((await http.get(`${seating(ev.id)}/comps/print`).set(O).expect(200)).headers['cache-control']).toContain('no-store');
+    // a finance member can view the seating but not fetch QR payloads
+    const inv = await http.post(`/v1/organizations/${orgId}/invitations`).set(O).send({ email: `fin-${newPhone()}@e2e.test`, role: 'ORG_FINANCE' }).expect(201);
+    const F = await acceptInvite(inv.body.inviteUrl);
+    await http.get(`${seating(ev.id)}/guests`).set(F).expect(200);
+    await http.get(`${seating(ev.id)}/comps/print`).set(F).expect(403);
+    // revoked comps drop out of the print payload
+    await http.post(`${seating(ev.id)}/comps/${ids[0]}/revoke`).set(O).expect(200);
+    const after = await http.get(`${seating(ev.id)}/comps/print`).set(O).expect(200);
+    expect(after.body.tickets.map((x: any) => x.id)).not.toContain(ids[0]);
+    expect(after.body.tickets).toHaveLength(2);
   });
 });
 

@@ -14,7 +14,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ orgId: s
     headers: { authorization: `Bearer ${token}` },
     cache: 'no-store',
   });
-  if (!res.ok) return new Response(`Error ${res.status}`, { status: res.status });
+  if (res.status === 401) return new Response('Unauthorized', { status: 401 });
+  if (!res.ok) return new Response(null, { status: 303, headers: { location: `/organizer/${encodeURIComponent(orgId)}/events/${encodeURIComponent(id)}/seats?pdf=failed` } });
   return new Response(await res.arrayBuffer(), {
     headers: {
       'content-type': 'application/pdf',

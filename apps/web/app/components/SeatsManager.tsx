@@ -169,6 +169,7 @@ export function SeatsManager({
   const currentTypeOf = (t: Target) =>
     rules.find((r) => r.sectionKey === t.sectionKey && r.rowLabel === t.rowLabel)?.ticketTypeId ??
     (t.rowLabel != null ? rules.find((r) => r.sectionKey === t.sectionKey && r.rowLabel == null)?.ticketTypeId : undefined);
+  const dropsOverrides = (t: Target) => t.rowLabel == null && rules.some((r) => r.sectionKey === t.sectionKey && r.rowLabel != null);
   const targetName = (t: Target) => {
     const sec = layout.sections.find((s) => s.key === t.sectionKey);
     const secName = (lang === 'my' && sec?.nameMy) || sec?.name || t.sectionKey;
@@ -217,10 +218,12 @@ export function SeatsManager({
   };
 
   const printBase = `/organizer/${orgId}/events/${eventId}`;
-  const ids = [...picked].join(',');
+  const live = guests.filter((g) => g.status === 'VALID');
+  const liveIds = new Set(live.map((g) => g.id));
+  const pickedLive = [...picked].filter((x) => liveIds.has(x));
+  const ids = pickedLive.join(',');
   const printHref = `${printBase}/seats/print${ids ? `?ids=${ids}` : ''}`;
   const pdfHref = `${printBase}/comps.pdf${ids ? `?ids=${ids}` : ''}`;
-  const live = guests.filter((g) => g.status === 'VALID');
 
   return (
     <>
@@ -278,6 +281,7 @@ export function SeatsManager({
               {target && (
                 <div role="dialog" aria-label={`${L.stPickFor} ${targetName(target)}`}>
                   <strong>{L.stPickFor} {targetName(target)}</strong>
+                  {dropsOverrides(target) && <p className="muted" style={{ margin: '6px 0 0' }}>{L.stOverrideHint}</p>}
                   <div className="type-picker">
                     {types.map((t, i) => (
                       <button
@@ -382,16 +386,16 @@ export function SeatsManager({
           <>
             <div className="row" style={{ marginBottom: 10 }}>
               <a className="btn" href={printHref} target="_blank" rel="noreferrer">
-                {picked.size ? fill(L.stPrintSel, picked.size) : L.stPrint}
+                {pickedLive.length ? fill(L.stPrintSel, pickedLive.length) : L.stPrint}
               </a>
-              <a className="btn secondary" href={pdfHref}>{picked.size ? fill(L.stPdfSel, picked.size) : L.stPdfAll}</a>
+              <a className="btn secondary" href={pdfHref}>{pickedLive.length ? fill(L.stPdfSel, pickedLive.length) : L.stPdfAll}</a>
               <span className="muted" style={{ fontSize: 13 }}>{L.stPdfNote}</span>
             </div>
             <table>
               <thead>
                 <tr>
                   <th>
-                    <input type="checkbox" aria-label={L.stSelectAll} style={{ width: 'auto' }} checked={live.length > 0 && picked.size === live.length} onChange={(e) => setPicked(e.target.checked ? new Set(live.map((g) => g.id)) : new Set())} />
+                    <input type="checkbox" aria-label={L.stSelectAll} style={{ width: 'auto' }} checked={live.length > 0 && pickedLive.length === live.length} onChange={(e) => setPicked(e.target.checked ? new Set(live.map((g) => g.id)) : new Set())} />
                   </th>
                   <th>{L.stGuestName}</th><th>{L.phone}</th><th>{L.stSeat}</th><th>{L.stCompLabel}</th><th>{L.status}</th><th />
                 </tr>
@@ -424,7 +428,7 @@ export function SeatsManager({
                           className="danger"
                           disabled={pending}
                           onClick={() => {
-                            if (window.confirm(L.stRevokeConfirm)) run(() => revokeCompAction(orgId, eventId, g.id), L.stRevokedOk);
+                            if (window.confirm(L.stRevokeConfirm)) run(() => revokeCompAction(orgId, eventId, g.id), L.stRevokedOk, () => setPicked((cur) => { const n = new Set(cur); n.delete(g.id); return n; }));
                           }}
                         >
                           {L.stRevoke}
