@@ -325,3 +325,4 @@
 "pyAlreadyVoided","This payout was already voided.","ဤငွေပေးချေမှုကို ပယ်ဖျက်ပြီးသား ဖြစ်ပါသည်။","portal_payouts"
 "pyPaidOutCol","Paid out","ပေးချေပြီး","portal_payouts"
 "pyPayoutsFor","Payouts","ငွေပေးချေမှုများ","portal_payouts"
+"pyCsvError","Could not download the CSV. Please try again.","CSV ဒေါင်းလုဒ် မရပါ။ ထပ်မံကြိုးစားပါ။","portal_payouts"

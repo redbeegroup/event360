@@ -1,6 +1,7 @@
 // Dev only: adds organizer-growth demo data to the existing sample event sample-seated-gala (run sample-seated.js first):
 //   - a price step on the VIP ticket type: 45,000 MMK now, 55,000 MMK from 2026-12-15 (Yangon midnight)
 //   - one group-discount tier: 5 or more paid tickets get 10% off
+// Run it before 2026-12-15: price steps must start in the future, so after that date the VIP step is rejected.
 // It uses the same services as the organizer API endpoints and does nothing else. Re-running is safe: both calls replace the whole
 // list (price steps already in effect are kept by the service). Run it like sample-seated.js (docs/runbook.md §10).
 process.env.APP_ROLE = 'script';

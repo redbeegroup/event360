@@ -62,7 +62,7 @@ interface PayoutRow {
 const STATUSES = ['PENDING_PAYMENT', 'PAID', 'REFUNDED', 'EXPIRED', 'CANCELLED'];
 const badge = (s: string) => (s === 'PAID' || s === 'SUCCEEDED' ? 'PUBLISHED' : s === 'PENDING_PAYMENT' || s === 'PENDING' || s === 'MANUAL' ? 'SUBMITTED' : s === 'REFUNDED' ? 'DRAFT' : 'REJECTED');
 
-export default async function FinancePage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
+export default async function FinancePage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; csvError?: string }> }) {
   const sp = await searchParams;
   const qs = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.status ? { status: sp.status } : {}), limit: '50' });
   const [tr, fee, review, orders, balances] = await Promise.all([
@@ -72,8 +72,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     api<OrderRow[]>(`/admin/finance/orders?${qs}`),
     api<Balance[]>('/admin/finance/balances'),
   ]);
-  const payoutLists = await Promise.all(balances.map((b) => api<PayoutRow[]>(`/admin/finance/organizations/${b.organizationId}/payouts`)));
-  const payoutsOf = new Map(balances.map((b, i) => [b.organizationId, payoutLists[i]]));
+  const payoutLists = await Promise.allSettled(balances.map((b) => api<PayoutRow[]>(`/admin/finance/organizations/${b.organizationId}/payouts`)));
+  const payoutsOf = new Map(balances.map((b, i) => [b.organizationId, (payoutLists[i] as PromiseFulfilledResult<PayoutRow[]>).status === 'fulfilled' ? (payoutLists[i] as PromiseFulfilledResult<PayoutRow[]>).value : []]));
   const methods = Object.fromEntries(['BANK', 'KBZPAY', 'WAVEPAY', 'CASH', 'OTHER'].map((m) => [m, String((tr as Record<string, unknown>)[`pyMethod${m}`])]));
   const pl: PayoutLabels = {
     record: tr.pyRecord, amount: tr.pyAmount, paidAt: tr.pyDate, method: tr.pyMethod, reference: tr.pyReference, note: tr.note,
@@ -127,6 +127,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   return (
     <>
       <h1>{tr.finance}</h1>
+      {sp.csvError && <div className="error">{tr.pyCsvError}</div>}
 
       <h2>{tr.reviewQueue} ({review.length})</h2>
       <div className="card table-wrap">{review.length ? table(review) : <p className="muted">{tr.reviewEmpty}</p>}</div>

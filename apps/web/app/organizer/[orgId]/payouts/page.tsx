@@ -15,8 +15,9 @@ interface Summary {
   payouts: { id: string; amountMmk: number; paidAt: string; method: string; reference: string | null; note: string | null; voidedAt: string | null; voidReason: string | null }[];
 }
 
-export default async function PayoutsPage({ params }: { params: Promise<{ orgId: string }> }) {
+export default async function PayoutsPage({ params, searchParams }: { params: Promise<{ orgId: string }>; searchParams: Promise<{ csvError?: string }> }) {
   const { orgId } = await params;
+  const sp = await searchParams;
   const [tr, me] = await Promise.all([t(), getMe()]);
   const role = me.organizations.find((o) => o.id === orgId)?.role;
   if (role !== 'ORG_OWNER' && role !== 'ORG_FINANCE') redirect(`/organizer/${orgId}`);
@@ -29,11 +30,13 @@ export default async function PayoutsPage({ params }: { params: Promise<{ orgId:
       <h1>{tr.pyTitle}</h1>
       <p className="muted">{tr.pyIntro}</p>
 
+      {sp.csvError && <div className="error" data-testid="csv-error">{tr.pyCsvError}</div>}
+
       <div className="grid">
         <div className="card"><div className="muted">{tr.pyEarned}</div><h2 style={{ margin: '4px 0' }} data-testid="earned">{money(s.earnedMmk)}</h2></div>
         <div className="card"><div className="muted">{tr.pyPaidOut}</div><h2 style={{ margin: '4px 0' }} data-testid="paid-out">{money(s.paidOutMmk)}</h2></div>
         <div className="card">
-          <div className="muted">{owing ? '' : tr.pyOwed}</div>
+          {!owing && <div className="muted">{tr.pyOwed}</div>}
           <h2 style={{ margin: '4px 0' }} data-testid="owed" className={owing ? 'error-text' : undefined}>
             {owing ? tr.pyYouOwe.replace('{amount}', money(-s.owedMmk)) : money(s.owedMmk)}
           </h2>
