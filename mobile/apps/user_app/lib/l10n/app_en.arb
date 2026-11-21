@@ -365,5 +365,13 @@
         "type": "String"
       }
     }
-  }
+  },
+  "waitlistClosed": "The waitlist is closed",
+  "waitlistPaused": "The waitlist is paused while the event is being reviewed",
+  "waitlistAlreadyIn": "You are already on this waitlist",
+  "waitlistNotSoldOut": "These tickets are not sold out: you can buy them now",
+  "waitlistLimit": "You have reached the per-person ticket limit for this type",
+  "offerClosed": "This offer is no longer open",
+  "waitlistNotIn": "You are not on this waitlist",
+  "waitlistGenericError": "Something went wrong. Please try again."
 }

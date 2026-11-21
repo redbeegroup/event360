@@ -617,4 +617,31 @@ class L10nEn extends L10n {
   String reservedForYouLeft(String time) {
     return 'Reserved for you · $time left';
   }
+
+  @override
+  String get waitlistClosed => 'The waitlist is closed';
+
+  @override
+  String get waitlistPaused =>
+      'The waitlist is paused while the event is being reviewed';
+
+  @override
+  String get waitlistAlreadyIn => 'You are already on this waitlist';
+
+  @override
+  String get waitlistNotSoldOut =>
+      'These tickets are not sold out: you can buy them now';
+
+  @override
+  String get waitlistLimit =>
+      'You have reached the per-person ticket limit for this type';
+
+  @override
+  String get offerClosed => 'This offer is no longer open';
+
+  @override
+  String get waitlistNotIn => 'You are not on this waitlist';
+
+  @override
+  String get waitlistGenericError => 'Something went wrong. Please try again.';
 }

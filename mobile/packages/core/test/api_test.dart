@@ -54,4 +54,19 @@ void main() {
     expect(WaitlistEntry.fromJson(row('PURCHASED', const Duration(minutes: 5))).isOffered, isFalse);
     expect(WaitlistEntry.fromJson(row('WAITING', Duration.zero)).isWaiting, isTrue);
   });
+
+  test('WaitlistEntry counts the offer down on the server clock', () {
+    final now = DateTime.now().toUtc();
+    final e = WaitlistEntry.fromJson({
+      'id': 'w1',
+      'ticketTypeId': 'tt',
+      'eventId': 'e1',
+      'status': 'OFFERED',
+      'quantity': 1,
+      'serverNow': now.subtract(const Duration(hours: 1)).toIso8601String(), // the phone is an hour ahead
+      'offerExpiresAt': now.subtract(const Duration(minutes: 55)).toIso8601String(),
+    });
+    expect(e.isOffered, isTrue);
+    expect(e.offerExpiresAt!.difference(e.serverNow).inMinutes, inInclusiveRange(4, 5));
+  });
 }

@@ -147,6 +147,7 @@ run('Waitlist', () => {
     await http.post(`/v1/ticket-types/${ev.type}/waitlist`).send({ quantity: 1 }).expect(401);
     const notYet = await join(W1.H, ev.type, 1).expect(409);
     expect(notYet.body.message).toMatch(/not sold out/i);
+    expect(notYet.body.reasonCode).toBe('NOT_SOLD_OUT');
     await order(H.H, ev.id, items(ev.type, 2)).expect(201); // held: sold out for the public
     expect((await http.get(`/v1/events/${ev.id}`).expect(200)).body.ticketTypes[0].remaining).toBe(0);
 
@@ -155,10 +156,12 @@ run('Waitlist', () => {
     // The per-person limit counts what the buyer already holds or is paying for
     const limit = await join(H.H, ev.type, 1).expect(409);
     expect(limit.body.message).toMatch(/limit is 2 per person/);
+    expect(limit.body.reasonCode).toBe('LIMIT');
     const j1 = await join(W1.H, ev.type, 2).expect(201);
     expect(j1.body).toEqual({ entryId: expect.any(String), position: 1 });
     const again = await join(W1.H, ev.type, 1).expect(409);
     expect(again.body.message).toMatch(/already/i);
+    expect(again.body.reasonCode).toBe('ALREADY_WAITING');
     const j2 = await join(W2.H, ev.type, 1).expect(201);
     expect(j2.body.position).toBe(2);
 
@@ -175,8 +178,10 @@ run('Waitlist', () => {
     // Leave, then join again at the back of the line
     await http.delete(`/v1/ticket-types/${ev.type}/waitlist`).set(W1.H).expect(200);
     expect(await entry(j1.body.entryId)).toMatchObject({ status: 'LEFT' });
-    await http.delete(`/v1/ticket-types/${ev.type}/waitlist`).set(W1.H).expect(404);
-    expect((await http.get('/v1/me/waitlist').set(W2.H).expect(200)).body[0].position).toBe(1);
+    expect((await http.delete(`/v1/ticket-types/${ev.type}/waitlist`).set(W1.H).expect(404)).body.reasonCode).toBe('NOT_WAITING');
+    const mineRows = (await http.get('/v1/me/waitlist').set(W2.H).expect(200)).body;
+    expect(mineRows[0].position).toBe(1);
+    expect(Math.abs(Date.parse(mineRows[0].serverNow) - Date.now())).toBeLessThan(60_000);
     const j3 = await join(W1.H, ev.type, 1).expect(201);
     expect(j3.body.position).toBe(2);
 
@@ -184,6 +189,7 @@ run('Waitlist', () => {
     await prisma.ticketType.update({ where: { id: ev.type }, data: { salesEndAt: new Date(Date.now() - 1000) } });
     const closed = await join(H.H, ev.type, 1).expect(409);
     expect(closed.body.message).toMatch(/closed/i);
+    expect(closed.body.reasonCode).toBe('WAITLIST_CLOSED');
     await prisma.ticketType.update({ where: { id: ev.type }, data: { salesEndAt: null } });
     await prisma.event.update({ where: { id: ev.id }, data: { startsAt: new Date(Date.now() - 1000) } });
     await join(H.H, ev.type, 1).expect(409);
@@ -234,7 +240,8 @@ run('Waitlist', () => {
     expect(await entry(j.body.entryId)).toMatchObject({ status: 'PURCHASED', orderId: bought.body.id });
     expect(await tt(ev.type)).toMatchObject({ held: 2, sold: 0, offered: 0 });
     // A used offer cannot be used again
-    await order(W.H, ev.id, { ...items(ev.type, 1), waitlistEntryId: j.body.entryId }).expect(409);
+    const used = await order(W.H, ev.id, { ...items(ev.type, 1), waitlistEntryId: j.body.entryId }).expect(409);
+    expect(used.body.reasonCode).toBe('OFFER_CLOSED');
   });
 
   it('offeree may buy fewer than offered; the rest goes to the next entry', async () => {
@@ -612,7 +619,7 @@ run('Waitlist', () => {
 
     // Re-review: no joins, no new offers, nothing given back; the waiting entry and the live offer stay
     await prisma.event.update({ where: { id: ev.id }, data: { status: 'SUBMITTED' } });
-    await join(X.H, ev.type, 1).expect(409);
+    expect((await join(X.H, ev.type, 1).expect(409)).body.reasonCode).toBe('WAITLIST_PAUSED');
     await http.post(`/v1/orders/${h2.body.id}/cancel`).set(H2.H).expect(200);
     expect(await tt(ev.type)).toMatchObject({ held: 0, offered: 2 });
     expect(await wl.typesToOffer(new Date())).not.toContain(ev.type); // paused: not in the sweeper's batch

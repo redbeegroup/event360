@@ -619,4 +619,33 @@ class L10nMy extends L10n {
   String reservedForYouLeft(String time) {
     return 'သင့်အတွက် ထိန်းထားသည် · $time ကျန်သည်';
   }
+
+  @override
+  String get waitlistClosed => 'စောင့်ဆိုင်းစာရင်း ပိတ်ပါပြီ';
+
+  @override
+  String get waitlistPaused =>
+      'ပွဲကို စစ်ဆေးနေစဉ် စောင့်ဆိုင်းစာရင်းကို ခေတ္တရပ်ထားပါသည်';
+
+  @override
+  String get waitlistAlreadyIn =>
+      'သင်သည် ဤစောင့်ဆိုင်းစာရင်းတွင် ရှိပြီးသားဖြစ်သည်';
+
+  @override
+  String get waitlistNotSoldOut =>
+      'ဤလက်မှတ်များ မကုန်သေးပါ — ယခု ဝယ်နိုင်ပါသည်';
+
+  @override
+  String get waitlistLimit =>
+      'ဤလက်မှတ်အမျိုးအစားအတွက် တစ်ဦးလျှင် ကန့်သတ်ချက် ပြည့်သွားပါပြီ';
+
+  @override
+  String get offerClosed => 'ဤကမ်းလှမ်းချက် မရှိတော့ပါ';
+
+  @override
+  String get waitlistNotIn => 'သင်သည် ဤစောင့်ဆိုင်းစာရင်းတွင် မရှိပါ';
+
+  @override
+  String get waitlistGenericError =>
+      'တစ်ခုခု မှားယွင်းသွားပါသည်။ ထပ်မံကြိုးစားပါ။';
 }

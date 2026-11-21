@@ -137,6 +137,7 @@ class WaitlistEntry {
     this.eventTitleMy,
     this.ticketTypeName = '',
     this.ticketTypeNameMy,
+    this.clockSkew = Duration.zero,
   });
   final String id;
   final String ticketTypeId;
@@ -166,10 +167,16 @@ class WaitlistEntry {
   final String ticketTypeName;
   final String? ticketTypeNameMy;
 
+  /// Server clock minus this phone's clock when the entry was fetched; offers expire on the server's clock.
+  final Duration clockSkew;
+
+  /// "Now" on the server's clock.
+  DateTime get serverNow => DateTime.now().toUtc().add(clockSkew);
+
   bool get isWaiting => status == 'WAITING';
 
   /// A live offer: OFFERED and not past its expiry, whatever [orderId] says.
-  bool get isOffered => status == 'OFFERED' && offerExpiresAt != null && offerExpiresAt!.isAfter(DateTime.now().toUtc());
+  bool get isOffered => status == 'OFFERED' && offerExpiresAt != null && offerExpiresAt!.isAfter(serverNow);
   bool get isActive => isWaiting || status == 'OFFERED';
   bool get isSeated => seatKeys.isNotEmpty;
 
@@ -192,6 +199,7 @@ class WaitlistEntry {
       eventTitleMy: ev['titleMy'] as String?,
       ticketTypeName: tt['name'] as String? ?? '',
       ticketTypeNameMy: tt['nameMy'] as String?,
+      clockSkew: _dtn(j['serverNow'])?.difference(DateTime.now().toUtc()) ?? Duration.zero,
     );
   }
 }

@@ -85,8 +85,8 @@ export class WaitlistService {
     if (!t || !t.event.publishedAt) throw new NotFoundException('Ticket type not found'); // never listed: unknown
     const now = new Date();
     const state = lineState(t, now);
-    if (state === 'closed') throw new ConflictException('The waitlist is closed');
-    if (state === 'paused') throw new ConflictException('The waitlist is paused while the event is being reviewed');
+    if (state === 'closed') throw new ConflictException({ message: 'The waitlist is closed', reasonCode: 'WAITLIST_CLOSED' });
+    if (state === 'paused') throw new ConflictException({ message: 'The waitlist is paused while the event is being reviewed', reasonCode: 'WAITLIST_PAUSED' });
     if (t.salesStartAt && t.salesStartAt > now) throw new ConflictException('Sales have not opened yet');
     if (quantity < 1 || quantity > t.maxPerOrder) throw new BadRequestException(`Join for 1 to ${t.maxPerOrder} tickets`);
     const seated = t._count.eventSeats > 0;
@@ -100,7 +100,7 @@ export class WaitlistService {
       const open = seated
         ? await tx.eventSeat.count({ where: { ticketTypeId, status: 'AVAILABLE' } })
         : c.quota - c.sold - c.held - c.offered;
-      if (open > 0) throw new ConflictException('These tickets are not sold out: you can buy them now');
+      if (open > 0) throw new ConflictException({ message: 'These tickets are not sold out: you can buy them now', reasonCode: 'NOT_SOLD_OUT' });
       // The per-person limit, as at checkout: what the buyer holds or is paying for, plus what they wait for
       const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
       const pending = await tx.orderItem.aggregate({
@@ -109,15 +109,15 @@ export class WaitlistService {
       });
       const already = held + (pending._sum.quantity ?? 0);
       if (already + quantity > t.maxPerOrder) {
-        throw new ConflictException(`You already have ${already} ${t.name} ticket(s); the limit is ${t.maxPerOrder} per person`);
+        throw new ConflictException({ message: `You already have ${already} ${t.name} ticket(s); the limit is ${t.maxPerOrder} per person`, reasonCode: 'LIMIT' });
       }
       if (await tx.waitlistEntry.findFirst({ where: { ticketTypeId, userId, status: { in: [...ACTIVE] } }, select: { id: true } })) {
-        throw new ConflictException('You are already on this waitlist');
+        throw new ConflictException({ message: 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING' });
       }
       try {
         return (await tx.waitlistEntry.create({ data: { ticketTypeId, userId, quantity } })).id;
       } catch (e) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('You are already on this waitlist');
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException({ message: 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING' });
         throw e;
       }
     });
@@ -157,7 +157,7 @@ export class WaitlistService {
       UPDATE waitlist_entries SET status = 'LEFT', updated_at = now()
       WHERE ticket_type_id = ${ticketTypeId}::uuid AND user_id = ${userId}::uuid AND status IN ('WAITING', 'OFFERED')
       RETURNING id`;
-    if (!rows.length) throw new NotFoundException('You are not on this waitlist');
+    if (!rows.length) throw new NotFoundException({ message: 'You are not on this waitlist', reasonCode: 'NOT_WAITING' });
     return { ok: true };
   }
 
@@ -179,6 +179,7 @@ export class WaitlistService {
         const status = e.status === 'OFFERED' && !live ? 'EXPIRED' : e.status;
         return {
           id: e.id,
+          serverNow: now.toISOString(), // the phone's clock may be off: the app counts the offer down against this
           ticketTypeId: e.ticketTypeId,
           eventId: e.ticketType.event.id,
           status,

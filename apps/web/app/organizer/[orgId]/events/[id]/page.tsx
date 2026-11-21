@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
-import { api, getMe } from '../../../../lib/api';
+import { ApiError, api, getMe } from '../../../../lib/api';
 import { ListEditor } from '../../../../components/ListEditor';
 import { AttendanceLive, CrewCodeForm, type CrewLabels } from '../../../../components/CrewCheckin';
 import { LiveStudio } from '../../../../components/LiveStudio';
@@ -110,7 +110,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
     api<Promo[]>(`/organizations/${orgId}/events/${id}/promo-codes`).catch(() => null),
     api<SeatMapOption[]>('/seat-maps').catch(() => null),
-    api<WaitlistCounts>(`/organizations/${orgId}/events/${id}/waitlist`).catch(() => null),
+    api<WaitlistCounts>(`/organizations/${orgId}/events/${id}/waitlist`).catch((err) => {
+      if (err instanceof ApiError) return null;
+      throw err; // keep Next's redirect (401 -> /login) working
+    }),
     getMe(),
   ]);
   // Same roles the API allows for PUT /group-discounts (ORG_EDITORS, or a platform admin)

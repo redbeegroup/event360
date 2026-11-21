@@ -8,14 +8,15 @@ import 'package:go_router/go_router.dart';
 
 import '../app/format.dart';
 import '../app/providers.dart';
+import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
 
 /// How often `/me/waitlist` is refreshed while the buyer is in a line or holds an offer.
 const Duration kWaitlistPoll = Duration(seconds: 30);
 
 /// "23:41" for the time left until [end] (never negative).
-String countdownText(DateTime end, [DateTime? now]) {
-  final left = end.difference(now ?? DateTime.now().toUtc());
+String countdownText(DateTime end, DateTime now) {
+  final left = end.difference(now);
   final s = left.isNegative ? 0 : left.inSeconds;
   return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 }
@@ -32,31 +33,36 @@ class WaitlistSync extends ConsumerStatefulWidget {
 
 class _WaitlistSyncState extends ConsumerState<WaitlistSync> with WidgetsBindingObserver {
   Timer? _timer;
+  bool _foreground = true;
+  bool _active = false; // the buyer is in a line or holds an offer
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _start();
+    ref.listenManual(waitlistProvider, (_, next) {
+      final entries = next.value;
+      if (entries == null) return;
+      _active = entries.any((e) => e.isActive);
+      _schedule();
+    }, fireImmediately: true);
   }
 
-  void _start() {
-    _timer?.cancel();
-    _timer = Timer.periodic(kWaitlistPoll, (_) {
-      final entries = ref.read(waitlistProvider).value ?? const <WaitlistEntry>[];
-      if (entries.any((e) => e.isActive)) ref.invalidate(waitlistProvider);
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      ref.invalidate(waitlistProvider);
-      _start();
+  /// The 30 s timer runs only while there is an active entry and the app is in the foreground.
+  void _schedule() {
+    if (_active && _foreground) {
+      _timer ??= Timer.periodic(kWaitlistPoll, (_) => ref.invalidate(waitlistProvider));
     } else {
       _timer?.cancel();
       _timer = null;
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) ref.invalidate(waitlistProvider);
+    _schedule();
   }
 
   @override
@@ -67,7 +73,9 @@ class _WaitlistSyncState extends ConsumerState<WaitlistSync> with WidgetsBinding
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    return widget.child;
+  }
 }
 
 /// Rebuilds every second while [tickWhen] says so (the countdowns); idle otherwise, so nothing runs when no offer shows.
@@ -122,7 +130,7 @@ class _OfferBannerState extends ConsumerState<OfferBanner> with _Ticking<OfferBa
       }
       return const SizedBox.shrink();
     }
-    final label = t.offerBanner(countdownText(offer.offerExpiresAt!));
+    final label = t.offerBanner(countdownText(offer.offerExpiresAt!, offer.serverNow));
     return Padding(
       padding: widget.padding,
       child: Material(
@@ -212,7 +220,7 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
         if (mounted) Navigator.of(context).pop(o.id); // → checkout
       }
     } on ApiException catch (err) {
-      if (mounted) setState(() => _error = err.message);
+      if (mounted) setState(() => _error = waitlistErrorText(L10n.of(context), err));
       if (err.status == 409 || err.status == 404) ref.invalidate(waitlistProvider);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -235,7 +243,7 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
         const SizedBox(height: 4),
         Text('${pickLang(lang, e.eventTitle, e.eventTitleMy)} · ${pickLang(lang, e.ticketTypeName, e.ticketTypeNameMy)}', style: theme.textTheme.titleSmall),
         const SizedBox(height: 4),
-        Text(live ? t.offerSheetHint(e.offeredQty, countdownText(e.offerExpiresAt!)) : t.offerEnded, key: const Key('offerSheetHint')),
+        Text(live ? t.offerSheetHint(e.offeredQty, countdownText(e.offerExpiresAt!, e.serverNow)) : t.offerEnded, key: const Key('offerSheetHint')),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: Text(t.quantity)),
@@ -267,8 +275,8 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
 
 /// Countdown line for the seat picker: "Reserved for you · 23:41 left".
 class OfferCountdown extends StatefulWidget {
-  const OfferCountdown({super.key, required this.expiresAt, required this.onExpired});
-  final DateTime expiresAt;
+  const OfferCountdown({super.key, required this.entry, required this.onExpired});
+  final WaitlistEntry entry;
   final VoidCallback onExpired;
   @override
   State<OfferCountdown> createState() => _OfferCountdownState();
@@ -282,7 +290,7 @@ class _OfferCountdownState extends State<OfferCountdown> with _Ticking<OfferCoun
     final t = L10n.of(context);
     final theme = Theme.of(context);
     tickWhen(true);
-    final over = !widget.expiresAt.isAfter(DateTime.now().toUtc());
+    final over = !widget.entry.isOffered;
     if (over && !_fired) {
       _fired = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => widget.onExpired());
@@ -296,7 +304,7 @@ class _OfferCountdownState extends State<OfferCountdown> with _Ticking<OfferCoun
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            over ? t.offerEnded : t.reservedForYouLeft(countdownText(widget.expiresAt)),
+            over ? t.offerEnded : t.reservedForYouLeft(countdownText(widget.entry.offerExpiresAt!, widget.entry.serverNow)),
             key: const Key('offerCountdown'),
             style: TextStyle(fontWeight: FontWeight.w700, color: theme.colorScheme.onTertiaryContainer),
           ),

@@ -1188,6 +1188,54 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Reserved for you · {time} left'**
   String reservedForYouLeft(String time);
+
+  /// No description provided for @waitlistClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'The waitlist is closed'**
+  String get waitlistClosed;
+
+  /// No description provided for @waitlistPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'The waitlist is paused while the event is being reviewed'**
+  String get waitlistPaused;
+
+  /// No description provided for @waitlistAlreadyIn.
+  ///
+  /// In en, this message translates to:
+  /// **'You are already on this waitlist'**
+  String get waitlistAlreadyIn;
+
+  /// No description provided for @waitlistNotSoldOut.
+  ///
+  /// In en, this message translates to:
+  /// **'These tickets are not sold out: you can buy them now'**
+  String get waitlistNotSoldOut;
+
+  /// No description provided for @waitlistLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'You have reached the per-person ticket limit for this type'**
+  String get waitlistLimit;
+
+  /// No description provided for @offerClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'This offer is no longer open'**
+  String get offerClosed;
+
+  /// No description provided for @waitlistNotIn.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not on this waitlist'**
+  String get waitlistNotIn;
+
+  /// No description provided for @waitlistGenericError.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get waitlistGenericError;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

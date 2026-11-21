@@ -150,12 +150,14 @@ class FakeApi extends Event360Api {
   final offerSeatOrders = <String>[]; // 'entry:seat,seat' for seated orders made from an offer
   final offerBest = <String?>[];
   ApiException? joinError;
+  ApiException? leaveError;
 
   /// A /me/waitlist row. An offer carries its expiry, quantity and (seated types) seat keys.
   static Map<String, dynamic> waitlistRow(String id,
-          {String status = 'WAITING', String event = 'soldout', String type = 'tt-soldout', int? position, int offeredQty = 0, Duration? left, List<String> seatKeys = const [], String? orderId}) =>
+          {String status = 'WAITING', String event = 'soldout', String type = 'tt-soldout', int? position, int offeredQty = 0, Duration? left, List<String> seatKeys = const [], String? orderId, Duration? serverAhead}) =>
       {
         'id': id,
+        if (serverAhead != null) 'serverNow': DateTime.now().toUtc().add(serverAhead).toIso8601String(),
         'ticketTypeId': type,
         'eventId': event,
         'status': status,
@@ -186,6 +188,8 @@ class FakeApi extends Event360Api {
 
   @override
   Future<void> leaveWaitlist(String ticketTypeId) async {
+    final err = leaveError;
+    if (err != null) throw err;
     waitlistLeaves.add(ticketTypeId);
     waitlist = [for (final w in waitlist) if (w['ticketTypeId'] != ticketTypeId) w];
   }
@@ -1585,8 +1589,8 @@ void main() {
     expect(find.text('Leave'), findsOneWidget);
   });
 
-  testWidgets('quantity picker stops at maxPerOrder and a 409 shows the API message', (tester) async {
-    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.joinError = ApiException(409, 'You are already on this waitlist'));
+  testWidgets('quantity picker stops at maxPerOrder and a 409 is shown from its reasonCode', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.joinError = ApiException(409, 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING'));
     await openEvent(tester, 'soldout');
     final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
     await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
@@ -1762,6 +1766,128 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     expect(api.offerBest, ['w1']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('waitlist 409s are shown from reasonCode in Myanmar, never the API English; unknown codes get a generic line', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.joinError = ApiException(409, 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING'));
+    await openEvent(tester, 'soldout');
+    final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+    await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(join);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('waitSubmit')));
+    await tester.pumpAndSettle();
+    expect(find.text('သင်သည် ဤစောင့်ဆိုင်းစာရင်းတွင် ရှိပြီးသားဖြစ်သည်'), findsOneWidget);
+    expect(find.text('You are already on this waitlist'), findsNothing);
+    api.joinError = ApiException(409, 'Some brand new server sentence', reasonCode: 'SOMETHING_NEW');
+    await tester.tap(find.byKey(const Key('waitSubmit')));
+    await tester.pumpAndSettle();
+    expect(find.text('တစ်ခုခု မှားယွင်းသွားပါသည်။ ထပ်မံကြိုးစားပါ။'), findsOneWidget);
+    expect(find.text('Some brand new server sentence'), findsNothing);
+  });
+
+  testWidgets('leaving a line that is already gone says so in Myanmar', (tester) async {
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) {
+      a.waitlist = [FakeApi.waitlistRow('w1', position: 2)];
+      a.leaveError = ApiException(404, 'You are not on this waitlist', reasonCode: 'NOT_WAITING');
+    });
+    await openEvent(tester, 'soldout');
+    final leave = find.byKey(const Key('leaveWaitlist-tt-soldout'));
+    await tester.scrollUntilVisible(leave, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(leave);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('သင်သည် ဤစောင့်ဆိုင်းစာရင်းတွင် မရှိပါ'), findsOneWidget);
+    expect(find.text('You are not on this waitlist'), findsNothing);
+  });
+
+  testWidgets('offer sheet: a closed offer is explained in Myanmar', (tester) async {
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) {
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 2, left: const Duration(minutes: 10, milliseconds: 900))];
+      a.nextOrderError = ApiException(409, 'This waitlist offer is no longer open', reasonCode: 'OFFER_CLOSED');
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const Key('offerBanner')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const Key('offerSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('ဤကမ်းလှမ်းချက် မရှိတော့ပါ'), findsOneWidget);
+    expect(find.text('This waitlist offer is no longer open'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seat picker: a closed offer at order time is explained in Myanmar (not as a promo problem)', (tester) async {
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) {
+      a.seatStatus = 'ATTAAAAAAA';
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'seated', type: 'tt-seat', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900), seatKeys: ['A:1:2', 'A:1:3'])];
+      a.nextOrderError = ApiException(409, 'This waitlist offer is no longer open', reasonCode: 'OFFER_CLOSED');
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats?offer=w1');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('seatError')), findsOneWidget);
+    expect(find.text('ဤကမ်းလှမ်းချက် မရှိတော့ပါ'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('offer countdown follows the server clock, not a wrong phone clock', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) {
+      // The phone's clock is an hour ahead of the server's: by the phone the offer ended 55 minutes ago
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 1, left: const Duration(minutes: -55), serverAhead: const Duration(hours: -1))];
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Tickets are waiting for you — 04:59 left'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seat picker: no "offer ended" notice once the offer was purchased, but one when it just expired', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.seatStatus = 'ATTAAAAAAA';
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'seated', type: 'tt-seat', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900), seatKeys: ['A:1:2', 'A:1:3'])];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats?offer=w1');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key('chip-A:1:2')), findsOneWidget);
+    api.waitlist = [FakeApi.waitlistRow('w1', status: 'PURCHASED', event: 'seated', type: 'tt-seat')]; // bought elsewhere
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('This offer has ended'), findsNothing);
+    expect(find.byKey(const Key('seatNotice')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+
+    final (api2, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.seatStatus = 'ATTAAAAAAA';
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'seated', type: 'tt-seat', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900), seatKeys: ['A:1:2', 'A:1:3'])];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats?offer=w1');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    api2.waitlist = [FakeApi.waitlistRow('w1', status: 'EXPIRED', event: 'seated', type: 'tt-seat')];
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('seatNotice')), findsOneWidget);
+    expect(find.text('This offer has ended'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the 30 s timer stops when the last active entry is gone', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w1', position: 2)]);
+    await tester.pump(const Duration(milliseconds: 100));
+    var n = api.waitlistLoads;
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.waitlistLoads, n + 1);
+    api.waitlist = [FakeApi.waitlistRow('w1', status: 'LEFT')];
+    await tester.pump(const Duration(seconds: 30));
+    n = api.waitlistLoads;
+    await tester.pump(const Duration(seconds: 120));
+    expect(api.waitlistLoads, n); // nothing active: no timer
     await tester.pumpWidget(const SizedBox());
   });
 }

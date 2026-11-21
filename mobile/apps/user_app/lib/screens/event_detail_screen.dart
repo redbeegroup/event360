@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app/format.dart';
 import '../app/promo_text.dart';
 import '../app/providers.dart';
+import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/event_card.dart';
@@ -429,7 +430,7 @@ class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.waitlistLeft), duration: const Duration(seconds: 2)));
     } on ApiException catch (e) {
       ref.invalidate(waitlistProvider); // e.g. already gone: show what the server says now
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(waitlistErrorText(L10n.of(context), e))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -493,7 +494,7 @@ class _JoinWaitlistSheetState extends ConsumerState<_JoinWaitlistSheet> {
       await ref.read(apiProvider).joinWaitlist(widget.type.id, _qty);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) setState(() => _error = waitlistErrorText(L10n.of(context), e));
       if (e.status == 409) ref.invalidate(waitlistProvider); // e.g. already in line, or tickets came back
     } finally {
       if (mounted) setState(() => _busy = false);

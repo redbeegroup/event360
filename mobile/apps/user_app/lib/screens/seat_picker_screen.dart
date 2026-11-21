@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../app/format.dart';
 import '../app/promo_text.dart';
 import '../app/providers.dart';
+import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/total_amounts.dart';
@@ -54,6 +55,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   Set<int> _reserved = {}; // seats a live waitlist offer holds for this buyer (the public map shows them taken)
   bool _preselected = false; // the offered seats were put in the selection once
   bool _hadOffer = false;
+  bool _boughtFromOffer = false; // this app just made an order from the offer: its seats leaving the map is expected
 
   // Promo: the entered code, the last check for the current seats (null while pending), and a debounce for re-checks
   final _promoCtl = TextEditingController();
@@ -201,7 +203,10 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         }
       }
     }
-    final offerEnded = _hadOffer && offer == null && widget.offerEntryId != null;
+    // An offer that ended because it was bought (by this app just now, or the server says PURCHASED) is not "ended"
+    final entry = (ref.read(waitlistProvider).value ?? const <WaitlistEntry>[]).where((e) => e.id == widget.offerEntryId).firstOrNull;
+    final bought = _boughtFromOffer || entry?.status == 'PURCHASED';
+    final offerEnded = _hadOffer && offer == null && widget.offerEntryId != null && !bought;
     // Seats the buyer picked that someone else took meanwhile (or whose reservation ended)
     final lost = [for (final i in _selected) if (states[i] != SeatState.available) i];
     final lang = ref.read(langProvider);
@@ -220,7 +225,11 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       _loadFailed = false;
       if (lost.isNotEmpty) {
         _selected = [for (final i in _selected) if (!lost.contains(i)) i];
-        _notice = offerEnded ? L10n.of(context).offerEnded : L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
+        _notice = bought && offer == null
+            ? null
+            : offerEnded
+                ? L10n.of(context).offerEnded
+                : L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
       } else if (offerEnded) {
         _notice = L10n.of(context).offerEnded;
       }
@@ -473,6 +482,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       final fromOffer = offer != null && _selected.any(_reserved.contains);
       final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys, promoCode: code, waitlistEntryId: fromOffer ? offer.id : null);
       _idempotencyKey = _newSalt();
+      if (fromOffer) _boughtFromOffer = true;
       ref.invalidate(waitlistProvider);
       ref.invalidate(eventProvider(event.id));
       ref.invalidate(pendingOrdersProvider);
@@ -498,6 +508,10 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         });
         _seatsChanged();
         await _load(force: true); // the map may look unchanged to us, but those seats are gone
+      } else if (e.reasonCode == 'OFFER_CLOSED') {
+        // The offer ran out or was used meanwhile: explained in our own text; the offer list is refreshed
+        setState(() => _error = waitlistErrorText(t, e));
+        ref.invalidate(waitlistProvider);
       } else if (e.reasonCode != null) {
         // The promo code was rejected at order time (e.g. used up meanwhile): it is no longer applied, and its
         // reason shows under the code in our own (Myanmar) text. Continue now buys at full price.
@@ -545,7 +559,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     } else {
       final offer = _offer;
       body = Column(children: [
-        if (offer != null) OfferCountdown(expiresAt: offer.offerExpiresAt!, onExpired: () => ref.invalidate(waitlistProvider)),
+        if (offer != null) OfferCountdown(entry: offer, onExpired: () => ref.invalidate(waitlistProvider)),
         _Legend(types: d.types, lang: lang, reserved: _reserved.isNotEmpty),
         Expanded(
           child: LayoutBuilder(builder: (context, c) {

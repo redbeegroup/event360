@@ -169,7 +169,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     if (waitlistEntryId) {
       const e = await this.prisma.waitlistEntry.findUnique({ where: { id: waitlistEntryId }, include: { ticketType: { select: { eventId: true } } } });
       if (!e || e.userId !== userId || e.ticketType.eventId !== eventId) throw new NotFoundException('Waitlist offer not found');
-      if (e.status !== 'OFFERED' || !e.offerExpiresAt || e.offerExpiresAt <= now) throw new ConflictException('This waitlist offer is no longer open');
+      if (e.status !== 'OFFERED' || !e.offerExpiresAt || e.offerExpiresAt <= now) throw new ConflictException({ message: 'This waitlist offer is no longer open', reasonCode: 'OFFER_CLOSED' });
       const line = wanted.find(([id]) => id === e.ticketTypeId);
       if (!line) throw new BadRequestException('The order must include the tickets you were offered');
       if (!line[2].length && line[1] > e.offeredQty) throw new BadRequestException(`Your offer is for at most ${e.offeredQty} ticket(s)`);
@@ -246,7 +246,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           : paid
             ? await tx.$executeRaw`UPDATE ticket_types SET held = held + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + offered + ${quantity} <= quota`
             : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + offered + ${quantity} <= quota`;
-        if (n !== 1) throw new ConflictException(fromOffer ? 'This waitlist offer is no longer open' : `Not enough ${tt.name} tickets left`);
+        if (n !== 1) throw new ConflictException(fromOffer ? { message: 'This waitlist offer is no longer open', reasonCode: 'OFFER_CLOSED' } : `Not enough ${tt.name} tickets left`);
       }
       if (merged.size) {
         // Quantity lines never sell a seated type. Checked again here, after the counter rows are locked: on a seated
@@ -284,7 +284,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (!paid) await this.issueTickets(tx, order.id, userId, lines.map(({ tt, quantity, seatKeys }) => ({ ticketTypeId: tt.id, quantity, seatKeys })));
       if (seats.length) await this.seating.recountTicketTypes(tx, eventId, [], [...bySeatType.keys()]);
       // The offer's entry row last (lock order): it must still be live now, or everything above rolls back
-      if (offer && !(await this.waitlist.markPurchased(tx, offer.id, userId, order.id))) throw new ConflictException('This waitlist offer is no longer open');
+      if (offer && !(await this.waitlist.markPurchased(tx, offer.id, userId, order.id))) throw new ConflictException({ message: 'This waitlist offer is no longer open', reasonCode: 'OFFER_CLOSED' });
       return order.id;
     }, seats.length ? SEATED_TX : undefined);
     if (!paid) {
