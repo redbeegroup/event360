@@ -139,7 +139,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     </>
   );
   const closed = ['CANCELLED', 'COMPLETED'].includes(e.status);
-  // One gold button per page: "Submit for review" while the event is a draft, otherwise the main "Save".
+  // One gold button per page: the in-card "Submit for review" while the event is a draft, otherwise the bar's "Save".
   const awaitingSubmit = ['DRAFT', 'REJECTED'].includes(e.status);
   const seatedList = attendees.some((a) => a.seatLabel);
   const okText = { saved: tr.saved, rereview: tr.reReview, mapSaved: tr.stMapSaved, mapCleared: tr.stMapCleared };
@@ -151,7 +151,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {['DRAFT', 'REJECTED'].includes(e.status) && (
         <div className="card">
           <p className="muted">{tr.submitHint}</p>
-          <ActionForm action={submitEventAction} submitLabel={tr.submit} id="event-submit-form" scrollResult okText={okText}>{hidden}</ActionForm>
+          <ActionForm action={submitEventAction} submitLabel={tr.submit} variant="gold" id="event-submit-form" scrollResult okText={okText}>{hidden}</ActionForm>
         </div>
       )}
 
@@ -650,7 +650,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       )}
 
       {!closed && (
-        <SaveBar formId={awaitingSubmit ? 'event-submit-form' : 'event-main-form'} label={awaitingSubmit ? tr.submit : tr.save} />
+        <SaveBar formId="event-main-form" label={tr.save} navy={awaitingSubmit} />
       )}
     </>
   );

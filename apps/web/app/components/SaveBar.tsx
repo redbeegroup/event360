@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
-/** Sticky gold button that submits a form elsewhere on the page (`form` attribute) and mirrors its pending state. */
-export function SaveBar({ formId, label }: { formId: string; label: string }) {
+/** Sticky button (gold unless `navy`) that submits a form elsewhere on the page (`form` attribute) and mirrors its pending state. */
+export function SaveBar({ formId, label, navy }: { formId: string; label: string; navy?: boolean }) {
   const [pending, setPending] = useState(false);
   useEffect(() => {
     const form = document.getElementById(formId);
@@ -16,7 +16,7 @@ export function SaveBar({ formId, label }: { formId: string; label: string }) {
   }, [formId]);
   return (
     <div className="save-bar">
-      <button type="submit" className="btn-gold" form={formId} disabled={pending} aria-busy={pending}>
+      <button type="submit" className={navy ? undefined : 'btn-gold'} form={formId} disabled={pending} aria-busy={pending}>
         {pending ? '…' : label}
       </button>
     </div>
