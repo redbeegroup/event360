@@ -335,6 +335,7 @@ model Event {
   liveChannels   LiveChannel[]
   announcements  Announcement[]
   promoCodes     PromoCode[]
+  groupDiscounts GroupDiscount[]
   dailyStats     EventDailyStat[]
   vodAssets      VodAsset[]
   seatMapVersion SeatMapVersion?   @relation(fields: [seatMapVersionId], references: [id], onDelete: Restrict)
@@ -421,20 +422,20 @@ enum DeliveryMode {
 }
 
 model TicketType {
-  id            String         @id @default(uuid()) @db.Uuid
-  eventId       String         @map("event_id") @db.Uuid
+  id            String            @id @default(uuid()) @db.Uuid
+  eventId       String            @map("event_id") @db.Uuid
   name          String
-  nameMy        String?        @map("name_my")
-  priceMmk      BigInt         @default(0) @map("price_mmk")
+  nameMy        String?           @map("name_my")
+  priceMmk      BigInt            @default(0) @map("price_mmk")
   quota         Int
-  sold          Int            @default(0)
-  held          Int            @default(0)
-  maxPerOrder   Int            @default(10) @map("max_per_order")
-  deliveryMode  DeliveryMode   @default(IN_PERSON) @map("delivery_mode")
-  salesStartAt  DateTime?      @map("sales_start_at")
-  salesEndAt    DateTime?      @map("sales_end_at")
+  sold          Int               @default(0)
+  held          Int               @default(0)
+  maxPerOrder   Int               @default(10) @map("max_per_order")
+  deliveryMode  DeliveryMode      @default(IN_PERSON) @map("delivery_mode")
+  salesStartAt  DateTime?         @map("sales_start_at")
+  salesEndAt    DateTime?         @map("sales_end_at")
   color         String?
-  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event         Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
   orderItems    OrderItem[]
   tickets       Ticket[]
   eventSections EventSection[]
@@ -445,6 +446,17 @@ model TicketType {
 }
 
 /// From `startsAt` the ticket type sells at `priceMmk` (the type's own price is the price before the first step).
+model GroupDiscount {
+  id          String @id @default(uuid()) @db.Uuid
+  eventId     String @map("event_id") @db.Uuid
+  minQuantity Int    @map("min_quantity")
+  percentBp   Int    @map("percent_bp")
+  event       Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, minQuantity])
+  @@map("group_discounts")
+}
+
 model TicketPriceStep {
   id           String     @id @default(uuid()) @db.Uuid
   ticketTypeId String     @map("ticket_type_id") @db.Uuid
@@ -467,24 +479,25 @@ enum OrderStatus {
 }
 
 model Order {
-  id             String      @id @default(uuid()) @db.Uuid
-  userId         String      @map("user_id") @db.Uuid
-  eventId        String      @map("event_id") @db.Uuid
-  status         OrderStatus @default(PENDING_PAYMENT)
-  subtotalMmk    BigInt      @map("subtotal_mmk")
-  buyerFeeMmk    BigInt      @default(0) @map("buyer_fee_mmk")
-  totalMmk       BigInt      @map("total_mmk")
-  commissionMmk  BigInt      @default(0) @map("commission_mmk") // frozen at checkout
-  idempotencyKey String?     @unique @map("idempotency_key")
-  holdExpiresAt  DateTime?   @map("hold_expires_at")
-  channel        String      @default("APP") // APP | WEB | POS | COMP (guest tickets: zero total, outside revenue)
-  paidAt         DateTime?   @map("paid_at")
-  needsReview    Boolean     @default(false) @map("needs_review") // paid after the hold expired with no seats left → refund
-  promoCodeId    String?     @map("promo_code_id") @db.Uuid
-  discountMmk    BigInt      @default(0) @map("discount_mmk")
-  reviewNote     String?     @map("review_note")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  eventId         String      @map("event_id") @db.Uuid
+  status          OrderStatus @default(PENDING_PAYMENT)
+  subtotalMmk     BigInt      @map("subtotal_mmk")
+  buyerFeeMmk     BigInt      @default(0) @map("buyer_fee_mmk")
+  totalMmk        BigInt      @map("total_mmk")
+  commissionMmk   BigInt      @default(0) @map("commission_mmk") // frozen at checkout
+  idempotencyKey  String?     @unique @map("idempotency_key")
+  holdExpiresAt   DateTime?   @map("hold_expires_at")
+  channel         String      @default("APP") // APP | WEB | POS | COMP (guest tickets: zero total, outside revenue)
+  paidAt          DateTime?   @map("paid_at")
+  needsReview     Boolean     @default(false) @map("needs_review") // paid after the hold expired with no seats left → refund
+  promoCodeId     String?     @map("promo_code_id") @db.Uuid
+  discountMmk     BigInt      @default(0) @map("discount_mmk")
+  groupDiscountBp Int?        @map("group_discount_bp") // set when the group discount was the one applied (promoCodeId is then null)
+  reviewNote      String?     @map("review_note")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
 
   user      User        @relation(fields: [userId], references: [id])
   event     Event       @relation(fields: [eventId], references: [id])

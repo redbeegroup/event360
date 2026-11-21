@@ -20,7 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventSeatsService } from '../seating/event-seats.service';
 import { claimSeats, SEATED_TX, shareLockEvent, refundSeats, releaseSeats, sellSeats, unclaimSeats } from '../seating/seat-claims';
 import { commission, pickRule } from './fee';
-import { currentPrice, priceView } from './pricing';
+import { chooseDiscount, currentPrice, priceView } from './pricing';
 import { applyPromo, normalizeCode } from './promo';
 import { ACC, journal } from './ledger';
 import { KbzPayProvider } from './providers/kbzpay.provider';
@@ -128,7 +128,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      include: { ticketTypes: { include: { priceSteps: true } }, category: { select: { id: true, parentId: true } } },
+      include: { ticketTypes: { include: { priceSteps: true } }, groupDiscounts: true, category: { select: { id: true, parentId: true } } },
     });
     if (!event) throw new NotFoundException('Event not found');
     if (event.status !== 'PUBLISHED') throw new ConflictException('Registration is not open for this event');
@@ -168,17 +168,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       subtotal += unitPrice * BigInt(quantity);
       return { tt, quantity, seatKeys, unitPrice };
     });
-    // Promo code: discount on paid lines; a 100% code makes the order free (tickets issued now)
-    let promo: { id: string } | null = null;
-    let discount = 0n;
+    // Promo code: discount on paid lines; a 100% code makes the order free (tickets issued now).
+    // The group discount (paid-type tickets only) competes with it: the larger wins, a tie goes to the group discount.
+    let promoRow: { id: string } | null = null;
+    let promoMmk: bigint | null = null;
     if (promoCode?.trim()) {
       const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(promoCode) } } });
       const r = applyPromo(p, lines.map(({ tt, quantity, unitPrice }) => ({ ticketTypeId: tt.id, unitPriceMmk: unitPrice, quantity })), now);
       // Old clients read `message`; the apps map `reasonCode` to their own (Myanmar) text
       if (!r.ok) throw new BadRequestException({ message: r.reason, reasonCode: r.reasonCode });
-      promo = p;
-      discount = r.discountMmk;
+      promoRow = p;
+      promoMmk = r.discountMmk;
     }
+    const choice = chooseDiscount(lines.map((l) => ({ unitPriceMmk: l.unitPrice, quantity: l.quantity })), event.groupDiscounts, promoMmk);
+    const promo = choice.promoApplied ? promoRow : null; // only a winning code takes a use
+    const discount = choice.discountMmk;
     const total = subtotal - discount;
     const paid = total > 0n;
     if (paid && !(await this.methods()).length) throw new ConflictException('Paid tickets are not on sale yet');
@@ -238,6 +242,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           subtotalMmk: subtotal,
           discountMmk: discount,
           promoCodeId: promo?.id ?? null,
+          groupDiscountBp: choice.groupBp,
           totalMmk: total, // organizer absorbs the commission: buyer pays the (discounted) ticket price
           commissionMmk: fee,
           idempotencyKey: idempotencyKey ?? null,
@@ -287,8 +292,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const subtotal = lines.reduce((s, l) => s + l.unitPriceMmk * BigInt(l.quantity), 0n);
     const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(code) } } });
     const r = applyPromo(p, lines);
-    if (!r.ok) return { valid: false, reason: r.reason, reasonCode: r.reasonCode, subtotalMmk: mmk(subtotal), discountMmk: 0, totalMmk: mmk(subtotal) };
-    return { valid: true, code: p!.code, subtotalMmk: mmk(subtotal), discountMmk: mmk(r.discountMmk), totalMmk: mmk(subtotal - r.discountMmk) };
+    if (!r.ok) return { valid: false, reason: r.reason, reasonCode: r.reasonCode, subtotalMmk: mmk(subtotal), discountMmk: 0, totalMmk: mmk(subtotal), discountSource: null, promoApplied: false };
+    // A valid code can still lose to the group discount: say so, so the app can explain
+    const tiers = await this.prisma.groupDiscount.findMany({ where: { eventId }, select: { minQuantity: true, percentBp: true } });
+    const c = chooseDiscount(lines, tiers, r.discountMmk);
+    return { valid: true, code: p!.code, subtotalMmk: mmk(subtotal), discountMmk: mmk(c.discountMmk), totalMmk: mmk(subtotal - c.discountMmk), discountSource: c.source, promoApplied: c.promoApplied };
   }
 
   /** One ticket per unit of a quantity line; one per seat of a seated line, with its label, and the seat becomes SOLD with it. */
@@ -345,6 +353,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       })),
       subtotalMmk: mmk(o.subtotalMmk),
       discountMmk: mmk(o.discountMmk),
+      discountSource: o.groupDiscountBp != null ? ('GROUP' as const) : o.promoCodeId ? ('PROMO' as const) : null,
+      groupDiscountBp: o.groupDiscountBp,
       totalMmk: mmk(o.totalMmk),
       holdExpiresAt: o.holdExpiresAt,
       paidAt: o.paidAt,

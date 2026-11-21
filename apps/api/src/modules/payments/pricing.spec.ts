@@ -1,4 +1,4 @@
-import { currentPrice, nextStep } from './pricing';
+import { bestGroupTier, chooseDiscount, currentPrice, nextStep } from './pricing';
 
 const d = (s: string) => new Date(s);
 const steps = [
@@ -23,5 +23,33 @@ describe('timed prices', () => {
     expect(nextStep(steps, d('2026-11-01T00:00:00Z'))).toEqual(steps[1]);
     expect(nextStep(steps, d('2026-12-01T00:00:00Z'))).toEqual(steps[0]);
     expect(nextStep(steps, d('2026-12-10T00:00:00Z'))).toBeNull();
+  });
+});
+
+describe('bestGroupTier', () => {
+  const tiers = [
+    { minQuantity: 10, percentBp: 1500 },
+    { minQuantity: 5, percentBp: 1000 },
+  ];
+  it('no tiers gives 0', () => expect(bestGroupTier([], 50)).toBe(0));
+  it('below the lowest tier gives 0', () => expect(bestGroupTier(tiers, 4)).toBe(0));
+  it('exactly at a tier gives that tier', () => {
+    expect(bestGroupTier(tiers, 5)).toBe(1000);
+    expect(bestGroupTier(tiers, 10)).toBe(1500);
+  });
+  it('between tiers gives the lower one reached', () => expect(bestGroupTier(tiers, 9)).toBe(1000));
+});
+
+describe('chooseDiscount', () => {
+  const tiers = [{ minQuantity: 5, percentBp: 1000 }];
+  const lines = [{ unitPriceMmk: 10_000n, quantity: 3 }, { unitPriceMmk: 0n, quantity: 2 }];
+  it('free tickets do not count toward a tier', () => expect(chooseDiscount(lines, tiers, null).source).toBeNull());
+  it('a tie goes to the group discount', () => {
+    const l = [{ unitPriceMmk: 10_000n, quantity: 5 }];
+    expect(chooseDiscount(l, tiers, 5_000n)).toMatchObject({ source: 'GROUP', discountMmk: 5_000n, groupBp: 1000, promoApplied: false });
+  });
+  it('a larger promo wins', () => {
+    const l = [{ unitPriceMmk: 10_000n, quantity: 5 }];
+    expect(chooseDiscount(l, tiers, 5_001n)).toMatchObject({ source: 'PROMO', discountMmk: 5_001n, groupBp: null, promoApplied: true });
   });
 });

@@ -35,7 +35,7 @@ run('Organizer growth', () => {
     return bearer(r.body.accessToken as string);
   }
   /** A published event with one paid type (10,000) and one free type. */
-  async function newEvent(name: string) {
+  async function newEvent(name: string, maxPer = 4) {
     const start = new Date(Date.now() + 7 * 86400e3);
     const ev = await http
       .post(`/v1/organizations/${orgId}/events`)
@@ -45,8 +45,8 @@ run('Organizer growth', () => {
     const eventId = ev.body.id as string;
     const base = `/v1/organizations/${orgId}/events/${eventId}`;
     const add = (b: object) => http.post(`${base}/ticket-types`).set(O).send(b).expect(201);
-    const paid = (await add({ name: 'Standard', priceMmk: 10_000, quota: 20, maxPerOrder: 4 })).body.id as string;
-    const free = (await add({ name: 'Kids', priceMmk: 0, quota: 20, maxPerOrder: 4 })).body.id as string;
+    const paid = (await add({ name: 'Standard', priceMmk: 10_000, quota: 40, maxPerOrder: maxPer })).body.id as string;
+    const free = (await add({ name: 'Kids', priceMmk: 0, quota: 40, maxPerOrder: maxPer })).body.id as string;
     await http.post(`${base}/submit`).set(O).expect(200);
     return { eventId, base, paid, free, slug: ev.body.slug as string };
   }
@@ -209,5 +209,123 @@ run('Organizer growth', () => {
     expect(rs.every((r) => r.status === 200 || r.status === 409)).toBe(true);
     expect(rs.some((r) => r.status === 200)).toBe(true);
     expect(await prisma.ticketPriceStep.count({ where: { ticketTypeId: e.paid } })).toBe(1);
+  });
+
+  // ───────────── group discounts ─────────────
+
+  const tiersOf = (e: { base: string }, tiers: { minQuantity: number; percentBp: number }[]) => http.put(`${e.base}/group-discounts`).set(O).send({ tiers });
+  const order = (h: Record<string, string>, e: { eventId: string }, items: { ticketTypeId: string; quantity: number }[], promoCode?: string) =>
+    http.post(`/v1/events/${e.eventId}/orders`).set(h).send({ items, ...(promoCode ? { promoCode } : {}) });
+  const promoFor = (e: { base: string }, body: object) => http.post(`${e.base}/promo-codes`).set(O).send(body).expect(201);
+  const promoUsed = async (eventId: string, code: string) => (await prisma.promoCode.findUniqueOrThrow({ where: { eventId_code: { eventId, code } } })).used;
+
+  it('group discount applies on paid quantity', async () => {
+    const e = await newEvent('Group', 20);
+    // tier management: replace all, validated, public
+    expect((await http.get(`${e.base}/group-discounts`).set(O).expect(200)).body).toEqual({ tiers: [] });
+    await tiersOf(e, [{ minQuantity: 1, percentBp: 1000 }]).expect(400);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 9500 }]).expect(400);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 99 }]).expect(400);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }, { minQuantity: 5, percentBp: 1500 }]).expect(400);
+    await tiersOf(e, [{ minQuantity: 10, percentBp: 1500 }, { minQuantity: 5, percentBp: 1000 }]).expect(200);
+    const put = await tiersOf(e, [{ minQuantity: 10, percentBp: 1500 }, { minQuantity: 5, percentBp: 1000 }]).expect(200);
+    expect(put.body.tiers).toEqual([{ minQuantity: 5, percentBp: 1000 }, { minQuantity: 10, percentBp: 1500 }]);
+    await http.put(`${e.base}/group-discounts`).set(await consumer()).send({ tiers: [] }).expect(403);
+    expect((await http.get(`/v1/events/${e.slug}`).expect(200)).body.groupDiscounts).toEqual(put.body.tiers);
+
+    // 3 paid + 2 free = 5 tickets, but only 3 count: no discount
+    const b1 = await consumer();
+    const low = await order(b1, e, [{ ticketTypeId: e.paid, quantity: 3 }, { ticketTypeId: e.free, quantity: 2 }]).expect(201);
+    expect(low.body).toMatchObject({ subtotalMmk: 30_000, discountMmk: 0, totalMmk: 30_000, discountSource: null });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: low.body.id } })).groupDiscountBp).toBeNull();
+
+    // 5 paid → 10%; 10 paid → 15% (the best tier wins)
+    const b2 = await consumer();
+    const five = await order(b2, e, [{ ticketTypeId: e.paid, quantity: 5 }]).expect(201);
+    expect(five.body).toMatchObject({ subtotalMmk: 50_000, discountMmk: 5_000, totalMmk: 45_000, discountSource: 'GROUP', groupDiscountBp: 1000 });
+    const row = await prisma.order.findUniqueOrThrow({ where: { id: five.body.id } });
+    expect(row).toMatchObject({ groupDiscountBp: 1000, discountMmk: 5_000n, promoCodeId: null, totalMmk: 45_000n });
+    const ten = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 10 }, { ticketTypeId: e.free, quantity: 3 }]).expect(201);
+    expect(ten.body).toMatchObject({ subtotalMmk: 100_000, discountMmk: 15_000, totalMmk: 85_000, discountSource: 'GROUP', groupDiscountBp: 1500 });
+
+    // the preview with a valid code that does not beat it reports the group discount
+    await promoFor(e, { code: 'PREV', kind: 'PERCENT', value: 5 });
+    const pv = await http.post(`/v1/events/${e.eventId}/promo-check`).set(await consumer()).send({ code: 'PREV', items: [{ ticketTypeId: e.paid, quantity: 5 }] }).expect(200);
+    expect(pv.body).toMatchObject({ valid: true, discountMmk: 5_000, totalMmk: 45_000, discountSource: 'GROUP', promoApplied: false });
+    // replacing the tiers removes the discount for new orders; existing orders keep theirs
+    await tiersOf(e, []).expect(200);
+    const none = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 5 }]).expect(201);
+    expect(none.body).toMatchObject({ discountMmk: 0, discountSource: null });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: five.body.id } })).discountMmk).toBe(5_000n);
+  });
+
+  it('larger of group and promo wins; promo use only taken when promo wins', async () => {
+    const e = await newEvent('Versus', 20);
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+    for (const [code, value] of [['BIG', 20], ['SMALL', 5], ['TIE', 10]] as const) await promoFor(e, { code, kind: 'PERCENT', value });
+    const items = [{ ticketTypeId: e.paid, quantity: 5 }];
+
+    // promo larger → promo wins, its use is taken, the group discount is not recorded
+    const big = await order(await consumer(), e, items, 'BIG').expect(201);
+    expect(big.body).toMatchObject({ discountMmk: 10_000, totalMmk: 40_000, discountSource: 'PROMO', groupDiscountBp: null });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: big.body.id } })).toMatchObject({ groupDiscountBp: null, promoCodeId: (await prisma.promoCode.findFirstOrThrow({ where: { eventId: e.eventId, code: 'BIG' } })).id });
+    expect(await promoUsed(e.eventId, 'BIG')).toBe(1);
+
+    // group larger → group wins, no promo use, no promo on the order
+    const small = await order(await consumer(), e, items, 'SMALL').expect(201);
+    expect(small.body).toMatchObject({ discountMmk: 5_000, totalMmk: 45_000, discountSource: 'GROUP', groupDiscountBp: 1000 });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: small.body.id } })).promoCodeId).toBeNull();
+    expect(await promoUsed(e.eventId, 'SMALL')).toBe(0);
+
+    // tie → the group discount wins and the promo is not applied
+    const tie = await order(await consumer(), e, items, 'TIE').expect(201);
+    expect(tie.body).toMatchObject({ discountMmk: 5_000, discountSource: 'GROUP' });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: tie.body.id } })).promoCodeId).toBeNull();
+    expect(await promoUsed(e.eventId, 'TIE')).toBe(0);
+
+    // previews: valid but not applied (small, tie), applied (big); below the tier the promo applies
+    const check = async (code: string, quantity: number) => (await http.post(`/v1/events/${e.eventId}/promo-check`).set(await consumer()).send({ code, items: [{ ticketTypeId: e.paid, quantity }] }).expect(200)).body;
+    expect(await check('SMALL', 5)).toMatchObject({ valid: true, discountSource: 'GROUP', promoApplied: false, discountMmk: 5_000 });
+    expect(await check('TIE', 5)).toMatchObject({ valid: true, discountSource: 'GROUP', promoApplied: false, discountMmk: 5_000 });
+    expect(await check('BIG', 5)).toMatchObject({ valid: true, discountSource: 'PROMO', promoApplied: true, discountMmk: 10_000 });
+    expect(await check('SMALL', 4)).toMatchObject({ valid: true, discountSource: 'PROMO', promoApplied: true, discountMmk: 2_000 });
+    expect(await check('NOPE', 5)).toMatchObject({ valid: false, discountSource: null, promoApplied: false });
+    const below = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 4 }], 'SMALL').expect(201);
+    expect(below.body).toMatchObject({ discountMmk: 2_000, discountSource: 'PROMO' });
+    expect(await promoUsed(e.eventId, 'SMALL')).toBe(1);
+
+    // a promo capped at one use that loses to the group discount is not consumed, so it is still available
+    await promoFor(e, { code: 'ONCE', kind: 'PERCENT', value: 5, maxUses: 1 });
+    await order(await consumer(), e, items, 'ONCE').expect(201);
+    expect(await promoUsed(e.eventId, 'ONCE')).toBe(0);
+    await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 2 }], 'ONCE').expect(201);
+    expect(await promoUsed(e.eventId, 'ONCE')).toBe(1);
+  });
+
+  it('commission is computed on the discounted subtotal', async () => {
+    const e = await newEvent('Fee', 20);
+    await prisma.feeRule.create({ data: { scope: 'EVENT', scopeId: e.eventId, percentBp: 500 } });
+    await tiersOf(e, [{ minQuantity: 5, percentBp: 1000 }]).expect(200);
+    const o = await order(await consumer(), e, [{ ticketTypeId: e.paid, quantity: 5 }]).expect(201);
+    expect(o.body).toMatchObject({ subtotalMmk: 50_000, discountMmk: 5_000, totalMmk: 45_000 });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).commissionMmk).toBe(2_250n); // 5% of 45,000, not of 50,000
+  });
+
+  it('group discount never applies to comps', async () => {
+    const hall = { width: 600, height: 400, sections: [{ key: 'A', name: 'Stalls', nameMy: 'ရှေ့ခန်း', kind: 'SEATED', x: 10, y: 10, rows: [{ label: '1', seats: [{ n: 1 }, { n: 2 }, { n: 3 }] }] }] };
+    const m = await http.post('/v1/admin/seat-maps').set(A).send({ venueName: `Growth Hall ${tag}`, city: 'Yangon' }).expect(201);
+    await http.put(`/v1/admin/seat-maps/${m.body.id}/draft`).set(A).send({ layout: hall }).expect(200);
+    const versionId = (await http.post(`/v1/admin/seat-maps/${m.body.id}/publish`).set(A).expect(200)).body.id as string;
+    const e = await newEvent('Comp', 20);
+    await http.put(`${e.base}/seating/map`).set(O).send({ seatMapVersionId: versionId }).expect(200);
+    await http.put(`${e.base}/seating/assignments`).set(O).send({ rules: [{ sectionKey: 'A', ticketTypeId: e.paid }] }).expect(200);
+    await tiersOf(e, [{ minQuantity: 2, percentBp: 5000 }]).expect(200);
+    const seats = ['A:1:1', 'A:1:2', 'A:1:3'];
+    await http.post(`${e.base}/seating/hold`).set(O).send({ seats, label: 'Sponsor' }).expect(201);
+    const phone = `09${randomInt(700_000_000, 799_999_999)}`;
+    await http.post(`${e.base}/seating/comps`).set(O).send({ seats, guestName: 'Daw Mya', phone }).expect(201);
+    const comps = await prisma.order.findMany({ where: { eventId: e.eventId, channel: 'COMP' } });
+    expect(comps).toHaveLength(1);
+    expect(comps[0]).toMatchObject({ discountMmk: 0n, groupDiscountBp: null, promoCodeId: null, totalMmk: 0n, commissionMmk: 0n });
   });
 });

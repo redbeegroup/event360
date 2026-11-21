@@ -1,7 +1,8 @@
-import { BadRequestException, Body, ConflictException, Controller, Delete, Get, HttpCode, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Delete, Get, HttpCode, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Res } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
-import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, ValidateNested, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 import type { Response } from 'express';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
 import { ORG_EDITORS, ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
@@ -26,6 +27,15 @@ class PromoPatchDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() endsAt?: string;
 }
 
+class GroupTierDto {
+  @ApiProperty({ minimum: 2, maximum: 100 }) @IsInt() @Min(2) @Max(100) minQuantity: number;
+  @ApiProperty({ description: 'Basis points: 1000 = 10%', minimum: 100, maximum: 9000 }) @IsInt() @Min(100) @Max(9000) percentBp: number;
+}
+
+class GroupDiscountsDto {
+  @ApiProperty({ type: [GroupTierDto] }) @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => GroupTierDto) tiers: GroupTierDto[];
+}
+
 const TZ_OFFSET_MS = 6.5 * 3600e3; // Myanmar time (no DST)
 const ymd = (d: Date) => new Date(d.getTime() + TZ_OFFSET_MS).toISOString().slice(0, 10);
 
@@ -37,6 +47,25 @@ export class OrgToolsService {
     const e = await this.prisma.event.findFirst({ where: { id, organizationId: orgId }, include: { ticketTypes: { orderBy: { priceMmk: 'asc' }, include: { priceSteps: true } } } });
     if (!e) throw new NotFoundException('Event not found');
     return e;
+  }
+
+  // ───────────── group discounts ─────────────
+
+  async groupDiscounts(orgId: string, eventId: string) {
+    await this.event(orgId, eventId);
+    const tiers = await this.prisma.groupDiscount.findMany({ where: { eventId }, orderBy: { minQuantity: 'asc' }, select: { minQuantity: true, percentBp: true } });
+    return { tiers };
+  }
+
+  /** Replaces all tiers. Orders already created keep the discount they were given. */
+  async setGroupDiscounts(orgId: string, eventId: string, tiers: { minQuantity: number; percentBp: number }[]) {
+    await this.event(orgId, eventId);
+    if (new Set(tiers.map((t) => t.minQuantity)).size !== tiers.length) throw new BadRequestException('Each tier needs a different ticket count');
+    await this.prisma.$transaction([
+      this.prisma.groupDiscount.deleteMany({ where: { eventId } }),
+      this.prisma.groupDiscount.createMany({ data: tiers.map((t) => ({ eventId, minQuantity: t.minQuantity, percentBp: t.percentBp })) }),
+    ]);
+    return this.groupDiscounts(orgId, eventId);
   }
 
   // ───────────── promo codes ─────────────
@@ -255,6 +284,18 @@ export class OrgToolsController {
     private readonly tools: OrgToolsService,
     private readonly access: OrgAccessService,
   ) {}
+
+  @Get('group-discounts')
+  async groupList(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_VIEWERS);
+    return this.tools.groupDiscounts(orgId, id);
+  }
+
+  @Put('group-discounts')
+  async groupSet(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GroupDiscountsDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.tools.setGroupDiscounts(orgId, id, dto.tiers);
+  }
 
   @Get('promo-codes')
   async list(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: AuthUser) {

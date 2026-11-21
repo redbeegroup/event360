@@ -38,6 +38,7 @@ const cardInclude = {
   category: { select: { id: true, slug: true, nameEn: true, nameMy: true, parent: { select: { slug: true, nameEn: true, nameMy: true } } } },
   venue: true,
   organization: { select: { id: true, name: true, slug: true, kycStatus: true, logoUrl: true } },
+  groupDiscounts: { orderBy: { minQuantity: 'asc' as const }, select: { minQuantity: true, percentBp: true } },
   ticketTypes: { orderBy: { priceMmk: 'asc' as const }, include: { _count: { select: { eventSeats: true } }, priceSteps: { orderBy: { startsAt: 'asc' as const } } } },
 } satisfies Prisma.EventInclude;
 type EventWithRelations = Prisma.EventGetPayload<{ include: typeof cardInclude }>;
@@ -115,6 +116,7 @@ export class EventsService implements OnModuleDestroy {
       organization: { ...e.organization, logoUrl: this.media.url(e.organization.logoUrl) },
       ...(opts.full ? this.details(e) : {}),
       ticketTypes: tickets,
+      groupDiscounts: e.groupDiscounts,
       soldOut: tickets.length > 0 && tickets.every((t) => t.remaining === 0),
       transfersEnabled: e.transfersEnabled,
       transferCutoffHours: e.transferCutoffHours,
