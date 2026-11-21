@@ -351,6 +351,9 @@ class FakeApi extends Event360Api {
   List<Map<String, dynamic>> groupTiers = [];
   Map<String, dynamic>? nextPriceJson;
 
+  /// The current price of every paid ticket type (a price step took effect), when set.
+  int? paidPriceMmk;
+
   EventSummary _event(String idOrSlug) {
     final j = idOrSlug == 'soldout'
         ? {
@@ -363,7 +366,13 @@ class FakeApi extends Event360Api {
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
-      if (nextPriceJson != null) 'ticketTypes': [for (final t in j['ticketTypes'] as List) (t as Map<String, dynamic>)['priceMmk'] == 0 ? t : {...t, 'nextPrice': nextPriceJson}],
+      if (nextPriceJson != null || paidPriceMmk != null)
+        'ticketTypes': [
+          for (final t in j['ticketTypes'] as List)
+            (t as Map<String, dynamic>)['priceMmk'] == 0
+                ? t
+                : {...t, if (nextPriceJson != null) 'nextPrice': nextPriceJson, if (paidPriceMmk != null) 'priceMmk': paidPriceMmk},
+        ],
     });
   }
 
@@ -1607,6 +1616,22 @@ void main() {
     expect(api.waitlistJoins, isEmpty);
   });
 
+  testWidgets('a join refused while the offer checkout is unpaid says so, in English and Myanmar', (tester) async {
+    for (final (lang, text) in [('en', 'Finish or cancel the checkout from your waitlist offer first'), ('my', 'သင့်စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်မှ ငွေပေးချေမှုကို အရင် ပြီးဆုံးပါ သို့မဟုတ် ပယ်ဖျက်ပါ')]) {
+      final (api, _) = await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.joinError = ApiException(409, 'Finish or cancel the checkout from your waitlist offer first', reasonCode: 'CHECKOUT_PENDING'));
+      await openEvent(tester, 'soldout');
+      final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+      await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+      await tester.tap(join);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('waitSubmit')));
+      await tester.pumpAndSettle();
+      expect(find.text(text), findsOneWidget);
+      expect(api.waitlistJoins, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets('leave waitlist', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w1', position: 2)]);
     await openEvent(tester, 'soldout');
@@ -1650,6 +1675,38 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(api.offerOrders, ['e2:tt-e2:1:w1']);
     expect(find.text('Checkout'), findsWidgets); // checkout opened for the new order
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('offer sheet total: the current price from a fresh event fetch, less the group discount estimate', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.groupTiers = [{'minQuantity': 2, 'percentBp': 1000}];
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900))];
+    });
+    Future<void> openSheet() async {
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const Key('offerBanner')));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    await openSheet();
+    expect(find.text('Estimated total'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('offerTotal'))).data, '9,000 MMK'); // 2 × 5,000 − 10%
+    expect(find.text('Group discount −1,000 MMK'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('offerMinus')));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('offerTotal'))).data, '5,000 MMK');
+    expect(find.byKey(const Key('groupDiscountLine')), findsNothing);
+    expect(find.byKey(const Key('groupDiscountHint')), findsOneWidget); // buy 2+ to save 10%
+
+    // A price step takes effect while the app has the event cached: the sheet fetches it again
+    await tester.tapAt(const Offset(20, 20)); // close the sheet
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    api.paidPriceMmk = 6000;
+    await openSheet();
+    expect(tester.widget<Text>(find.byKey(const Key('offerTotal'))).data, '10,800 MMK'); // 2 × 6,000 − 10%
     await tester.pumpWidget(const SizedBox());
   });
 

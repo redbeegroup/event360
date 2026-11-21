@@ -17,6 +17,8 @@ String waitlistErrorText(L10n t, Object error) {
       return t.waitlistNotSoldOut;
     case 'LIMIT':
       return t.waitlistLimit;
+    case 'CHECKOUT_PENDING':
+      return t.waitlistCheckoutPending;
     case 'OFFER_CLOSED':
       return t.offerClosed;
     case 'NOT_WAITING':

@@ -644,4 +644,11 @@ class L10nEn extends L10n {
 
   @override
   String get waitlistGenericError => 'Something went wrong. Please try again.';
+
+  @override
+  String get waitlistCheckoutPending =>
+      'Finish or cancel the checkout from your waitlist offer first';
+
+  @override
+  String get offerTotalEstimate => 'Estimated total';
 }

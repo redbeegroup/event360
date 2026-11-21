@@ -1236,6 +1236,18 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Something went wrong. Please try again.'**
   String get waitlistGenericError;
+
+  /// No description provided for @waitlistCheckoutPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish or cancel the checkout from your waitlist offer first'**
+  String get waitlistCheckoutPending;
+
+  /// No description provided for @offerTotalEstimate.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated total'**
+  String get offerTotalEstimate;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

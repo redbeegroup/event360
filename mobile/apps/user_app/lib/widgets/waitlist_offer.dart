@@ -10,6 +10,7 @@ import '../app/format.dart';
 import '../app/providers.dart';
 import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
+import 'discount_lines.dart';
 
 /// How often `/me/waitlist` is refreshed while the buyer is in a line or holds an offer.
 const Duration kWaitlistPoll = Duration(seconds: 30);
@@ -199,6 +200,15 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
   bool _busy = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    // The event may have been cached before a price step took effect: fetch it again for the total
+    Future.microtask(() {
+      if (mounted) ref.invalidate(eventProvider(widget.entry.eventId));
+    });
+  }
+
   Future<void> _submit() async {
     final e = widget.entry;
     setState(() {
@@ -234,8 +244,15 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
     final theme = Theme.of(context);
     final e = widget.entry;
     final live = e.isOffered;
-    final tt = ref.watch(eventProvider(e.eventId)).value?.ticketTypes.where((x) => x.id == e.ticketTypeId).firstOrNull;
+    final ev = ref.watch(eventProvider(e.eventId));
+    // Only a fresh fetch prices the total (not the cached event while it reloads)
+    final event = ev.isLoading ? null : ev.value;
+    final tt = event?.ticketTypes.where((x) => x.id == e.ticketTypeId).firstOrNull;
     final max_ = max(1, e.offeredQty);
+    // An estimate, worked out like checkout (current price, group discount); the order's own total is authoritative
+    final view = tt == null || tt.isFree
+        ? null
+        : resolveDiscount(tiers: event!.groupDiscounts, paidQty: _qty, paidSubtotalMmk: tt.priceMmk * _qty, totalMmk: tt.priceMmk * _qty);
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -251,14 +268,16 @@ class _OfferSheetState extends ConsumerState<OfferSheet> {
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', key: const Key('offerQty'), style: theme.textTheme.titleLarge)),
           IconButton.outlined(key: const Key('offerPlus'), onPressed: _qty < max_ ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
         ]),
-        if (tt != null && !tt.isFree)
+        if (view != null) ...[
+          DiscountLines(view: view, lang: lang),
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Row(children: [
-              Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-              Text(t.mmk(formatAmount(tt.priceMmk * _qty, lang)), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Expanded(child: Text(t.offerTotalEstimate, style: theme.textTheme.titleMedium)),
+              Text(t.mmk(formatAmount(view.totalMmk, lang)), key: const Key('offerTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
             ]),
           ),
+        ],
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, key: const Key('offerError'), style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 16),
         FilledButton(

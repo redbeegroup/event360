@@ -326,3 +326,5 @@
 "pyPaidOutCol","Paid out","ပေးချေပြီး","portal_payouts"
 "pyPayoutsFor","Payouts","ငွေပေးချေမှုများ","portal_payouts"
 "pyCsvError","Could not download the CSV. Please try again.","CSV ဒေါင်းလုဒ် မရပါ။ ထပ်မံကြိုးစားပါ။","portal_payouts"
+"waitlistCheckoutPending","Finish or cancel the checkout from your waitlist offer first","သင့်စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်မှ ငွေပေးချေမှုကို အရင် ပြီးဆုံးပါ သို့မဟုတ် ပယ်ဖျက်ပါ","user_app"
+"offerTotalEstimate","Estimated total","ခန့်မှန်း စုစုပေါင်း","user_app"

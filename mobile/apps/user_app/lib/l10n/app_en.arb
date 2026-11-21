@@ -373,5 +373,7 @@
   "waitlistLimit": "You have reached the per-person ticket limit for this type",
   "offerClosed": "This offer is no longer open",
   "waitlistNotIn": "You are not on this waitlist",
-  "waitlistGenericError": "Something went wrong. Please try again."
+  "waitlistGenericError": "Something went wrong. Please try again.",
+  "waitlistCheckoutPending": "Finish or cancel the checkout from your waitlist offer first",
+  "offerTotalEstimate": "Estimated total"
 }

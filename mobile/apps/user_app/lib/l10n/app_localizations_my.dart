@@ -648,4 +648,11 @@ class L10nMy extends L10n {
   @override
   String get waitlistGenericError =>
       'တစ်ခုခု မှားယွင်းသွားပါသည်။ ထပ်မံကြိုးစားပါ။';
+
+  @override
+  String get waitlistCheckoutPending =>
+      'သင့်စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်မှ ငွေပေးချေမှုကို အရင် ပြီးဆုံးပါ သို့မဟုတ် ပယ်ဖျက်ပါ';
+
+  @override
+  String get offerTotalEstimate => 'ခန့်မှန်း စုစုပေါင်း';
 }
