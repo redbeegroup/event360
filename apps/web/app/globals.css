@@ -95,3 +95,9 @@ label.check input { width: auto; }
 .hcap { position: absolute; inset: 0 auto 0 0; background: var(--border); border-radius: 4px; }
 .hbar { position: absolute; inset: 0 auto 0 0; background: var(--brand); border-radius: 4px; }
 .hval { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* Seat map editor */
+.seat-editor { display: grid; gap: 16px; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); align-items: start; }
+.seat-editor-side, .seat-editor-main { display: grid; gap: 12px; min-width: 0; }
+.seat-editor details > summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+@media (max-width: 900px) { .seat-editor { grid-template-columns: 1fr; } }

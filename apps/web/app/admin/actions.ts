@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import type { FormState } from '../actions';
 import { api, ApiError } from '../lib/api';
 
@@ -237,6 +238,80 @@ export async function resolveErrorAction(_: FormState, fd: FormData): Promise<Fo
     await api(`/admin/ops/errors/${encodeURIComponent(String(fd.get('id')))}/resolve`, { method: 'POST' });
     revalidatePath('/admin/ops');
     return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+// ---- Venues and seat maps ----
+
+const numField = (fd: FormData, k: string) => {
+  const v = String(fd.get(k) ?? '').trim();
+  return v === '' ? undefined : Number(v);
+};
+
+function venueBody(fd: FormData) {
+  return {
+    venueName: String(fd.get('venueName') ?? '').trim(),
+    venueNameMy: String(fd.get('venueNameMy') ?? '').trim() || undefined,
+    city: String(fd.get('city') ?? '').trim(),
+    address: String(fd.get('address') ?? '').trim() || undefined,
+    latitude: numField(fd, 'latitude'),
+    longitude: numField(fd, 'longitude'),
+    mapUrl: String(fd.get('mapUrl') ?? '').trim() || undefined,
+  };
+}
+
+export async function createSeatMapAction(_: FormState, fd: FormData): Promise<FormState> {
+  let id: string;
+  try {
+    id = (await api<{ id: string }>('/admin/seat-maps', { method: 'POST', json: venueBody(fd) })).id;
+  } catch (e) {
+    return err(e);
+  }
+  revalidatePath('/admin/venues');
+  redirect(`/admin/venues/${id}`);
+}
+
+export async function updateSeatMapAction(_: FormState, fd: FormData): Promise<FormState> {
+  const id = String(fd.get('id'));
+  try {
+    await api(`/admin/seat-maps/${id}`, { method: 'PATCH', json: { ...venueBody(fd), isActive: fd.get('isActive') === 'on' } });
+    revalidatePath(`/admin/venues/${id}`);
+    revalidatePath('/admin/venues');
+    return { ok: '✓' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+/** Called from the editor (client component). Returns the API's validation `problems` on a 400. */
+export async function saveSeatDraftAction(id: string, layout: unknown): Promise<FormState> {
+  try {
+    await api(`/admin/seat-maps/${id}/draft`, { method: 'PUT', json: { layout } });
+    revalidatePath(`/admin/venues/${id}`);
+    return { ok: 'saved' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function importSeatLayoutAction(id: string, layout: unknown): Promise<FormState> {
+  try {
+    await api(`/admin/seat-maps/${id}/import`, { method: 'POST', json: { layout } });
+    revalidatePath(`/admin/venues/${id}`);
+    return { ok: 'imported' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+export async function publishSeatMapAction(id: string): Promise<FormState> {
+  try {
+    await api(`/admin/seat-maps/${id}/publish`, { method: 'POST' });
+    revalidatePath(`/admin/venues/${id}`);
+    revalidatePath('/admin/venues');
+    return { ok: 'published' };
   } catch (e) {
     return err(e);
   }
