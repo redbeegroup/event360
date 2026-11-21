@@ -75,7 +75,7 @@ class _Shell extends StatelessWidget {
         onSelected: go,
         items: [
           _Tab(t.tabDiscover, Icons.home_outlined, Icons.home),
-          _Tab(t.explore, Icons.search, Icons.search),
+          _Tab(t.explore, Icons.search, Icons.manage_search),
           _Tab(t.tabTickets, Icons.confirmation_number_outlined, Icons.confirmation_number),
           _Tab(t.tabAccount, Icons.person_outline, Icons.person),
         ],
@@ -113,7 +113,6 @@ class _TabBar extends StatelessWidget {
               for (var i = 0; i < items.length; i++)
                 Expanded(
                   child: Semantics(
-                    button: true,
                     selected: i == selected,
                     child: InkWell(
                       onTap: () => onSelected(i),

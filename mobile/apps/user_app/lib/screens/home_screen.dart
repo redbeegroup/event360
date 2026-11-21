@@ -45,31 +45,45 @@ class HomeScreen extends ConsumerWidget {
     final otherLang = lang == 'my' ? 'en' : 'my';
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
-      child: Row(children: [
-        const E360Mark(),
-        const SizedBox(width: 8),
-        Expanded(child: Text(t.appTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
-        const InboxBell(),
-        const SizedBox(width: 4),
-        Semantics(
-          button: true,
-          label: t.switchLanguage,
-          excludeSemantics: true,
-          child: OutlinedButton(
-            key: const Key('langSwitch'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(44, 44),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              foregroundColor: scheme.onSurface,
-              backgroundColor: scheme.surface,
-              side: BorderSide(color: scheme.outlineVariant),
-              textStyle: theme.textTheme.labelLarge?.copyWith(fontSize: 14, color: null),
+      child: Row(
+        children: [
+          const E360Mark(),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              t.appTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
-            onPressed: () => ref.read(localeProvider.notifier).set(otherLang),
-            child: Text(otherLang == 'my' ? 'မြန်မာ' : 'English'),
           ),
-        ),
-      ]),
+          const InboxBell(),
+          const SizedBox(width: 4),
+          Semantics(
+            button: true,
+            label: t.switchLanguage,
+            excludeSemantics: true,
+            child: OutlinedButton(
+              key: const Key('langSwitch'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                foregroundColor: scheme.onSurface,
+                backgroundColor: scheme.surface,
+                side: BorderSide(color: scheme.outlineVariant),
+                textStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontSize: 14,
+                  color: null,
+                ),
+              ),
+              onPressed: () => ref.read(localeProvider.notifier).set(otherLang),
+              child: Text(otherLang == 'my' ? 'မြန်မာ' : 'English'),
+            ),
+          ),
+        ],
+      ),
     );
 
     final chips = SizedBox(
@@ -79,8 +93,16 @@ class HomeScreen extends ConsumerWidget {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           children: [
-            _CategoryChip(label: t.allCategories, selected: true, onTap: () => context.go('/explore')),
-            for (final c in cats) _CategoryChip(label: c.name(lang), onTap: () => context.go('/explore?category=${c.slug}')),
+            _CategoryChip(
+              label: t.allCategories,
+              selected: true,
+              onTap: () => context.go('/explore'),
+            ),
+            for (final c in cats)
+              _CategoryChip(
+                label: c.name(lang),
+                onTap: () => context.go('/explore?category=${c.slug}'),
+              ),
           ],
         ),
         loading: () => const SizedBox.shrink(),
@@ -96,22 +118,53 @@ class HomeScreen extends ConsumerWidget {
         bottom: false,
         child: RefreshIndicator(
           onRefresh: refresh,
-          child: CustomScrollView(slivers: [
-            SliverToBoxAdapter(child: header),
-            const SliverToBoxAdapter(child: OfferBanner(padding: EdgeInsets.fromLTRB(20, 12, 20, 0))),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: DiscoverSearchPill(city: city, onTap: () => context.go('/explore'), onFilters: () => context.go('/explore')),
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: header),
+              const SliverToBoxAdapter(
+                child: OfferBanner(padding: EdgeInsets.fromLTRB(20, 12, 20, 0)),
               ),
-            ),
-            SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 12), child: chips)),
-            if (featured != null)
-              SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 0), child: FeaturedEventCard(event: featured))),
-            ..._popularSection(context, t.popular, upcoming, featured, onRetry: refresh),
-            ..._freeSection(context, t.freeEvents, free, onSeeAll: () => context.go('/explore')),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ]),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: DiscoverSearchPill(
+                    city: city,
+                    onTap: () => context.go('/explore'),
+                    onFilters: () => context.go('/explore'),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: chips,
+                ),
+              ),
+              if (featured != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                    child: FeaturedEventCard(event: featured),
+                  ),
+                ),
+              ..._popularSection(
+                context,
+                t.popular,
+                upcoming,
+                featured,
+                onRetry: refresh,
+              ),
+              ..._freeSection(
+                context,
+                t.freeEvents,
+                free,
+                featured?.id,
+                onRetry: () => ref.invalidate(freeEventsProvider),
+                onSeeAll: () => context.go('/explore'),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
         ),
       ),
     );
@@ -122,24 +175,55 @@ class HomeScreen extends ConsumerWidget {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
-        child: Row(children: [
-          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
-          if (onSeeAll != null) TextButton(onPressed: onSeeAll, child: Text(t.seeAll)),
-        ]),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            if (onSeeAll != null)
+              TextButton(onPressed: onSeeAll, child: Text(t.seeAll)),
+          ],
+        ),
       ),
     );
   }
 
-  List<Widget> _freeSection(BuildContext context, String title, AsyncValue<List<EventSummary>> value, {VoidCallback? onSeeAll}) {
+  List<Widget> _freeSection(
+    BuildContext context,
+    String title,
+    AsyncValue<List<EventSummary>> value,
+    String? featuredId, {
+    VoidCallback? onSeeAll,
+    VoidCallback? onRetry,
+  }) {
     final t = L10n.of(context);
     final header = _header(context, title, onSeeAll: onSeeAll);
     return value.when(
-      loading: () => [header, const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())))],
+      loading: () => [
+        header,
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ],
       error: (_, __) => [
         header,
-        SliverToBoxAdapter(child: MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry)),
+        SliverToBoxAdapter(
+          child: MessageView(
+            icon: Icons.wifi_off,
+            message: t.loadError,
+            actionLabel: t.retry,
+            onAction: onRetry,
+          ),
+        ),
       ],
-      data: (events) {
+      data: (all) {
+        final events = [
+          for (final e in all)
+            if (e.id != featuredId) e,
+        ];
         if (events.isEmpty) return [];
         return [
           header,
@@ -147,12 +231,19 @@ class HomeScreen extends ConsumerWidget {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                for (var i = 0; i < events.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 14),
-                  FeaturedEventCard(event: events[i], width: 280),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < events.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 14),
+                    FeaturedEventCard(
+                      event: events[i],
+                      width: 280,
+                      coverHeight: 140,
+                    ),
+                  ],
                 ],
-              ]),
+              ),
             ),
           ),
         ];
@@ -160,19 +251,53 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  List<Widget> _popularSection(BuildContext context, String title, AsyncValue<List<EventSummary>> value, EventSummary? featured, {VoidCallback? onRetry}) {
+  List<Widget> _popularSection(
+    BuildContext context,
+    String title,
+    AsyncValue<List<EventSummary>> value,
+    EventSummary? featured, {
+    VoidCallback? onRetry,
+  }) {
     final t = L10n.of(context);
     final header = _header(context, title);
     return value.when(
-      loading: () => [header, const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())))],
+      loading: () => [
+        header,
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ],
       error: (_, __) => [
         header,
-        SliverToBoxAdapter(child: MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: onRetry)),
+        SliverToBoxAdapter(
+          child: MessageView(
+            icon: Icons.wifi_off,
+            message: t.loadError,
+            actionLabel: t.retry,
+            onAction: onRetry,
+          ),
+        ),
       ],
       data: (all) {
-        final events = [for (final e in all) if (e.id != featured?.id) e];
+        final events = [
+          for (final e in all)
+            if (e.id != featured?.id) e,
+        ];
         if (events.isEmpty) {
-          return featured != null ? [] : [header, SliverToBoxAdapter(child: MessageView(icon: Icons.event_busy, message: t.noEvents))];
+          return featured != null
+              ? []
+              : [
+                  header,
+                  SliverToBoxAdapter(
+                    child: MessageView(
+                      icon: Icons.event_busy,
+                      message: t.noEvents,
+                    ),
+                  ),
+                ];
         }
         return [
           header,
@@ -180,7 +305,10 @@ class HomeScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList.separated(
               itemCount: events.length,
-              separatorBuilder: (_, __) => const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Divider()),
+              separatorBuilder: (_, __) => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Divider(),
+              ),
               itemBuilder: (_, i) => EventRow(event: events[i]),
             ),
           ),
@@ -191,7 +319,11 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.label, required this.onTap, this.selected = false});
+  const _CategoryChip({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
   final String label;
   final VoidCallback onTap;
   final bool selected;
@@ -202,21 +334,35 @@ class _CategoryChip extends StatelessWidget {
     final scheme = theme.colorScheme;
     final fg = selected ? scheme.onPrimary : scheme.onSurface;
     // 36 px chip inside a 44 px touch target
-    return InkWell(
-      customBorder: const StadiumBorder(),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 36, minWidth: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            alignment: Alignment.center,
-            decoration: ShapeDecoration(
-              color: selected ? scheme.primary : scheme.surface,
-              shape: StadiumBorder(side: selected ? BorderSide.none : BorderSide(color: scheme.outlineVariant)),
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Center(
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 36, minWidth: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.center,
+              decoration: ShapeDecoration(
+                color: selected ? scheme.primary : scheme.surface,
+                shape: StadiumBorder(
+                  side: selected
+                      ? BorderSide.none
+                      : BorderSide(color: scheme.outlineVariant),
+                ),
+              ),
+              child: Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontSize: 14,
+                  color: fg,
+                ),
+              ),
             ),
-            child: Text(label, style: theme.textTheme.labelLarge?.copyWith(fontSize: 14, color: fg)),
           ),
         ),
       ),

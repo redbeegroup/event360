@@ -660,6 +660,25 @@ void main() {
     }
   });
 
+  testWidgets('search pill grows with large text in Myanmar at 360 dp without overflow', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 800 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      child: MaterialApp(
+        theme: Event360Theme.light(locale: const Locale('my')),
+        locale: const Locale('my'),
+        supportedLocales: L10n.supportedLocales,
+        localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+        builder: (c, w) => MediaQuery(data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(1.3)), child: w!),
+        home: Scaffold(body: Padding(padding: const EdgeInsets.all(20), child: DiscoverSearchPill(city: 'ရန်ကုန်မြို့ကြီး', onTap: () {}, onFilters: () {}))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(DiscoverSearchPill)).height, greaterThanOrEqualTo(56));
+  });
+
   testWidgets('Myanmar UI shows Myanmar titles', (tester) async {
     await pumpApp(tester, lang: 'my');
     expect(find.text('ရန်ကုန် စားသောက်ပွဲ e1'), findsWidgets);

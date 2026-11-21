@@ -75,9 +75,10 @@ class EventRow extends ConsumerWidget {
 
 /// Large card: 176 px cover with a gold "Reserved seating" badge when the event has seat selection.
 class FeaturedEventCard extends ConsumerWidget {
-  const FeaturedEventCard({super.key, required this.event, this.width});
+  const FeaturedEventCard({super.key, required this.event, this.width, this.coverHeight = 176});
   final EventSummary event;
   final double? width;
+  final double coverHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -93,7 +94,7 @@ class FeaturedEventCard extends ConsumerWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: SizedBox(
-              height: 176,
+              height: coverHeight,
               width: double.infinity,
               child: Stack(fit: StackFit.expand, children: [
                 EventCover(url: event.coverImageUrl),
@@ -127,7 +128,8 @@ class DiscoverSearchPill extends StatelessWidget {
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     return Container(
-      height: 56,
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(28),
@@ -150,6 +152,7 @@ class DiscoverSearchPill extends StatelessWidget {
                 Expanded(
                   child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(t.findThingsToDo, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 12)),
+                    const SizedBox(height: 2),
                     Text(city == null ? t.inMyanmar : t.inCity(city!),
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
                   ]),
