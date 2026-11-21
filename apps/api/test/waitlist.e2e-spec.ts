@@ -886,7 +886,7 @@ run('Waitlist', () => {
     await expireHold(prisma, pay, bad.body.id); // not poisoned any more
   });
 
-  it('a poisoned expired hold is skipped for a while and never starves the others', async () => {
+  it('a poisoned expired hold is skipped for a while after two failures and never starves the others', async () => {
     const ev = await standing('Starve', 2, 1);
     const [P, Q] = [await consumer(), await consumer()];
     const bad = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
@@ -907,16 +907,18 @@ run('Waitlist', () => {
       expect(await prisma.order.findUniqueOrThrow({ where: { id: good.body.id } })).toMatchObject({ status: 'EXPIRED' });
       expect(triesOfBad()).toBe(1);
       expect(warn.mock.calls.some(([m]) => /poisoned order/.test(String(m)))).toBe(true);
-      // The next pass skips it
+      // One failure: tried again on the next pass; a second failure in a row: skipped from then on
       expect(await prisma.order.findUniqueOrThrow({ where: { id: bad.body.id } })).toMatchObject({ status: 'PENDING_PAYMENT' });
       await pay.sweep();
-      expect(triesOfBad()).toBe(1);
+      expect(triesOfBad()).toBe(2);
+      await pay.sweep();
+      expect(triesOfBad()).toBe(2);
       // ...for 10 minutes, then it is tried again (its skip moved back rather than sweeping with a future clock,
       // which would expire other suites' holds running in parallel)
       expect(svc.skippedHolds.get(bad.body.id)).toBeGreaterThan(Date.now() + 9 * 60e3);
       svc.skippedHolds.set(bad.body.id, Date.now() - 1);
       await pay.sweep();
-      expect(triesOfBad()).toBe(2);
+      expect(triesOfBad()).toBe(3);
     } finally {
       r1.mockRestore();
       warn.mockRestore();
@@ -960,12 +962,145 @@ run('Waitlist', () => {
     } finally {
       r.mockRestore();
     }
-    // Once settling works again, a later pass settles it
+    // Once settling works again, a later pass settles it; the note says so, and the earlier note keeps it in review
     await checkedPass();
     expect(await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).toMatchObject({ status: 'SUCCEEDED' });
     const paid = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
     expect(paid.status).toBe('PAID');
     expect(paid.tickets).toHaveLength(1);
+    expect(paid.needsReview).toBe(true);
+    expect(paid.reviewNote).toMatch(new RegExp(`^Earlier note\n${note.replace(/[()]/g, '\\$&')}\nsettled later \\(\\d{4}-\\d\\d-\\d\\dT[^)]+\\)$`));
+  });
+
+  /** A paid order whose 3-hour-old payment the wallet reports as paid (callback lost); the hold long expired. */
+  async function stuckPaid(title: string) {
+    const ev = await standing(title, 2, 1);
+    const P = await consumer();
+    const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const payId = await payFor(P.H, o.body.id);
+    await expireHold(prisma, pay, o.body.id);
+    await pay.mock.recordState(payId, 'SUCCEEDED');
+    await prisma.payment.update({ where: { id: payId }, data: { status: 'PENDING', createdAt: new Date(Date.now() - 3 * 3600e3), lastCheckedAt: null } });
+    const checkedPass = async () => {
+      await prisma.payment.update({ where: { id: payId }, data: { lastCheckedAt: null } });
+      for (let i = 0; i < 50; i++) {
+        await pay.sweep();
+        if ((await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).lastCheckedAt) return;
+      }
+      throw new Error('payment was never checked');
+    };
+    return { orderId: o.body.id as string, payId, checkedPass };
+  }
+
+  it('settling a stuck paid order later clears its review when that was the only reason', async () => {
+    const { orderId, payId, checkedPass } = await stuckPaid('PaidStuck2');
+    const svc = pay as any;
+    const apply = svc.applyStatus.bind(pay);
+    const r = jest.spyOn(svc, 'applyStatus').mockImplementation((id: unknown, st: unknown, ...rest: unknown[]) =>
+      id === payId && st === 'SUCCEEDED' ? Promise.reject(new Error('settle broke')) : apply(id, st, ...rest),
+    );
+    try {
+      await checkedPass();
+    } finally {
+      r.mockRestore();
+    }
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({ needsReview: true });
+    await checkedPass();
+    const o = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(o).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(o.reviewNote).toMatch(/^Provider reports paid \(ref mock_[0-9a-f-]+\) but settling failed: check\nsettled later \(.+\)$/);
+  });
+
+  it('a stuck-paid flag is not raised when the payment did settle (the error came after)', async () => {
+    const { orderId, payId, checkedPass } = await stuckPaid('PaidStuck3');
+    const svc = pay as any;
+    const apply = svc.applyStatus.bind(pay);
+    const r = jest.spyOn(svc, 'applyStatus').mockImplementation(async (id: unknown, st: unknown, ...rest: unknown[]) => {
+      await apply(id, st, ...rest);
+      if (id === payId && st === 'SUCCEEDED') throw new Error('after the commit');
+    });
+    try {
+      await checkedPass();
+    } finally {
+      r.mockRestore();
+    }
+    expect(await prisma.payment.findUniqueOrThrow({ where: { id: payId } })).toMatchObject({ status: 'SUCCEEDED' });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({ status: 'PAID', needsReview: false, reviewNote: null });
+  });
+
+  it('a late payment for sold-out tickets keeps the order\'s earlier review notes', async () => {
+    const ev = await standing('LateSoldOut', 1, 1);
+    const [P, Q] = [await consumer(), await consumer()];
+    const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const payId = await payFor(P.H, o.body.id);
+    await expireHold(prisma, pay, o.body.id);
+    await order(Q.H, ev.id, items(ev.type, 1)).expect(201); // the ticket is gone
+    await prisma.order.update({ where: { id: o.body.id }, data: { needsReview: true, reviewNote: 'Earlier note' } });
+    const cb = pay.mock.callbackFor(payId, 'SUCCEEDED', 5_000n);
+    await http.post('/v1/payments/webhook/mock').set('x-mock-signature', cb.signature).send(cb.body).expect(200);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } })).toMatchObject({
+      status: 'PAID',
+      needsReview: true,
+      reviewNote: 'Earlier note\nPaid after the hold expired and the tickets sold out: refund the buyer',
+    });
+  });
+
+  it('the reconciler checks the least recently checked payments first', async () => {
+    // 300 due payments checked five minutes ago fill several batches; one never checked must be in the next pass
+    // (the fillers are older than it, so by creation time they would come first)
+    const fill = await prisma.payment.createManyAndReturn({
+      data: Array.from({ length: 300 }, () => ({
+        provider: 'MOCK' as const, purpose: 'SUBSCRIPTION', amountMmk: 1n, status: 'PENDING' as const,
+        createdAt: new Date(Date.now() - 90 * 60e3), lastCheckedAt: new Date(Date.now() - 300e3),
+      })),
+      select: { id: true },
+    });
+    const ev = await standing('Recon', 2, 1);
+    const P = await consumer();
+    const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const fresh = await payFor(P.H, o.body.id);
+    await prisma.payment.update({ where: { id: fresh }, data: { status: 'PENDING', createdAt: new Date(Date.now() - 30 * 60e3), lastCheckedAt: null } });
+    try {
+      await pay.sweep();
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: fresh } })).lastCheckedAt).not.toBeNull();
+    } finally {
+      await prisma.payment.deleteMany({ where: { id: { in: fill.map((f) => f.id) } } });
+    }
+  });
+
+  it('the per-person limit holds when an earlier order settles between the checks', async () => {
+    const ev = await standing('Limit', 10, 2);
+    const U = await consumer();
+    const a = await order(U.H, ev.id, items(ev.type, 1)).expect(201);
+    const payId = await payFor(U.H, a.body.id);
+    // Order A settles right after B's checkout has read what the buyer holds (tickets: none yet)
+    const original = prisma.$transaction.bind(prisma);
+    let fired = false;
+    const settleA = async () => {
+      if (fired) return;
+      fired = true;
+      await (pay as any).applyStatus(payId, 'SUCCEEDED');
+    };
+    const spy = jest.spyOn(prisma, '$transaction').mockImplementationOnce((async (fn: any, opts: any) =>
+      (original as any)((tx: any) => {
+        const wrapped = new Proxy(tx, {
+          get(t, k) {
+            if (k === 'ticket') return new Proxy(t.ticket, { get: (tt, m) => (m === 'count' ? async (...a: unknown[]) => { const n = await tt.count(...a); await settleA(); return n; } : tt[m]) });
+            if (k === '$queryRaw') return async (...a: any[]) => { const r = await t.$queryRaw(...a); if (String(a[0]?.join?.('') ?? a[0]).includes('tickets')) await settleA(); return r; };
+            const v = t[k];
+            return typeof v === 'function' ? v.bind(t) : v;
+          },
+        });
+        return fn(wrapped);
+      }, opts)) as any);
+    try {
+      await expect(pay.createOrder(U.id, ev.id, [{ ticketTypeId: ev.type, quantity: 2 }])).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fired).toBe(true);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: a.body.id } })).toMatchObject({ status: 'PAID' });
+    expect(await prisma.ticket.count({ where: { holderUserId: U.id, ticketTypeId: ev.type } })).toBe(1);
   });
 
   it('a join and a settle for the same buyer in parallel do not deadlock', async () => {

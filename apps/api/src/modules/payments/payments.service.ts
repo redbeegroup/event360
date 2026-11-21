@@ -48,6 +48,42 @@ type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] }
  */
 const byTypeId = <T>(rows: T[], id: (r: T) => string): T[] => [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
 
+/**
+ * What one person already has of a type: their live (non-comp) tickets plus their unexpired pending checkouts.
+ * One statement, so one snapshot: an earlier order settling meanwhile (its hold turning into tickets) is counted
+ * exactly once, never zero times as two separate counts could.
+ */
+async function ownedOrPending(tx: Prisma.TransactionClient, userId: string, ticketTypeId: string, now: Date): Promise<number> {
+  const [r] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT (
+      (SELECT count(*) FROM tickets WHERE holder_user_id = ${userId}::uuid AND ticket_type_id = ${ticketTypeId}::uuid
+         AND NOT is_complimentary AND status IN ('VALID', 'CHECKED_IN'))
+      + COALESCE((SELECT sum(i.quantity) FROM order_items i JOIN orders o ON o.id = i.order_id
+         WHERE i.ticket_type_id = ${ticketTypeId}::uuid AND o.user_id = ${userId}::uuid AND o.status = 'PENDING_PAYMENT'
+           AND o.hold_expires_at > ${now}), 0)
+    )::int AS n`;
+  return r.n;
+}
+
+/** Review-note lines of a paid payment the sweeper could not settle, and of its settling later. */
+const stuckPaidNote = (ref: string) => `Provider reports paid (ref ${ref}) but settling failed: check`;
+const STUCK_PAID = /^Provider reports paid \(ref .+\) but settling failed: check$/;
+const SETTLED_LATER = /^settled later \(.+\)$/;
+
+/**
+ * A settle that issued the tickets of an order flagged as stuck-paid: says so in the note, and takes the order out
+ * of review if being stuck was its only reason.
+ */
+async function noteSettledLater(tx: Prisma.TransactionClient, orderId: string, note: string | null) {
+  const lines = (note ?? '').split('\n').filter(Boolean);
+  if (!lines.some((l) => STUCK_PAID.test(l))) return;
+  const onlyStuck = lines.every((l) => STUCK_PAID.test(l) || SETTLED_LATER.test(l));
+  await tx.order.update({
+    where: { id: orderId },
+    data: { reviewNote: [...lines, `settled later (${new Date().toISOString()})`].join('\n'), ...(onlyStuck ? { needsReview: false } : {}) },
+  });
+}
+
 /** How long the sweeper leaves out an expired hold whose release threw. */
 const HOLD_SKIP_MS = 10 * 60e3;
 
@@ -60,8 +96,10 @@ async function flagForReview(tx: Prisma.TransactionClient, orderId: string, note
 export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PaymentsService.name);
   private timer?: NodeJS.Timeout;
-  /** Expired holds whose release threw, and until when (ms) the sweeper leaves them out. In memory, per pod. */
+  /** Expired holds whose release threw twice in a row, and until when (ms) the sweeper leaves them out. In memory, per pod. */
   private readonly skippedHolds = new Map<string, number>();
+  /** Expired holds whose last release threw (one failure: retried on the next pass). */
+  private readonly failedHolds = new Set<string>();
   readonly mock: MockProvider;
   private readonly providers: Map<PaymentProviderCode, PaymentProvider>;
 
@@ -234,12 +272,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
       // Standing counter rows in id order (see byTypeId); the order items keep the buyer's order
       for (const { tt, quantity, seatKeys } of byTypeId(lines, (l) => l.tt.id)) {
-        const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId: tt.id, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
-        const pending = await tx.orderItem.aggregate({
-          _sum: { quantity: true },
-          where: { ticketTypeId: tt.id, order: { userId, status: 'PENDING_PAYMENT', holdExpiresAt: { gt: now } } },
-        });
-        const already = held + (pending._sum.quantity ?? 0);
+        const already = await ownedOrPending(tx, userId, tt.id, now);
         if (already + quantity > tt.maxPerOrder) {
           throw new ConflictException(`You already have ${already} ${tt.name} ticket(s); the limit is ${tt.maxPerOrder} per person`);
         }
@@ -688,13 +721,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           }
           offerUsed = false;
         }
-        await tx.order.update({
-          where: { id: order.id },
-          data: issued
-            ? { status: 'PAID', paidAt: new Date() }
-            : { status: 'PAID', paidAt: new Date(), needsReview: true, reviewNote: 'Paid after the hold expired and the tickets sold out: refund the buyer' },
-        });
+        await tx.order.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: new Date() } });
+        if (!issued) await flagForReview(tx, order.id, 'Paid after the hold expired and the tickets sold out: refund the buyer');
       }
+      if (issued) await noteSettledLater(tx, order.id, order.reviewNote);
       if (issued) await this.issueTickets(tx, order.id, order.userId, order.items.map((i) => ({ ticketTypeId: i.ticketTypeId, quantity: i.quantity, seatKeys: i.seatKeys })));
       if (seatedIn) await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
       // The entry row last (lock order): the reopened offer was used by this payment
@@ -725,8 +755,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async sweep(now = new Date()) {
-    // Oldest holds first, so none waits forever behind newer ones. An order whose release throws is left out for
-    // HOLD_SKIP_MS (on this pod) so a few poisoned orders can't fill every batch and starve the rest.
+    // Oldest holds first, so none waits forever behind newer ones. An order whose release throws twice in a row is
+    // left out for HOLD_SKIP_MS (on this pod) so a few poisoned orders can't fill every batch and starve the rest.
     for (const [id, until] of this.skippedHolds) if (until <= now.getTime()) this.skippedHolds.delete(id);
     const expired = await this.prisma.order.findMany({
       where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now }, ...(this.skippedHolds.size ? { id: { notIn: [...this.skippedHolds.keys()] } } : {}) },
@@ -736,11 +766,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     });
     // One order (or payment) that fails must never stop the rest: every hold and payment is its own step
     for (const o of expired) {
-      await this.releaseHold(o.id, 'EXPIRED').catch((e) => {
-        this.skippedHolds.set(o.id, now.getTime() + HOLD_SKIP_MS);
-        this.logger.warn(`hold expiry ${o.id}: ${(e as Error).message} (skipped for ${HOLD_SKIP_MS / 60e3} min)`);
-      });
+      await this.releaseHold(o.id, 'EXPIRED').then(
+        () => this.failedHolds.delete(o.id),
+        (e) => {
+          const again = this.failedHolds.delete(o.id);
+          if (again) this.skippedHolds.set(o.id, now.getTime() + HOLD_SKIP_MS);
+          else this.failedHolds.add(o.id);
+          this.logger.warn(`hold expiry ${o.id}: ${(e as Error).message}${again ? ` (failed twice: skipped for ${HOLD_SKIP_MS / 60e3} min)` : ''}`);
+        },
+      );
     }
+    // A hold that left the list (released elsewhere, paid) has no failure streak any more
+    for (const id of this.failedHolds) if (!expired.some((o) => o.id === id)) this.failedHolds.delete(id);
 
     const due = await this.prisma.payment.findMany({
       where: {
@@ -748,6 +785,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         createdAt: { lt: new Date(now.getTime() - 60e3) },
         OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(now.getTime() - 60e3) } }],
       },
+      // Never checked first, then the longest unchecked: payments that stay due (stuck) can't crowd out the others
+      orderBy: [{ lastCheckedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
       take: 50,
     });
     for (const p of due) {
@@ -765,7 +804,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           // Expire only what the provider says is unpaid, or can't be asked about. Paid (or failed) but not applied:
           // retried on later passes; a paid one that is still stuck after 2 h goes to an admin as well.
           if (tooOld && (st === undefined || st === 'PENDING')) await this.applyStatus(p.id, 'EXPIRED');
-          else if (tooOld && st === 'SUCCEEDED' && p.orderId) await this.flagStuckPaid(p.orderId, p.providerRef ?? p.id);
+          else if (tooOld && st === 'SUCCEEDED' && p.orderId) await this.flagStuckPaid(p.orderId, p.id, p.providerRef ?? p.id);
         } catch (e2) {
           this.logger.warn(`reconcile ${p.provider} ${p.id}: ${(e2 as Error).message}`);
         }
@@ -774,12 +813,19 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     return { expired: expired.length, checked: due.length };
   }
 
-  /** Flags (once) an order whose payment the provider reports as paid but which this side failed to settle. */
-  private async flagStuckPaid(orderId: string, ref: string) {
-    const note = `Provider reports paid (ref ${ref}) but settling failed: check`;
+  /**
+   * Flags (once) an order whose payment the provider reports as paid but which this side failed to settle. Not when
+   * the payment did settle after all (the error came after it): payment SUCCEEDED and order PAID. Only the order row
+   * is locked; a settle racing this waits for it, then sees the note and records that it settled (noteSettledLater).
+   */
+  private async flagStuckPaid(orderId: string, paymentId: string, ref: string) {
+    const note = stuckPaidNote(ref);
     await this.prisma.$transaction(async (tx) => {
-      const [o] = await tx.$queryRaw<{ note: string | null }[]>`SELECT review_note AS note FROM orders WHERE id = ${orderId}::uuid FOR UPDATE`;
+      const [o] = await tx.$queryRaw<{ note: string | null; status: string }[]>`
+        SELECT review_note AS note, status::text AS status FROM orders WHERE id = ${orderId}::uuid FOR UPDATE`;
       if (!o || o.note?.split('\n').includes(note)) return;
+      const pay = await tx.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+      if (pay?.status === 'SUCCEEDED' && o.status === 'PAID') return;
       await flagForReview(tx, orderId, note);
     });
   }
