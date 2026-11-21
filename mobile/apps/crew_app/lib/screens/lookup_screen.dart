@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -83,6 +84,10 @@ class _LookupScreenState extends ConsumerState<LookupScreen> {
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final local = ref.watch(checkinProvider.select((s) => s.localChecked));
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final okBg = dark ? E360DarkColors.successBadgeBg : E360Colors.successBadgeBg;
+    final okInk = dark ? E360DarkColors.success : E360Colors.success;
     return Scaffold(
       appBar: AppBar(title: Text(t.lookup)),
       body: Column(children: [
@@ -112,10 +117,10 @@ class _LookupScreenState extends ConsumerState<LookupScreen> {
                         final ci = tk.checkedIn;
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: inside ? const Color(0xFFE8F5E9) : null,
-                            child: Icon(inside ? Icons.check : Icons.confirmation_number_outlined, color: inside ? const Color(0xFF1B873F) : null),
+                            backgroundColor: inside ? okBg : theme.colorScheme.surfaceContainerHighest,
+                            child: Icon(inside ? Icons.check : Icons.confirmation_number_outlined, color: inside ? okInk : theme.colorScheme.primary),
                           ),
-                          title: Text(tk.holderName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          title: Text(tk.holderName, style: theme.textTheme.titleSmall),
                           subtitle: Text([
                             if (tk.seat != null && tk.seat!.isNotEmpty) pickLang(lang, tk.seat, tk.seatMy),
                             pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy),
@@ -125,9 +130,9 @@ class _LookupScreenState extends ConsumerState<LookupScreen> {
                           ].join(' · ')),
                           trailing: switch (tk.status) {
                             'VALID' when !inside => FilledButton(style: compactFilled, onPressed: () => _checkIn(tk), child: Text(t.checkIn)),
-                            'CHECKED_IN' => TextButton(onPressed: () => confirmUndo(context, ref, tk.id, tk.holderName).then((_) => _search(_q.text)), child: Text(t.undo)),
-                            'VALID' => Text(t.offlineChecked, style: const TextStyle(fontSize: 12)),
-                            _ => Text(resultStyle(t, ScanOutcome(result: tk.status)).title, style: const TextStyle(fontSize: 12)),
+                            'CHECKED_IN' => OutlinedButton(style: E360Buttons.outline, onPressed: () => confirmUndo(context, ref, tk.id, tk.holderName).then((_) => _search(_q.text)), child: Text(t.undo)),
+                            'VALID' => E360Badge(t.offlineChecked, kind: E360BadgeKind.success),
+                            _ => E360Badge(resultStyle(t, ScanOutcome(result: tk.status)).title),
                           },
                         );
                       },

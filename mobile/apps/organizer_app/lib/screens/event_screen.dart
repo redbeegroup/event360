@@ -101,16 +101,7 @@ class _OverviewState extends ConsumerState<_Overview> {
       error: (_, __) => _loadError(t, _refresh),
       data: (d) {
         final tot = d.totals;
-        Widget tile(String label, String value, {String? key}) => Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: theme.textTheme.bodySmall),
-                  const SizedBox(height: 4),
-                  Text(value, key: key == null ? null : Key(key), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            );
+        Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, valueKey: key == null ? null : Key(key));
         Widget bar(String name, int value, int of) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -125,27 +116,39 @@ class _OverviewState extends ConsumerState<_Overview> {
         return RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(padding: const EdgeInsets.all(12), children: [
-            // Two tiles per row, each as tall as its content (long amounts wrap instead of overflowing)
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: tile(t.ticketsSold, '${formatAmount(tot.ticketsSold, lang)} / ${formatAmount(tot.capacity, lang)}', key: 'sold')),
-              Expanded(child: tile(t.revenue, formatMmk(tot.revenueMmk, lang), key: 'revenue')),
-            ]),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: tile(t.checkedIn, att == null ? formatAmount(tot.checkedIn, lang) : '${formatAmount(att.checkedIn, lang)} / ${formatAmount(att.registered, lang)}', key: 'checkedIn'),
-              ),
-              Expanded(child: tile(t.orders, formatAmount(tot.orders, lang))),
-            ]),
+            // Two tiles per row, as tall as the taller one (long amounts wrap instead of overflowing)
+            IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: tile(t.ticketsSold, '${formatAmount(tot.ticketsSold, lang)} / ${formatAmount(tot.capacity, lang)}', key: 'sold')),
+                const SizedBox(width: 10),
+                Expanded(child: tile(t.revenue, formatMmk(tot.revenueMmk, lang), key: 'revenue')),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(
+                  child: tile(t.checkedIn, att == null ? formatAmount(tot.checkedIn, lang) : '${formatAmount(att.checkedIn, lang)} / ${formatAmount(att.registered, lang)}', key: 'checkedIn'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: tile(t.orders, formatAmount(tot.orders, lang))),
+              ]),
+            ),
             const SizedBox(height: 8),
             Text(t.byTicketType, style: theme.textTheme.titleMedium),
             for (final tt in d.ticketTypes) bar(tt.name, tt.sold, tt.quota),
             if (d.seatTotals case final st?) ...[
               const SizedBox(height: 12),
               Text(t.seatsTitle, style: theme.textTheme.titleMedium),
-              Wrap(key: const Key('seatCounts'), spacing: 8, children: [
-                for (final (label, n) in [(t.seatsAvailable, st.available), (t.seatsHeld, st.held), (t.seatsGuest, st.guest), (t.seatsSold, st.sold), (t.seatsComp, st.comp)])
-                  Chip(label: Text('$label · ${formatAmount(n, lang)}')),
-              ]),
+              const SizedBox(height: 8),
+              // Three tiles per row; the label sits on top, the count below it
+              LayoutBuilder(builder: (_, c) {
+                final w = (c.maxWidth - 2 * 10) / 3;
+                return Wrap(key: const Key('seatCounts'), spacing: 10, runSpacing: 10, children: [
+                  for (final (label, n) in [(t.seatsAvailable, st.available), (t.seatsHeld, st.held), (t.seatsGuest, st.guest), (t.seatsSold, st.sold), (t.seatsComp, st.comp)])
+                    SizedBox(width: w, child: StatTile(label: label, value: formatAmount(n, lang), small: true)),
+                ]);
+              }),
             ],
             if (att != null && att.byGate.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -162,13 +165,38 @@ class _OverviewState extends ConsumerState<_Overview> {
                 contentPadding: EdgeInsets.zero,
                 title: Text('${o.quantity} × · ${formatMmk(o.totalMmk, lang)}'),
                 subtitle: Text([o.buyer ?? '', formatDayTime(o.createdAt, lang)].where((s) => s.isNotEmpty).join(' · ')),
-                trailing: Text(o.status, style: theme.textTheme.bodySmall),
+                trailing: E360Badge(o.status, kind: o.status == 'PAID' ? E360BadgeKind.success : E360BadgeKind.neutral),
               ),
             const SizedBox(height: 8),
             Text(t.updatedAt(formatTime(_updated, lang)), textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
           ]),
         );
       },
+    );
+  }
+}
+
+/// Overview number tile: label on top, the number big in the display font.
+class StatTile extends StatelessWidget {
+  const StatTile({super.key, required this.label, required this.value, this.valueKey, this.small = false});
+  final String label;
+  final String value;
+  final Key? valueKey;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final my = Localizations.localeOf(context).languageCode == 'my';
+    final size = small ? (my ? 20.0 : 22.0) : (my ? 22.0 : 26.0);
+    return Container(
+      padding: EdgeInsets.all(small ? 12 : 14),
+      decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.colorScheme.outlineVariant)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(value, key: valueKey, style: theme.textTheme.titleLarge?.copyWith(fontSize: size)),
+      ]),
     );
   }
 }
@@ -247,11 +275,12 @@ class _DoorState extends ConsumerState<_Door> {
         TextField(key: const Key('codeGate'), controller: _gate, decoration: InputDecoration(labelText: t.gate)),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 12),
-        FilledButton.icon(key: const Key('createCode'), onPressed: _busy ? null : _create, icon: const Icon(Icons.qr_code_2), label: Text(t.createCode)),
+        FilledButton.icon(key: const Key('createCode'), style: E360Buttons.gold, onPressed: _busy ? null : _create, icon: const Icon(Icons.qr_code_2), label: Text(t.createCode)),
       ] else
         _readOnly(context, t),
       const SizedBox(height: 8),
       OutlinedButton.icon(
+        style: E360Buttons.outline,
         onPressed: () => launchUrl(Uri.parse(crewWebUrl), mode: LaunchMode.externalApplication),
         icon: const Icon(Icons.open_in_new),
         label: Text(t.openCrewApp),
@@ -390,7 +419,7 @@ class _AnnounceState extends ConsumerState<_Announce> {
           TextField(controller: _titleMy, maxLength: 80, decoration: InputDecoration(labelText: t.headingMy)),
           TextField(controller: _bodyMy, maxLength: 500, maxLines: 4, minLines: 2, decoration: InputDecoration(labelText: t.messageMy)),
           if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
-          FilledButton.icon(key: const Key('sendAnnouncement'), onPressed: _busy ? null : _send, icon: const Icon(Icons.campaign_outlined), label: Text(t.send)),
+          FilledButton.icon(key: const Key('sendAnnouncement'), style: E360Buttons.gold, onPressed: _busy ? null : _send, icon: const Icon(Icons.campaign_outlined), label: Text(t.send)),
         ],
         const SizedBox(height: 16),
         if (a.items.isEmpty) Text(t.noAnnouncements, style: theme.textTheme.bodySmall),
@@ -468,7 +497,11 @@ class _PromosState extends ConsumerState<_Promos> {
           Expanded(
             child: DropdownButtonFormField<String>(
               initialValue: _kind,
-              items: [DropdownMenuItem(value: 'PERCENT', child: Text(t.percent)), DropdownMenuItem(value: 'FIXED', child: Text(t.fixed))],
+              isExpanded: true,
+              items: [
+                DropdownMenuItem(value: 'PERCENT', child: Text(t.percent, overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'FIXED', child: Text(t.fixed, overflow: TextOverflow.ellipsis)),
+              ],
               onChanged: (v) => setState(() => _kind = v ?? 'PERCENT'),
             ),
           ),
@@ -479,7 +512,7 @@ class _PromosState extends ConsumerState<_Promos> {
         TextField(controller: _max, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: t.maxUses)),
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 12),
-        FilledButton.icon(key: const Key('createPromo'), onPressed: _busy ? null : _create, icon: const Icon(Icons.sell_outlined), label: Text(t.createPromo)),
+        FilledButton.icon(key: const Key('createPromo'), style: E360Buttons.gold, onPressed: _busy ? null : _create, icon: const Icon(Icons.sell_outlined), label: Text(t.createPromo)),
       ] else
         _readOnly(context, t),
       const SizedBox(height: 12),

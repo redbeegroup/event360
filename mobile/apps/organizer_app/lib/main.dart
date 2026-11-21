@@ -66,12 +66,15 @@ class _OrganizerAppState extends ConsumerState<OrganizerApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
+  Widget build(BuildContext context) {
+    // The theme follows the language: Myanmar gets its own font, weights and line heights
+    final locale = ref.watch(localeProvider);
+    return MaterialApp.router(
         title: 'Event 360 Organizer',
         debugShowCheckedModeBanner: false,
-        theme: Event360Theme.light(),
-        darkTheme: Event360Theme.dark(),
-        locale: ref.watch(localeProvider),
+        theme: Event360Theme.light(locale: locale),
+        darkTheme: Event360Theme.dark(locale: locale),
+        locale: locale,
         supportedLocales: L10n.supportedLocales,
         localizationsDelegates: const [
           L10n.delegate,
@@ -81,4 +84,5 @@ class _OrganizerAppState extends ConsumerState<OrganizerApp> {
         ],
         routerConfig: ref.watch(routerProvider),
       );
+  }
 }

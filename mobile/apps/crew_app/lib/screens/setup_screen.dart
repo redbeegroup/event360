@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -37,8 +38,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         if (s?.event != null) ...[
-          Text(pickLang(lang, s!.event!.title, s.event!.titleMy), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-          Text(formatDayTime(s.event!.startsAt, lang)),
+          Text(pickLang(lang, s!.event!.title, s.event!.titleMy), style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text(formatDayTime(s.event!.startsAt, lang), style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 20),
         ],
         TextField(controller: _gate, decoration: InputDecoration(labelText: t.gate, hintText: t.gateHint, prefixIcon: const Icon(Icons.door_front_door_outlined))),
@@ -46,6 +48,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         TextField(controller: _device, decoration: InputDecoration(labelText: t.deviceName, hintText: t.deviceNameHint, prefixIcon: const Icon(Icons.phone_android))),
         const SizedBox(height: 20),
         FilledButton.icon(
+          style: E360Buttons.gold,
           icon: const Icon(Icons.qr_code_scanner),
           label: Text(t.startScanning),
           onPressed: () => ref.read(sessionProvider.notifier).setGate(_gate.text, _device.text.trim().isEmpty ? 'Crew device' : _device.text),

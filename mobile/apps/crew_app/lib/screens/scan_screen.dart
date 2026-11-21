@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,6 +66,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final last = st.last;
     final total = st.registered;
     final pct = total == 0 ? 0.0 : (st.checkedIn / total).clamp(0.0, 1.0);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final success = dark ? E360DarkColors.success : E360Colors.success;
+    final warnInk = dark ? E360DarkColors.amberInk : E360Colors.amberInk;
+    final warnBg = dark ? const Color(0xFF3A3017) : const Color(0xFFFCEFCB);
 
     return Scaffold(
       appBar: AppBar(
@@ -92,34 +99,36 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       ),
       body: Column(children: [
         // Attendance
-        Material(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        DecoratedBox(
+          decoration: BoxDecoration(color: scheme.surface, border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Column(children: [
               Row(children: [
-                const Icon(Icons.groups, size: 20),
+                Icon(Icons.groups, size: 22, color: scheme.primary),
                 const SizedBox(width: 8),
-                Expanded(child: Text(t.attendance(st.checkedIn, total), key: const Key('attendance'), style: const TextStyle(fontWeight: FontWeight.w700))),
-                if (st.pending.isNotEmpty) Text(t.pendingSync(st.pending.length), style: const TextStyle(fontSize: 12)),
+                Expanded(child: Text(t.attendance(st.checkedIn, total), key: const Key('attendance'), style: theme.textTheme.titleMedium)),
+                if (st.pending.isNotEmpty) Flexible(child: Text(t.pendingSync(st.pending.length), key: const Key('pendingCount'), textAlign: TextAlign.end, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700))),
               ]),
-              const SizedBox(height: 6),
-              LinearProgressIndicator(value: pct, minHeight: 6, borderRadius: BorderRadius.circular(6)),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: pct, minHeight: 8, borderRadius: BorderRadius.circular(8), color: success, backgroundColor: scheme.surfaceContainerHighest),
             ]),
           ),
         ),
         if (!st.online)
           MaterialBanner(
-            backgroundColor: const Color(0xFFFFF3CD),
-            leading: const Icon(Icons.cloud_off, color: Color(0xFF8A6100)),
-            content: Text(t.offlineBanner(st.pending.length), style: const TextStyle(color: Color(0xFF5C4100))),
+            backgroundColor: warnBg,
+            dividerColor: Colors.transparent,
+            leading: Icon(Icons.cloud_off, color: warnInk),
+            content: Text(t.offlineBanner(st.pending.length), style: TextStyle(color: warnInk, fontWeight: FontWeight.w600)),
             actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).refresh(), child: Text(t.retry))],
           ),
         if (st.conflicts.isNotEmpty)
           MaterialBanner(
-            backgroundColor: const Color(0xFFFFE0B2),
-            leading: const Icon(Icons.warning_amber_rounded),
-            content: Text('${t.syncConflict}: ${st.conflicts.map((c) => c.ticket?.holderName ?? '?').join(', ')}'),
+            backgroundColor: warnBg,
+            dividerColor: Colors.transparent,
+            leading: Icon(Icons.warning_amber_rounded, color: warnInk),
+            content: Text('${t.syncConflict}: ${st.conflicts.map((c) => c.ticket?.holderName ?? '?').join(', ')}', style: TextStyle(color: warnInk)),
             actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).clearConflicts(), child: Text(t.ok))],
           ),
         Expanded(
@@ -134,7 +143,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(22)),
                     child: Text(t.pointCamera, style: const TextStyle(color: Colors.white)),
                   ),
                 ),

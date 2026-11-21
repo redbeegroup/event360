@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,7 +28,7 @@ class EventsScreen extends ConsumerWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(t.loadError),
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: () => ref.invalidate(crewEventsProvider), child: Text(t.retry)),
+            OutlinedButton(style: E360Buttons.outline, onPressed: () => ref.invalidate(crewEventsProvider), child: Text(t.retry)),
           ]),
         ),
         data: (list) => list.isEmpty
@@ -40,13 +41,31 @@ class EventsScreen extends ConsumerWidget {
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (_, i) {
                     final e = list[i];
+                    final theme = Theme.of(context);
                     return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.event),
-                        title: Text(pickLang(lang, e.title, e.titleMy), style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text([formatDayTime(e.startsAt, lang), if (e.venueName != null) e.venueName!].join(' · ')),
-                        trailing: const Icon(Icons.chevron_right),
+                      child: InkWell(
                         onTap: () => ref.read(sessionProvider.notifier).chooseEvent(e),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+                              child: Icon(Icons.event, color: theme.colorScheme.primary),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(pickLang(lang, e.title, e.titleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                                const SizedBox(height: 2),
+                                Text([formatDayTime(e.startsAt, lang), if (e.venueName != null) e.venueName!].join(' · '), style: theme.textTheme.bodySmall),
+                              ]),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+                          ]),
+                        ),
                       ),
                     );
                   },

@@ -1,3 +1,4 @@
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,5 +15,5 @@ class LangButton extends ConsumerWidget {
       );
 }
 
-/// The shared theme makes filled buttons full-width; use this for buttons inside rows, list tiles and dialogs.
-final compactFilled = FilledButton.styleFrom(minimumSize: const Size(64, 44));
+/// The shared theme makes filled buttons full-width; use this (a compact navy pill) for buttons inside rows, list tiles and dialogs.
+final compactFilled = E360Buttons.navy.merge(FilledButton.styleFrom(minimumSize: const Size(64, 44), padding: const EdgeInsets.symmetric(horizontal: 18), textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)));

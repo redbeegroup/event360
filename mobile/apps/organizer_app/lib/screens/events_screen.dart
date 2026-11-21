@@ -44,7 +44,7 @@ class EventsScreen extends ConsumerWidget {
           final past = list.where((e) => e.isPast).toList();
           return RefreshIndicator(
             onRefresh: () => ref.refresh(orgEventsProvider.future),
-            child: ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: [
+            child: ListView(padding: const EdgeInsets.only(top: 0, bottom: 16), children: [
               if (upcoming.isNotEmpty) _Header(t.upcoming),
               for (final e in upcoming) _EventTile(event: e, lang: lang),
               if (past.isNotEmpty) _Header(t.past),
@@ -61,6 +61,7 @@ class EventsScreen extends ConsumerWidget {
             ? DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   key: const Key('orgPicker'),
+                  isExpanded: true,
                   value: org?.id,
                   items: [for (final o in orgs) DropdownMenuItem(value: o.id, child: Text(o.name, overflow: TextOverflow.ellipsis))],
                   onChanged: (id) {
@@ -93,11 +94,12 @@ class _Header extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: Text(text, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+        child: Text(text, style: Theme.of(context).textTheme.titleLarge),
       );
 }
 
+/// Compact event row, like the buyer app's: square cover, title, date · venue, status badge.
 class _EventTile extends StatelessWidget {
   const _EventTile({required this.event, required this.lang, this.dim = false});
   final OrgEvent event;
@@ -108,18 +110,49 @@ class _EventTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     final theme = Theme.of(context);
+    final live = event.isLiveNow && event.status == 'PUBLISHED';
+    final good = event.status == 'PUBLISHED' || event.status == 'ONGOING';
+    final placeholder = Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(Icons.celebration_outlined, size: 30, color: theme.colorScheme.primary.withValues(alpha: 0.6)),
+    );
+    final cover = event.coverImageUrl;
     return Opacity(
       opacity: dim ? 0.6 : 1,
-      child: ListTile(
+      child: InkWell(
         key: Key('event-${event.id}'),
-        title: Text(pickLang(lang, event.title, event.titleMy), maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text([formatDayTime(event.startsAt, lang), if (event.venue != null) event.venue!].join(' · ')),
-        trailing: event.isLiveNow && event.status == 'PUBLISHED'
-            ? Chip(label: Text(t.liveNow), backgroundColor: theme.colorScheme.errorContainer, visualDensity: VisualDensity.compact)
-            : Text(statusLabel(t, event.status), style: theme.textTheme.bodySmall),
         onTap: () => context.push('/event/${event.id}'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: cover == null ? placeholder : Image.network(cover, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(pickLang(lang, event.title, event.titleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(height: 1.25)),
+                  const SizedBox(height: 3),
+                  Text([formatDayTime(event.startsAt, lang), if (event.venue != null) event.venue!].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: live ? E360Badge(t.liveNow, kind: E360BadgeKind.success) : E360Badge(statusLabel(t, event.status), kind: good ? E360BadgeKind.success : E360BadgeKind.neutral),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }
 }
-

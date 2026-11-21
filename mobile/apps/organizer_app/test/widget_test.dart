@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/providers.dart';
 import 'package:organizer_app/app/push.dart';
 import 'package:organizer_app/main.dart';
+import 'package:organizer_app/screens/event_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _future = '2099-01-15T10:30:00.000Z';
@@ -148,11 +149,11 @@ class FakePush implements PushClient {
   Future<void> deleteToken() async {}
 }
 
-Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push}) async {
-  tester.view.physicalSize = const Size(1236, 2745);
-  tester.view.devicePixelRatio = 3;
+Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push, String lang = 'en', Size size = const Size(1236, 2745), double dpr = 3}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = dpr;
   addTearDown(tester.view.reset);
-  SharedPreferences.setMockInitialValues({'org_lang': 'en'});
+  SharedPreferences.setMockInitialValues({'org_lang': lang});
   final sp = await SharedPreferences.getInstance();
   final store = MemoryTokenStore();
   if (signedIn) await store.save('a', 'r');
@@ -203,9 +204,12 @@ void main() {
     expect(find.text('VIP deck'), findsOneWidget);
     expect(find.text('Gate A'), findsOneWidget);
     expect(find.text('No gate'), findsOneWidget);
-    expect(find.text('Available · 11'), findsOneWidget);
-    expect(find.text('Held for guests · 3'), findsOneWidget);
-    expect(find.text('Complimentary · 1'), findsOneWidget);
+    // Seat counts are tiles: label on top, the number below
+    for (final (label, n) in [('Available', '11'), ('Held for guests', '3'), ('Complimentary', '1')]) {
+      final tile = find.ancestor(of: find.text(label), matching: find.byType(StatTile));
+      expect(tile, findsOneWidget, reason: label);
+      expect(find.descendant(of: tile, matching: find.text(n)), findsOneWidget, reason: label);
+    }
     await tester.scrollUntilVisible(find.text('2 × · 30,000 MMK'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('2 × · 30,000 MMK'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); // stop the refresh timer
@@ -299,5 +303,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('tabOverview')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('event list and overview have no overflow at 360 dp in EN and MY (tiles, seat counts, long amounts)', (tester) async {
+    for (final lang in ['en', 'my']) {
+      await pumpApp(tester, lang: lang, size: const Size(360, 780), dpr: 1);
+      expect(find.byKey(const Key('event-e1')), findsOneWidget, reason: '$lang list');
+      expect(tester.takeException(), isNull, reason: '$lang list');
+      await tester.tap(find.byKey(const Key('event-e1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('sold')), findsOneWidget, reason: '$lang overview');
+      expect(find.byType(StatTile), findsNWidgets(9), reason: '$lang tiles: 4 totals + 5 seat counts');
+      expect(tester.takeException(), isNull, reason: '$lang overview');
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang overview scrolled');
+      // Every other tab too
+      for (final k in ['tabDoor', 'tabAnnounce', 'tabPromos']) {
+        await tester.ensureVisible(find.byKey(Key(k)));
+        await tester.tap(find.byKey(Key(k)));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$lang $k');
+      }
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 }

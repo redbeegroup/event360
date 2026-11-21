@@ -1,20 +1,31 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../app/format.dart';
 import '../l10n/app_localizations.dart';
 
-/// Colour + headline for a scan result.
-({Color color, IconData icon, String title}) resultStyle(L10n t, ScanOutcome o) => switch (o.result) {
-      'ACCEPTED' => (color: const Color(0xFF1B873F), icon: Icons.check_circle, title: t.resultAccepted),
-      'ALREADY_CHECKED_IN' => (color: const Color(0xFFC77700), icon: Icons.warning_amber_rounded, title: t.resultDuplicate),
-      'WRONG_EVENT' => (color: const Color(0xFFC62828), icon: Icons.event_busy, title: t.resultWrongEvent),
-      'VOID' => (color: const Color(0xFFC62828), icon: Icons.block, title: t.resultVoid),
-      'REFUNDED' => (color: const Color(0xFFC62828), icon: Icons.money_off, title: t.resultRefunded),
-      'TRANSFERRED' => (color: const Color(0xFFC62828), icon: Icons.swap_horiz, title: t.resultTransferred),
-      'NO_OFFLINE_DATA' => (color: const Color(0xFF555555), icon: Icons.cloud_off, title: t.loadError),
-      _ => (color: const Color(0xFFC62828), icon: Icons.cancel, title: o.reason == 'outdated_qr' ? t.outdatedQr : t.resultInvalid),
-    };
+/// Colour, ink, icon and headline for a scan result. Accepted is success, already-checked-in is the amber tone,
+/// everything that turns a guest away is danger. The icon and headline carry the meaning too, never colour alone.
+({Color color, Color onColor, IconData icon, String title}) resultStyle(L10n t, ScanOutcome o, {Brightness brightness = Brightness.light}) {
+  final dark = brightness == Brightness.dark;
+  final success = dark ? E360DarkColors.success : E360Colors.success;
+  final amber = dark ? E360DarkColors.amberInk : E360Colors.amberInk;
+  final danger = dark ? E360DarkColors.danger : E360Colors.danger;
+  final neutral = dark ? E360DarkColors.muted : E360Colors.muted;
+  final on = dark ? E360DarkColors.paper : Colors.white;
+  ({Color color, Color onColor, IconData icon, String title}) s(Color c, IconData i, String title) => (color: c, onColor: on, icon: i, title: title);
+  return switch (o.result) {
+    'ACCEPTED' => s(success, Icons.check_circle, t.resultAccepted),
+    'ALREADY_CHECKED_IN' => s(amber, Icons.warning_amber_rounded, t.resultDuplicate),
+    'WRONG_EVENT' => s(danger, Icons.event_busy, t.resultWrongEvent),
+    'VOID' => s(danger, Icons.block, t.resultVoid),
+    'REFUNDED' => s(danger, Icons.money_off, t.resultRefunded),
+    'TRANSFERRED' => s(danger, Icons.swap_horiz, t.resultTransferred),
+    'NO_OFFLINE_DATA' => s(neutral, Icons.cloud_off, t.loadError),
+    _ => s(danger, Icons.cancel, o.reason == 'outdated_qr' ? t.outdatedQr : t.resultInvalid),
+  };
+}
 
 /// Big, glanceable result of the last scan.
 class ResultCard extends StatelessWidget {
@@ -27,7 +38,8 @@ class ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = L10n.of(context);
-    final s = resultStyle(t, outcome);
+    final theme = Theme.of(context);
+    final s = resultStyle(t, outcome, brightness: theme.brightness);
     final tk = outcome.ticket;
     final ci = tk?.checkedIn;
     final details = <String>[
@@ -37,39 +49,41 @@ class ResultCard extends StatelessWidget {
       if (outcome.reason == 'not_in_list') t.notInList,
       if (outcome.offline) t.offlineChecked,
     ];
+    final ink = s.onColor;
     return Material(
       color: s.color,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       elevation: 6,
+      shadowColor: const Color(0x66000000),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         onTap: onClose,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: DefaultTextStyle(
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: ink),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Icon(s.icon, color: Colors.white, size: 36),
+                Icon(s.icon, color: ink, size: 36),
                 const SizedBox(width: 12),
-                Expanded(child: Text(s.title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white))),
+                Expanded(child: Text(s.title, key: const Key('resultTitle'), style: theme.textTheme.titleLarge?.copyWith(fontSize: 24, color: ink))),
               ]),
               if (tk != null) ...[
                 const SizedBox(height: 10),
                 if (tk.seat != null && tk.seat!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(pickLang(lang, tk.seat, tk.seatMy), key: const Key('resultSeat'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
+                    child: Text(pickLang(lang, tk.seat, tk.seatMy), key: const Key('resultSeat'), style: theme.textTheme.titleLarge?.copyWith(fontSize: 28, color: ink)),
                   ),
-                Text(tk.holderName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
-                Text('${pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy)} · #${tk.code}', style: const TextStyle(fontSize: 15, color: Colors.white)),
+                Text(tk.holderName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: ink)),
+                Text('${pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy)} · #${tk.code}', style: TextStyle(fontSize: 15, color: ink)),
               ],
-              for (final d in details) Padding(padding: const EdgeInsets.only(top: 4), child: Text(d, style: const TextStyle(color: Colors.white))),
+              for (final d in details) Padding(padding: const EdgeInsets.only(top: 4), child: Text(d, style: TextStyle(color: ink))),
               if (onUndo != null)
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
-                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                    style: TextButton.styleFrom(foregroundColor: ink),
                     onPressed: onUndo,
                     icon: const Icon(Icons.undo),
                     label: Text(t.undo),

@@ -24,12 +24,15 @@ class CrewApp extends ConsumerWidget {
   const CrewApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The theme follows the language: Myanmar gets its own font, weights and line heights
+    final locale = ref.watch(localeProvider);
+    return MaterialApp.router(
         title: 'Event 360 Crew',
         debugShowCheckedModeBanner: false,
-        theme: Event360Theme.light(),
-        darkTheme: Event360Theme.dark(),
-        locale: ref.watch(localeProvider),
+        theme: Event360Theme.light(locale: locale),
+        darkTheme: Event360Theme.dark(locale: locale),
+        locale: locale,
         supportedLocales: L10n.supportedLocales,
         localizationsDelegates: const [
           L10n.delegate,
@@ -39,4 +42,5 @@ class CrewApp extends ConsumerWidget {
         ],
         routerConfig: ref.watch(routerProvider),
       );
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -73,27 +74,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProv
       ),
       body: TabBarView(controller: _tabs, children: [
         ListView(padding: const EdgeInsets.all(20), children: [
+          const Padding(padding: EdgeInsets.only(top: 4, bottom: 20), child: Align(child: E360Mark(size: 56))),
           TextField(controller: _email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email], decoration: InputDecoration(labelText: t.email)),
           const SizedBox(height: 12),
           TextField(controller: _password, obscureText: true, decoration: InputDecoration(labelText: t.password), onSubmitted: (_) => _run(() => session.signInWithAccount(_email.text, _password.text))),
           const SizedBox(height: 16),
           if (_error != null && _tabs.index == 0) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-          FilledButton(onPressed: _busy ? null : () => _run(() => session.signInWithAccount(_email.text, _password.text)), child: Text(t.signIn)),
+          FilledButton(style: E360Buttons.gold, onPressed: _busy ? null : () => _run(() => session.signInWithAccount(_email.text, _password.text)), child: Text(t.signIn)),
         ]),
         ListView(padding: const EdgeInsets.all(20), children: [
+          const Padding(padding: EdgeInsets.only(top: 4, bottom: 20), child: Align(child: E360Mark(size: 56))),
           TextField(
             controller: _code,
             textCapitalization: TextCapitalization.characters,
-            style: const TextStyle(fontSize: 22, letterSpacing: 3, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, letterSpacing: 3),
             decoration: InputDecoration(labelText: t.eventCode, hintText: t.eventCodeHint),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: _scanCode, icon: const Icon(Icons.qr_code_scanner), label: Text(t.scanCodeQr)),
+          OutlinedButton.icon(style: E360Buttons.outline, onPressed: _scanCode, icon: const Icon(Icons.qr_code_scanner), label: Text(t.scanCodeQr)),
           const SizedBox(height: 12),
           TextField(controller: _device, decoration: InputDecoration(labelText: t.deviceName, hintText: t.deviceNameHint)),
           const SizedBox(height: 16),
           if (_error != null && _tabs.index == 1) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
           FilledButton(
+            style: E360Buttons.gold,
             onPressed: _busy
                 ? null
                 : () => _run(() => session.redeemCode(extractEventCode(_code.text) ?? _code.text, _device.text.trim().isEmpty ? 'Crew device' : _device.text)),

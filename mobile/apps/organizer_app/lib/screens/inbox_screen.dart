@@ -74,8 +74,8 @@ class InboxScreen extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final n = box.items[i];
                     return ListTile(
-                      tileColor: n.unread ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35) : null,
-                      leading: CircleAvatar(child: Icon(_icon(n.kind))),
+                      tileColor: n.unread ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5) : null,
+                      leading: CircleAvatar(backgroundColor: theme.colorScheme.surfaceContainerHighest, foregroundColor: theme.colorScheme.primary, child: Icon(_icon(n.kind))),
                       title: Text(pickLang(lang, n.title, n.titleMy), style: TextStyle(fontWeight: n.unread ? FontWeight.w700 : FontWeight.w500)),
                       subtitle: Text('${pickLang(lang, n.body, n.bodyMy)}\n${formatDayTime(n.createdAt, lang)}'),
                       isThreeLine: true,

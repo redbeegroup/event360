@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import 'viewfinder.dart';
 
 /// Live camera QR scanner. Calls [onCode] with each decoded QR text (the caller ignores repeats).
 class QrScannerView extends ConsumerStatefulWidget {
@@ -55,17 +56,7 @@ class _QrScannerViewState extends ConsumerState<QrScannerView> {
       // Aiming frame (hidden when the camera failed, so it doesn't cover the message)
       ValueListenableBuilder<MobileScannerState>(
         valueListenable: c,
-        builder: (_, st, __) => st.error != null
-            ? const SizedBox.shrink()
-            : IgnorePointer(
-                child: Center(
-                  child: Container(
-                    width: 240,
-                    height: 240,
-                    decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 3), borderRadius: BorderRadius.circular(20)),
-                  ),
-                ),
-              ),
+        builder: (_, st, __) => st.error != null ? const SizedBox.shrink() : const ViewfinderOverlay(),
       ),
     ]);
   }
@@ -75,14 +66,18 @@ class _Placeholder extends StatelessWidget {
   const _Placeholder({required this.text});
   final String text;
   @override
-  Widget build(BuildContext context) => Container(
-        color: Colors.black87,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 48),
-          const SizedBox(height: 12),
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
-        ]),
-      );
+  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
+        const ColoredBox(color: Color(0xFF15172E)),
+        const ViewfinderOverlay(scrim: false),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
+              const SizedBox(height: 10),
+              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+            ]),
+          ),
+        ),
+      ]);
 }

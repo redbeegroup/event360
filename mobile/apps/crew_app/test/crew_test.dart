@@ -2,10 +2,14 @@ import 'dart:convert';
 
 import 'package:crew_app/app/checkin_controller.dart';
 import 'package:crew_app/app/providers.dart';
+import 'package:crew_app/l10n/app_localizations.dart';
 import 'package:crew_app/main.dart';
+import 'package:crew_app/widgets/result_card.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -346,5 +350,79 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Undo'));
     await tester.pumpAndSettle();
     expect(api.undone, ['eeeeeeee-0000-0000-0000-000000000005']);
+  });
+
+  testWidgets('result card has no overflow at 360 dp in EN and MY, for every outcome, with a long seat and large text', (tester) async {
+    const longSeat = 'Royal Circle Balcony · Row C · Seat 112 (wheelchair space)';
+    const longSeatMy = 'ဘုရင့်ဝရန်တာ အထူးထိုင်ခုံပိုင်း · အတန်း C · ခုံ 112 (ဘီးတပ်ကုလားထိုင်နေရာ)';
+    Map<String, dynamic> tk({String? gate}) => {
+          ...ticketJson('cccccccc-0000-0000-0000-000000000003', status: 'CHECKED_IN', checkedIn: {'at': '2027-01-15T11:00:00.000Z', 'gate': gate, 'by': 'Door Aung Kyaw Htet'}),
+          'holderName': 'Daw Khin Khin Aye Myint Maung',
+          'seat': longSeat,
+          'seatMy': longSeatMy,
+          'ticketType': {'id': ttId, 'name': 'Platinum Patron Experience', 'nameMy': 'ပလက်တီနမ် ဧည့်သည်တော်အထူးလက်မှတ်'},
+        };
+    final outcomes = [
+      ScanOutcome.fromJson({'result': 'ACCEPTED', 'ticket': tk()}),
+      ScanOutcome.fromJson({'result': 'ALREADY_CHECKED_IN', 'ticket': tk(gate: 'North side entrance gate')}),
+      ScanOutcome.fromJson({'result': 'WRONG_EVENT', 'ticket': null, 'otherEvent': {'title': 'Yangon International New Year Countdown Gala Night'}}),
+      ScanOutcome.fromJson({'result': 'VOID', 'ticket': tk()}),
+      ScanOutcome.fromJson({'result': 'REFUNDED', 'ticket': tk()}),
+      ScanOutcome.fromJson({'result': 'INVALID', 'reason': 'not_in_list', 'ticket': null}),
+    ];
+    for (final lang in ['en', 'my']) {
+      for (final dark in [false, true]) {
+        for (final scale in [1.0, 1.6]) {
+          for (final o in outcomes) {
+            final locale = Locale(lang);
+            tester.view.physicalSize = const Size(360, 780);
+            tester.view.devicePixelRatio = 1;
+            await tester.pumpWidget(MaterialApp(
+              theme: dark ? Event360Theme.dark(locale: locale) : Event360Theme.light(locale: locale),
+              locale: locale,
+              supportedLocales: L10n.supportedLocales,
+              localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+              builder: (c, child) => MediaQuery(data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: ResultCard(outcome: o, lang: lang, onUndo: o.accepted ? () {} : null, onClose: () {}),
+                  ),
+                ),
+              ),
+            ));
+            await tester.pumpAndSettle();
+            final reason = '$lang dark=$dark x$scale ${o.result}';
+            expect(find.byKey(const Key('resultTitle')), findsOneWidget, reason: reason);
+            expect(tester.takeException(), isNull, reason: reason);
+            expect(tester.getSize(find.byType(ResultCard)).width, 336, reason: reason);
+          }
+        }
+      }
+    }
+    addTearDown(tester.view.reset);
+  });
+
+  testWidgets('result colours follow the tokens and each result has its own icon and headline', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('en'),
+      supportedLocales: L10n.supportedLocales,
+      localizationsDelegates: const [L10n.delegate, GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
+      home: const SizedBox(),
+    ));
+    await tester.pumpAndSettle();
+    final t = await L10n.delegate.load(const Locale('en'));
+    final ok = resultStyle(t, ScanOutcome(result: 'ACCEPTED'));
+    final dup = resultStyle(t, ScanOutcome(result: 'ALREADY_CHECKED_IN'));
+    final bad = resultStyle(t, ScanOutcome(result: 'INVALID'));
+    expect(ok.color, E360Colors.success);
+    expect(dup.color, E360Colors.amberInk);
+    for (final r in ['INVALID', 'WRONG_EVENT', 'VOID', 'REFUNDED']) {
+      expect(resultStyle(t, ScanOutcome(result: r)).color, E360Colors.danger, reason: r);
+    }
+    // Not colour alone: three different icons and headlines
+    expect({ok.icon, dup.icon, bad.icon}, hasLength(3));
+    expect({ok.title, dup.title, bad.title}, hasLength(3));
   });
 }

@@ -1,4 +1,5 @@
 import 'package:event360_core/event360_core.dart';
+import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,9 +48,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(t.appTitle), actions: const [LangButton()]),
       body: ListView(padding: const EdgeInsets.all(24), children: [
-        Icon(Icons.storefront_outlined, size: 56, color: theme.colorScheme.primary),
+        const Align(child: E360Mark(size: 56)),
         const SizedBox(height: 12),
-        Text(t.signInTitle, textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+        Text(t.signInTitle, textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
         const SizedBox(height: 20),
         TextField(key: const Key('email'), controller: _email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email], decoration: InputDecoration(labelText: t.email)),
         const SizedBox(height: 12),
@@ -58,6 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const SizedBox(height: 20),
         FilledButton(
           key: const Key('signIn'),
+          style: E360Buttons.gold,
           onPressed: _busy ? null : _submit,
           child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.signIn),
         ),
