@@ -215,7 +215,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
       if (promo) {
         const used = await tx.$executeRaw`UPDATE promo_codes SET used = used + 1 WHERE id = ${promo.id}::uuid AND (max_uses IS NULL OR used < max_uses)`;
-        if (used !== 1) throw new ConflictException('This code has been used up');
+        if (used !== 1) throw new ConflictException({ message: 'This code has been used up', reasonCode: 'USED_UP' }); // the last use went meanwhile
       }
       const order = await tx.order.create({
         data: {
@@ -416,13 +416,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
       if (n.count !== 1) return false;
-      const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
-      if (o.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${o.promoCodeId}::uuid`;
       const items = await tx.orderItem.findMany({ where: { orderId } });
       for (const i of items) {
         if (i.seatKeys.length) continue;
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
       }
+      // Same lock order as createOrder and settle: standing ticket_types rows, then the promo code, then seats
+      const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
+      if (o.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${o.promoCodeId}::uuid`;
       if (seatedIn?.typeIds.length) {
         // A seat may come back under another type (or none) if the rules changed while it was held
         const back = await releaseSeats(tx, orderId);

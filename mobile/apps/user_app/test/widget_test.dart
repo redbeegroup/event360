@@ -365,10 +365,13 @@ void phoneScreen(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
-/// The test font draws every Myanmar code point as a full square, so a Myanmar discounted total (struck-through
-/// price plus new price) is far wider than on a device: tests that show one use a wider screen.
-Future<void> wideScreen(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(2400, 2745);
+/// Phone widths (dp) the Myanmar discounted totals must fit: the test font draws every Myanmar code point as a
+/// full square, so these are harsher than a device.
+final phoneWidths = ValueVariant<double>({360, 412});
+
+/// Narrows the screen to the current [phoneWidths] value (pumpApp starts at 412 dp).
+Future<void> phoneWidth(WidgetTester tester) async {
+  tester.view.physicalSize = Size(phoneWidths.currentValue! * 3, 2745);
   await tester.pump();
 }
 
@@ -972,7 +975,7 @@ void main() {
 
   testWidgets('a code used up at order time is shown in Myanmar; other order errors keep the API message', (tester) async {
     await openPicker(tester, lang: 'my');
-    await wideScreen(tester);
+    await phoneWidth(tester);
     await zoomIntoStalls(tester);
     await tapSeat(tester, 1, 1);
     await applyPromo(tester, 'SAVE20');
@@ -988,12 +991,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Sales for Stalls have closed'), findsOneWidget);
     expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsNothing);
+    // the same code running out while the order is saved (409) maps the same way
+    pickerApi.nextOrderError = ApiException(409, 'This code has been used up', reasonCode: 'USED_UP');
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, variant: phoneWidths);
 
   testWidgets('ticket sheet: a code used up at order time is shown in Myanmar', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
-    await wideScreen(tester);
+    await phoneWidth(tester);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('getTickets')));
@@ -1010,7 +1019,7 @@ void main() {
     expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
     expect(find.text('This code has been used up'), findsNothing);
     await tester.pumpWidget(const SizedBox());
-  });
+  }, variant: phoneWidths);
 
   testWidgets('invalid promo shows reason', (tester) async {
     await openPicker(tester);

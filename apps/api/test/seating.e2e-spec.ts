@@ -957,6 +957,54 @@ run('Seated checkout', () => {
     const p = await order(B2, ev.id, { seats: ['A:2:2'], promoCode: `half${tag}` }).expect(201);
     expect(p.body).toMatchObject({ subtotalMmk: 10_000, discountMmk: 5_000, totalMmk: 5_000 });
   });
+
+  it('releasing a hold and a new order sharing a standing type and a promo code do not deadlock', async () => {
+    const ev = await seatedEvent('LockOrder');
+    const owner = await prisma.user.findFirstOrThrow({ where: { email: `own-sc-${tag}@e2e.test` } });
+    const code = `LOCK${tag}`.toUpperCase();
+    await prisma.promoCode.create({ data: { eventId: ev.id, code, kind: 'PERCENT', value: 1000, createdById: owner.id } });
+    const [B1, B2] = [await consumer(), await consumer()];
+    const held = await order(B1, ev.id, { items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).expect(201);
+
+    // Hold the Floor counter row so both transactions queue on it: the new order first, then the release.
+    // Each takes the Floor row before the promo row, so the order finishes and the release follows. (With the
+    // promo row taken first, the release would hold it while waiting for Floor, which the order holds while
+    // waiting for the promo row: a deadlock.)
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let gatePid = 0;
+    const locked = new Promise<void>((ready) => {
+      void prisma.$transaction(
+        async (tx) => {
+          gatePid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
+          await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.floor}::uuid FOR UPDATE`;
+          ready();
+          await gate;
+        },
+        { timeout: 30_000 },
+      );
+    });
+    await locked;
+    const waiting = async (blockers: number[], except: number[]) => {
+      for (let i = 0; i < 200; i++) {
+        const rows = await prisma.$queryRaw<{ pid: number }[]>`
+          SELECT pid FROM pg_stat_activity WHERE pg_blocking_pids(pid) && ${blockers}::int[] AND NOT (pid = ANY(${except}::int[]))`;
+        if (rows.length) return rows[0].pid;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error('nothing queued on the Floor row');
+    };
+    const placing = order(B2, ev.id, { items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).then((r) => r);
+    const orderPid = await waiting([gatePid], []);
+    const cancelling = http.post(`/v1/orders/${held.body.id}/cancel`).set(B1).then((r) => r);
+    await waiting([gatePid, orderPid], [orderPid]);
+    release();
+    const [o, c] = await Promise.all([placing, cancelling]);
+    expect(o.status).toBe(201);
+    expect(c.status).toBe(200);
+    expect(await ttRow(ev.floor)).toMatchObject({ held: 1, sold: 0 });
+    expect((await prisma.promoCode.findFirstOrThrow({ where: { eventId: ev.id, code } })).used).toBe(1);
+  });
 });
 
 run('Guest seats', () => {
@@ -1505,6 +1553,25 @@ run('Seat everywhere', () => {
     const r = await order(await login(), ev.id, { seats: ['A:2:2'], promoCode: pc.code }).expect(400);
     expect(r.body).toEqual({ message: 'This code has been used up', reasonCode: 'USED_UP' });
     expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'AVAILABLE' });
+  });
+
+  it('a code used up between the check and the save gives 409 with its reason code', async () => {
+    const ev = await seatedEvent('PromoRace');
+    const pc = await promo(ev.id, 10_000, 1);
+    // The pre-transaction check reads the code with a use left; the last use goes before the transaction runs
+    const stale = await prisma.promoCode.findUniqueOrThrow({ where: { id: pc.id } });
+    const spy = jest.spyOn(prisma.promoCode, 'findUnique').mockImplementationOnce((async () => {
+      await prisma.promoCode.update({ where: { id: pc.id }, data: { used: 1 } });
+      return stale;
+    }) as any);
+    try {
+      const r = await order(await login(), ev.id, { seats: ['A:2:2'], promoCode: pc.code }).expect(409);
+      expect(r.body).toEqual({ message: 'This code has been used up', reasonCode: 'USED_UP' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await promoUsed(pc.id)).toBe(1);
+    expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'AVAILABLE', orderId: null });
   });
 
   /** Pay late: the hold expires (a sweep gives the use back), then the mock payment arrives. */

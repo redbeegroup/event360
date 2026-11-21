@@ -11,6 +11,7 @@ import '../app/format.dart';
 import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/total_amounts.dart';
 
 /// Seats are tappable from this zoom (screen px per layout unit); below it a tap on a section zooms into it.
 const double kSeatTapScale = 1.6;
@@ -712,14 +713,16 @@ class _BottomBar extends StatelessWidget {
                 ),
             ],
             const SizedBox(height: 6),
-            Row(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(child: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium)),
-              if (promo?.valid == true)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(t.mmk(formatAmount(totalMmk, lang)), style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: TotalAmounts(
+                  original: promo?.valid == true ? t.mmk(formatAmount(totalMmk, lang)) : null,
+                  total: t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)),
+                  totalKey: const Key('seatTotal'),
                 ),
-              Text(t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)), key: const Key('seatTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              ),
             ]),
             const SizedBox(height: 8),
             Row(children: [

@@ -14,6 +14,7 @@ import '../app/promo_text.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
+import '../widgets/total_amounts.dart';
 
 class EventDetailScreen extends ConsumerWidget {
   const EventDetailScreen({super.key, required this.idOrSlug});
@@ -552,15 +553,16 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Row(children: [
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-                    if (_promoResult?.valid == true)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Text(t.mmk(formatAmount(_type.priceMmk * _qty, lang)), style: theme.textTheme.bodyMedium?.copyWith(decoration: TextDecoration.lineThrough)),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: TotalAmounts(
+                        original: _promoResult?.valid == true ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+                        total: t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
+                        totalKey: const Key('sheetTotal'),
                       ),
-                    Text(t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
-                        key: const Key('sheetTotal'), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                    ),
                   ]),
                 ),
               ],
