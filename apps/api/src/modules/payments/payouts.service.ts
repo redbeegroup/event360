@@ -123,9 +123,17 @@ export class PayoutsService {
     };
   }
 
-  async list(orgId: string) {
+  /** Admin sees who recorded it; organizers do not. */
+  private organizerView(v: ReturnType<PayoutsService['view']>) {
+    const { createdById: _omit, ...rest } = v;
+    return rest;
+  }
+
+  async list(orgId: string, forOrganizer = false) {
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId }, select: { id: true } });
+    if (!org) throw new NotFoundException('Organization not found');
     const rows = await this.prisma.payout.findMany({ where: { organizationId: orgId }, orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }] });
-    return rows.map((p) => this.view(p));
+    return rows.map((p) => (forOrganizer ? this.organizerView(this.view(p)) : this.view(p)));
   }
 
   async record(orgId: string, input: RecordPayoutInput, actorId: string) {
@@ -140,7 +148,9 @@ export class PayoutsService {
       const p = await tx.payout.create({ data: { organizationId: orgId, amountMmk: amount, paidAt, method: input.method, reference: input.reference || null, note: input.note || null, createdById: actorId } });
       await journal(tx, 'payout', p.id, [{ account: ACC.payable(orgId), debit: amount }, { account: ACC.payoutsCash, credit: amount }]);
       await tx.auditLog.create({ data: { actorId, action: 'payout.record', entityType: 'payout', entityId: p.id, data: { organizationId: orgId, amountMmk: input.amountMmk, method: input.method, reference: input.reference ?? null } } });
-      return this.view(p);
+      const owed = (await orgFigures(tx, orgId)).get(orgId)?.owedMmk ?? 0n;
+      // owedMmk after recording: negative means this overpaid the organizer (admin UI warns)
+      return { ...this.view(p), owedMmk: mmk(owed) };
     });
   }
 
@@ -161,12 +171,15 @@ export class PayoutsService {
   /** Organizer-facing summary; same figures as the admin balances report. */
   async summary(orgId: string) {
     const f = (await orgFigures(this.prisma, orgId)).get(orgId) ?? emptyFigures(orgId);
+    const eventsNet = f.events.reduce((t, e) => t + e.netMmk, 0n);
     return {
       earnedMmk: mmk(f.earnedMmk),
+      eventsNetMmk: mmk(eventsNet),
+      reconciled: eventsNet === f.earnedMmk,
       paidOutMmk: mmk(f.paidOutMmk),
       owedMmk: mmk(f.owedMmk),
       events: f.events.map((e) => ({ eventId: e.eventId, title: e.title, grossMmk: mmk(e.grossMmk), discountMmk: mmk(e.discountMmk), commissionMmk: mmk(e.commissionMmk), refundsMmk: mmk(e.refundsMmk), netMmk: mmk(e.netMmk) })),
-      payouts: await this.list(orgId),
+      payouts: await this.list(orgId, true),
     };
   }
 }

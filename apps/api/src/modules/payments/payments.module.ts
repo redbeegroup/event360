@@ -398,7 +398,7 @@ export class OrgPayoutsController {
     const s = await this.payouts.summary(orgId);
     const esc = (v: unknown) => {
       let t = String(v ?? '');
-      if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`; // spreadsheet formula injection
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = `'${t}`; // spreadsheet formula injection
       return `"${t.replace(/"/g, '""')}"`;
     };
     const csv = [

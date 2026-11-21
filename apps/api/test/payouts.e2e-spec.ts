@@ -102,7 +102,7 @@ run('Payouts', () => {
     expect((await balance()).owedMmk).toBe(52_250);
     const before = await net('payouts_cash');
     const r = await record(20_000).expect(201);
-    expect(r.body).toMatchObject({ amountMmk: 20_000, method: 'BANK', reference: 'TX-1', voidedAt: null });
+    expect(r.body).toMatchObject({ amountMmk: 20_000, method: 'BANK', reference: 'TX-1', voidedAt: null, owedMmk: 32_250 });
     const lines = await prisma.ledgerEntry.findMany({ where: { refType: 'payout', refId: r.body.id } });
     expect(lines).toHaveLength(2);
     expect(lines.find((l) => l.account === `organizer_payable:${orgId}`)!.debitMmk).toBe(20_000n);
@@ -113,6 +113,7 @@ run('Payouts', () => {
     const list = await http.get(payoutBase()).set(A).expect(200);
     expect(list.body).toHaveLength(1);
     // validation
+    await http.get('/v1/admin/finance/organizations/00000000-0000-4000-8000-000000000000/payouts').set(A).expect(404);
     await record(0).expect(400);
     await record(-5).expect(400);
     await record(1.5).expect(400);
@@ -133,7 +134,13 @@ run('Payouts', () => {
     const row = await prisma.payout.findUniqueOrThrow({ where: { id: r.body.id } });
     expect(row.voidedAt).not.toBeNull();
     expect(row.voidReason).toBe('Wrong amount');
-    expect(await prisma.ledgerEntry.count({ where: { refType: 'payout_void', refId: r.body.id } })).toBe(2);
+    const vl = await prisma.ledgerEntry.findMany({ where: { refType: 'payout_void', refId: r.body.id } });
+    expect(vl).toHaveLength(2);
+    const vcash = vl.find((l) => l.account === 'payouts_cash')!;
+    const vpay = vl.find((l) => l.account === `organizer_payable:${orgId}`)!;
+    expect([vcash.debitMmk, vcash.creditMmk]).toEqual([7_000n, 0n]);
+    expect([vpay.debitMmk, vpay.creditMmk]).toEqual([0n, 7_000n]);
+    expect(vcash.journalId).toBe(vpay.journalId);
     expect(await prisma.auditLog.count({ where: { action: 'payout.void', entityId: r.body.id } })).toBe(1);
     await http.post(`/v1/admin/finance/payouts/${r.body.id}/void`).set(A).send({ reason: 'again' }).expect(409);
     // concurrent voids: exactly one wins
@@ -152,6 +159,8 @@ run('Payouts', () => {
     expect(s.paidOutMmk).toBe(b.paidOutMmk);
     expect(s.owedMmk).toBe(b.owedMmk);
     expect(s.earnedMmk).toBe(52_250);
+    expect(s).toMatchObject({ eventsNetMmk: 52_250, reconciled: true });
+    expect(s.payouts[0].createdById).toBeUndefined();
     expect(s.events).toEqual([{ eventId, title: `Payout Show ${tag}`, grossMmk: 55_000, discountMmk: 5_000, commissionMmk: 2_750, refundsMmk: 0, netMmk: 52_250 }]);
     expect(s.events.reduce((t: number, e: any) => t + e.netMmk, 0)).toBe(s.earnedMmk);
     expect(s.payouts.length).toBeGreaterThan(1); // voided ones stay in the history
@@ -168,6 +177,10 @@ run('Payouts', () => {
     await http.post(`/v1/admin/finance/orders/${order2}/refund`).set(A).send({ reason: 'Buyer request' }).expect(200);
     const s = (await summary(O).expect(200)).body;
     expect(s).toMatchObject({ earnedMmk: 42_750, paidOutMmk: 52_250, owedMmk: -9_500 });
+    expect(s).toMatchObject({ eventsNetMmk: 42_750, reconciled: true });
+    const csv = await http.get(`/v1/organizations/${orgId}/payouts/summary.csv`).set(O).expect(200);
+    expect(csv.text).toContain('"42750","52250","-9500"');
+    expect(csv.text).not.toContain("'-9500");
     expect(s.events[0]).toMatchObject({ grossMmk: 55_000, refundsMmk: 10_000, commissionMmk: 2_250, netMmk: 42_750 });
     expect(await balance()).toMatchObject({ paidOutMmk: 52_250, owedMmk: -9_500 });
     const pj = await prisma.ledgerEntry.findMany({ where: { refType: { in: ['payout', 'payout_void'] } } });
@@ -190,6 +203,37 @@ run('Payouts', () => {
       await http.get(payoutBase()).set(h).expect(403);
     }
     expect((await prisma.payout.findUniqueOrThrow({ where: { id: pid } })).voidedAt).toBeNull();
+  });
+
+  it('cross-org scoping: org B cannot read org A, and A excludes B data', async () => {
+    const orgB = await http.post('/v1/admin/organizations').set(A).send({ name: `Payout Org B ${tag}`, slug: `pob-${tag}`, ownerEmail: `ownb-po-${tag}@e2e.test` }).expect(201);
+    const B = await acceptInvite(orgB.body.inviteUrl);
+    const bId = orgB.body.organization.id as string;
+    const cats = await http.get('/v1/categories').expect(200);
+    const start = new Date(Date.now() + 7 * 86400e3);
+    const bBase = `/v1/organizations/${bId}/events`;
+    const ev = await http.post(bBase).set(B).send({ categoryId: cats.body[0].children[0].id, title: `B Show ${tag}`, format: 'IN_PERSON', venue: { name: 'Hall', city: 'Yangon' }, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3 * 3600e3).toISOString() }).expect(201);
+    const tt = (await http.post(`${bBase}/${ev.body.id}/ticket-types`).set(B).send({ name: 'Std', priceMmk: 4_000, quota: 10, maxPerOrder: 5 }).expect(201)).body.id;
+    await http.post(`${bBase}/${ev.body.id}/submit`).set(B).expect(200);
+    await http.post(`/v1/admin/events/${ev.body.id}/approve`).set(A).expect(200);
+    await prisma.feeRule.create({ data: { scope: 'EVENT', scopeId: ev.body.id, percentBp: 500 } });
+    const h = await consumer();
+    const o = await http.post(`/v1/events/${ev.body.id}/orders`).set(h).send({ items: [{ ticketTypeId: tt, quantity: 1 }] }).expect(201);
+    const p = await http.post(`/v1/orders/${o.body.id}/pay`).set(h).send({ provider: 'MOCK' }).expect(200);
+    const url = new URL(p.body.payment.action.url);
+    await http.post(`${url.pathname}/pay`).type('form').send({ t: url.searchParams.get('t') }).expect(201);
+    await http.post(`/v1/admin/finance/organizations/${bId}/payouts`).set(A).send({ amountMmk: 1_000, paidAt: new Date().toISOString(), method: 'CASH' }).expect(201);
+
+    await http.get(`/v1/organizations/${orgId}/payouts/summary`).set(B).expect(403);
+    await http.get(`/v1/organizations/${orgId}/payouts/summary.csv`).set(B).expect(403);
+    await http.get(`/v1/organizations/${bId}/payouts/summary`).set(O).expect(403);
+    const a = (await summary(O).expect(200)).body;
+    expect(a.events.map((e: any) => e.eventId)).toEqual([eventId]);
+    expect(a.payouts.every((x: any) => x.organizationId === orgId)).toBe(true);
+    expect(a).toMatchObject({ earnedMmk: 42_750, paidOutMmk: 52_250 });
+    const b = (await http.get(`/v1/organizations/${bId}/payouts/summary`).set(B).expect(200)).body;
+    expect(b).toMatchObject({ earnedMmk: 3_800, paidOutMmk: 1_000, owedMmk: 2_800, reconciled: true });
+    expect(b.events.map((e: any) => e.eventId)).toEqual([ev.body.id]);
   });
 
   it('COMP orders excluded from per-event figures', async () => {
