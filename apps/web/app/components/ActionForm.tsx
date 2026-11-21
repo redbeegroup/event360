@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useActionState } from 'react';
+import { ReactNode, useActionState, useEffect, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '../actions';
 
@@ -25,6 +25,7 @@ export function ActionForm({
   inviteLabels,
   className,
   id,
+  scrollResult,
 }: {
   action: (state: FormState, fd: FormData) => Promise<FormState>;
   submitLabel: string;
@@ -39,17 +40,25 @@ export function ActionForm({
   className?: string;
   /** Lets a button elsewhere on the page submit this form (`form` attribute). */
   id?: string;
+  /** Scroll the result message into view when the action returns (for forms submitted from a far-away button). */
+  scrollResult?: boolean;
 }) {
-  const [state, formAction] = useActionState(action, {} as FormState);
+  const [state, formAction, isPending] = useActionState(action, {} as FormState);
+  const result = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollResult && (state.error || state.ok || state.problems?.length)) result.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [scrollResult, state]);
   return (
     <form
       action={formAction}
       id={id}
+      data-pending={isPending ? 'true' : undefined}
       className={className}
       onSubmit={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}
     >
+      <div ref={result}>
       {state.error && <div className="error">{errorText?.[state.error] ?? state.error}</div>}
       {state.problems?.length ? (
         <div className="error">
@@ -64,6 +73,7 @@ export function ActionForm({
           <CopyBox value={state.data.inviteUrl} label={inviteLabels.copy} />
         </div>
       )}
+      </div>
       {children}
       <SubmitButton label={submitLabel} variant={variant} />
     </form>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
+import { SaveBar } from '../../../../components/SaveBar';
 import { EventHeader } from '../../../../components/EventHeader';
 import { StatTile } from '../../../../components/StatTile';
 import { ApiError, api, getMe } from '../../../../lib/api';
@@ -150,7 +151,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {['DRAFT', 'REJECTED'].includes(e.status) && (
         <div className="card">
           <p className="muted">{tr.submitHint}</p>
-          <ActionForm action={submitEventAction} submitLabel={tr.submit} id="event-submit-form" okText={okText}>{hidden}</ActionForm>
+          <ActionForm action={submitEventAction} submitLabel={tr.submit} id="event-submit-form" scrollResult okText={okText}>{hidden}</ActionForm>
         </div>
       )}
 
@@ -548,7 +549,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
 
           <h2>{tr.save}</h2>
           <div className="card">
-            <ActionForm action={updateEventAction} submitLabel={tr.save} id="event-main-form" okText={okText}>
+            <ActionForm action={updateEventAction} submitLabel={tr.save} id="event-main-form" scrollResult okText={okText}>
               {hidden}
               <EventFields tr={tr} categories={categories} event={e} />
             </ActionForm>
@@ -649,11 +650,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       )}
 
       {!closed && (
-        <div className="save-bar">
-          <button type="submit" className="btn-gold" form={awaitingSubmit ? 'event-submit-form' : 'event-main-form'}>
-            {awaitingSubmit ? tr.submit : tr.save}
-          </button>
-        </div>
+        <SaveBar formId={awaitingSubmit ? 'event-submit-form' : 'event-main-form'} label={awaitingSubmit ? tr.submit : tr.save} />
       )}
     </>
   );
