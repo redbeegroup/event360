@@ -71,9 +71,20 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     context.go('/tickets');
   }
 
-  Uri _directionsUri(MyTicket x) => Uri.parse(
-    'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent([x.venueName, x.venueCity].whereType<String>().where((p) => p.isNotEmpty).join(', '))}',
-  );
+  /// Opens a link; says so when nothing could open it.
+  Future<void> _open(Uri uri) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = L10n.of(context).openFailed;
+    var ok = false;
+    try {
+      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!ok && mounted) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Uri _directionsUri(MyTicket x) => ticketDirectionsUri(x.venueName, x.venueCity);
 
   @override
   Widget build(BuildContext context) {
@@ -123,10 +134,8 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     Widget content(MyTicket x) {
       final seat = x.seatText(lang);
       final valid = x.qr != null && x.status == 'VALID';
-      void openCalendar() => launchUrl(
-        ref.read(apiProvider).calendarUri(x.eventId),
-        mode: LaunchMode.externalApplication,
-      );
+      void openCalendar() =>
+          _open(ref.read(apiProvider).calendarUri(x.eventId));
       final hasVenue = x.venueName != null && x.venueName!.isNotEmpty;
       final venue = hasVenue
           ? [
@@ -350,54 +359,60 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
           const SizedBox(height: 20),
           // One gold button: Directions, or the calendar when the ticket has no venue
           if (valid)
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: hasVenue
-                        ? OutlinedButton(
-                            key: const Key('addToCalendar'),
-                            style: ghost,
-                            onPressed: openCalendar,
-                            child: Text(
-                              t.addToCalendar,
-                              textAlign: TextAlign.center,
-                            ),
-                          )
-                        : FilledButton(
-                            key: const Key('addToCalendar'),
-                            style: E360Buttons.gold,
-                            onPressed: openCalendar,
-                            child: Text(
-                              t.addToCalendar,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                  ),
-                  if (hasVenue) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        key: const Key('ticketDirections'),
-                        style: E360Buttons.gold.copyWith(
-                          padding: const WidgetStatePropertyAll(
-                            EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        ),
-                        onPressed: () => launchUrl(
-                          _directionsUri(x),
-                          mode: LaunchMode.externalApplication,
-                        ),
+            Builder(
+              builder: (context) {
+                final calendar = hasVenue
+                    ? OutlinedButton(
+                        key: const Key('addToCalendar'),
+                        style: ghost,
+                        onPressed: openCalendar,
                         child: Text(
-                          t.getDirections,
+                          t.addToCalendar,
                           textAlign: TextAlign.center,
                         ),
-                      ),
+                      )
+                    : FilledButton(
+                        key: const Key('addToCalendar'),
+                        style: E360Buttons.gold,
+                        onPressed: openCalendar,
+                        child: Text(
+                          t.addToCalendar,
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                if (!hasVenue) return calendar;
+                final directions = FilledButton(
+                  key: const Key('ticketDirections'),
+                  style: E360Buttons.gold.copyWith(
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 12),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+                  onPressed: () => _open(_directionsUri(x)),
+                  child: Text(t.getDirections, textAlign: TextAlign.center),
+                );
+                // Myanmar labels are long: below 380 dp the buttons stack full-width, so no pill wraps
+                if (isMy && MediaQuery.sizeOf(context).width < 380) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      directions,
+                      const SizedBox(height: 12),
+                      calendar,
+                    ],
+                  );
+                }
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: calendar),
+                      const SizedBox(width: 12),
+                      Expanded(child: directions),
+                    ],
+                  ),
+                );
+              },
             ),
           if (x.canTransfer)
             Padding(
@@ -500,6 +515,11 @@ class _DashPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DashPainter old) => old.color != color;
 }
+
+/// Maps search link for the venue ("name, city").
+Uri ticketDirectionsUri(String? venueName, String? venueCity) => Uri.parse(
+  'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent([venueName, venueCity].whereType<String>().where((p) => p.isNotEmpty).join(', '))}',
+);
 
 /// Asks for the recipient's number and sends the ticket; pops with the masked number on success.
 class _TransferDialog extends ConsumerStatefulWidget {

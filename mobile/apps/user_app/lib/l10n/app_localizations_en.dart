@@ -752,4 +752,7 @@ class L10nEn extends L10n {
 
   @override
   String get getDirections => 'Directions';
+
+  @override
+  String get openFailed => 'Couldn\'t open that. Try again.';
 }

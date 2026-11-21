@@ -135,6 +135,8 @@ class Event360Theme {
         shape: Border(bottom: BorderSide(color: scheme.outlineVariant)),
         titleTextStyle: text.titleMedium,
       ),
+      // The AppBar already draws the 1 px rule: no second one under a TabBar
+      tabBarTheme: const TabBarThemeData(dividerColor: Colors.transparent),
       dividerTheme: DividerThemeData(color: scheme.outlineVariant, thickness: 1, space: 1),
       cardTheme: CardThemeData(
         elevation: 0,

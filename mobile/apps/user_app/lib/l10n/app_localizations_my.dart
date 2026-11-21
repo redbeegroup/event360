@@ -750,4 +750,7 @@ class L10nMy extends L10n {
 
   @override
   String get getDirections => 'လမ်းညွှန်';
+
+  @override
+  String get openFailed => 'ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။';
 }

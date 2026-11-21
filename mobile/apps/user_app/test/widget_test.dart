@@ -18,6 +18,7 @@ import 'package:user_app/l10n/app_localizations.dart';
 import 'package:user_app/widgets/event_row.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
+import 'package:user_app/screens/ticket_screen.dart';
 import 'package:user_app/screens/watch_screen.dart';
 
 /// Fake API: canned events/tickets, no network.
@@ -2342,7 +2343,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('ticket screen shows the detail grid (date, doors, venue, seat) and the QR on a navy background', (tester) async {
+  testWidgets('ticket screen shows the detail grid (date, time, venue, seat) and the QR on a navy background', (tester) async {
     await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [seatTicket]);
     await openTicket(tester, 'Opera Night');
     expect(tester.widget<Scaffold>(find.byType(Scaffold).last).backgroundColor, E360Colors.night);
@@ -2433,4 +2434,33 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+
+  testWidgets('a ticket with no venue has no Directions button and Add to calendar is the gold one', (tester) async {
+    final noVenue = {...seatTicket, 'id': 'ticket-nov-0004', 'event': {...(seatTicket['event'] as Map<String, dynamic>), 'venue': null}};
+    await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [noVenue]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-nov-0004');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketDirections')), findsNothing);
+    expect(goldButtons(tester), hasLength(1));
+    expect(goldButtons(tester).single.widget.key, const Key('addToCalendar'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a refunded ticket shows the void panel instead of the QR', (tester) async {
+    final refunded = {...seatTicket, 'id': 'ticket-ref-0005', 'status': 'REFUNDED', 'canCancel': false};
+    await pumpApp(tester, signedIn: true, setup: (a) => a.extraTickets = [refunded]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-ref-0005');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketVoid')), findsOneWidget);
+    expect(find.text('This ticket was refunded.'), findsOneWidget);
+    expect(find.byType(QrImageView), findsNothing);
+    expect(goldButtons(tester), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('the Directions link encodes the venue name and city', () {
+    final uri = ticketDirectionsUri('Shwe Pyi Theatre', 'Yangon');
+    expect(uri.toString(), 'https://www.google.com/maps/search/?api=1&query=Shwe%20Pyi%20Theatre%2C%20Yangon');
+    expect(uri.queryParameters['query'], 'Shwe Pyi Theatre, Yangon');
+  });
 }

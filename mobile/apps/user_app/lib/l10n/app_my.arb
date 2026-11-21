@@ -218,5 +218,6 @@
   "ticketTime": "အချိန်",
   "ticketSeatLabel": "ခုံ",
   "ticketKind": "လက်မှတ်",
-  "getDirections": "လမ်းညွှန်"
+  "getDirections": "လမ်းညွှန်",
+  "openFailed": "ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။"
 }

@@ -409,5 +409,6 @@
   "ticketTime": "Time",
   "ticketSeatLabel": "Seat",
   "ticketKind": "Ticket",
-  "getDirections": "Directions"
+  "getDirections": "Directions",
+  "openFailed": "Couldn't open that. Try again."
 }

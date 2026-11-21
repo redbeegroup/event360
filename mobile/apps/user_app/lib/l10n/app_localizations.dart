@@ -1410,6 +1410,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Directions'**
   String get getDirections;
+
+  /// No description provided for @openFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open that. Try again.'**
+  String get openFailed;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {
