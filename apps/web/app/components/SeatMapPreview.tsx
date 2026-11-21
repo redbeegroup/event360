@@ -28,7 +28,7 @@ export function SeatMapPreview({ layout, seats, href, lang, title, labels }: Sea
   const names = [labels.available, labels.checkout, labels.guest, labels.sold, labels.unsold];
   const n = new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US');
   return (
-    <Link href={href} className="card seat-preview" aria-label={`${title} — ${labels.open}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', color: 'inherit', textDecoration: 'none' }}>
+    <Link href={href} className="card seat-preview" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', color: 'inherit', textDecoration: 'none' }}>
       <div style={{ flex: '1 1 320px', maxWidth: 450, minWidth: 0 }}>
         <SeatMapView layout={layout} seatTypes={seatTypes} colors={COLORS} zoomable={false} showAttrs={false} lang={lang} ariaLabel={title} />
       </div>

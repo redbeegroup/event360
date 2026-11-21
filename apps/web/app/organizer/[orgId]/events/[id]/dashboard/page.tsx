@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { api } from '../../../../../lib/api';
+import { ApiError, api } from '../../../../../lib/api';
 import { SeatMapPreview } from '../../../../../components/SeatMapPreview';
 import { fmtMmk, t } from '../../../../../lib/i18n';
 import type { Layout } from '../../../../../lib/seat-layout';
@@ -109,7 +109,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ orgI
     t(),
     api<Dashboard>(`/organizations/${orgId}/events/${id}/dashboard`),
     api<{ title: string; titleMy: string | null }>(`/organizations/${orgId}/events/${id}`),
-    api<{ layout: Layout | null; seats: { seatKey: string; status: string }[] }>(`/organizations/${orgId}/events/${id}/seating`).catch(() => null),
+    api<{ layout: Layout | null; seats: { seatKey: string; status: string }[] }>(`/organizations/${orgId}/events/${id}/seating`).catch((err) => {
+      if (err instanceof ApiError) return null;
+      throw err; // keep Next's redirect (401 -> /login) working
+    }),
   ]);
   const n = nf(tr.lang);
   const dayLabel = (iso: string) => new Intl.DateTimeFormat(tr.lang === 'my' ? 'my-MM' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
