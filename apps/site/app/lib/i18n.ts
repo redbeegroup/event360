@@ -128,7 +128,7 @@ const my: Dict = {
   browseByCategory: 'အမျိုးအစားအလိုက် ရှာမည်',
   free: 'အခမဲ့',
   from: (p: string) => `${p} မှ စ`,
-  soldOut: 'ကုန်ပါပြီ',
+  soldOut: 'ကုန်သွားပါပြီ',
   online: 'အွန်လိုင်း',
   hybrid: 'တိုက်ရိုက် + အွန်လိုင်း',
   getTickets: 'လက်မှတ်ယူမည်',

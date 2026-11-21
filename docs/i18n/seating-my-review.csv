@@ -214,3 +214,8 @@
 "seat label (labelMy, event-seats.service)","{section} · Row {row} · Seat {seat}","{sectionMy} · အတန်း {row} · ခုံ {seat}","api"
 "ticket_received titleMy","You received a ticket","လက်မှတ် လက်ခံရရှိပါသည်","api"
 "ticket_received bodyMy","You have a complimentary ticket for {event} ({seats}).","{event} အတွက် အခမဲ့ လက်မှတ် ရရှိပါသည် ({seats})။","api"
+"soldOut","Sold out","ကုန်သွားပါပြီ","site"
+"promoUsedUp","This code has been used up","ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ","user_app"
+"promoExpired","This code has expired","ဤကုဒ် သက်တမ်းကုန်သွားပါပြီ","user_app"
+"promoNotStarted","This code is not active yet","ဤကုဒ်ကို မစတင်သေးပါ","user_app"
+"promoNotApplicable","This code does not apply to these tickets","ဤကုဒ်သည် ဤလက်မှတ်များနှင့် မသက်ဆိုင်ပါ","user_app"

@@ -188,6 +188,13 @@ export function SeatMapView({
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    // A mouse button released outside the map never reaches us: drop the stuck gesture
+    if (e.pointerType === 'mouse' && e.buttons === 0 && gesture.current.kind !== 'none') {
+      gesture.current = { kind: 'none' };
+      pointers.current.clear();
+      setBand(null);
+      return;
+    }
     if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const g = gesture.current;
     if (g.kind === 'pinch') {
