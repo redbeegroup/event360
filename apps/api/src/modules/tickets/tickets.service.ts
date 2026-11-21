@@ -142,7 +142,7 @@ export class TicketsService {
    * double-release. Seated: the seat goes back on sale and the type is recounted; unseated: sold -= 1.
    */
   async cancel(userId: string, ticketId: string) {
-    const t = await this.prisma.ticket.findUnique({ where: { id: ticketId }, include: { order: { select: { id: true, totalMmk: true, channel: true } }, ticketType: { include: { event: true } } } });
+    const t = await this.prisma.ticket.findUnique({ where: { id: ticketId }, include: { order: { select: { id: true, totalMmk: true, channel: true, promoCodeId: true } }, ticketType: { include: { event: true } } } });
     if (!t || t.holderUserId !== userId) throw new NotFoundException('Ticket not found');
     const e = t.ticketType.event;
     const why = TicketsService.cancelBlock(t, t.order, e);
@@ -164,7 +164,11 @@ export class TicketsService {
       // Serialise cancels within one order so the last one to commit sees every VOID and cancels the order
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${t.orderId}::uuid FOR UPDATE`;
       if ((await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } })) === 0) {
-        await tx.order.updateMany({ where: { id: t.orderId, status: { in: ['PAID', 'CONFIRMED'] } }, data: { status: 'CANCELLED' } });
+        const closed = await tx.order.updateMany({ where: { id: t.orderId, status: { in: ['PAID', 'CONFIRMED'] } }, data: { status: 'CANCELLED' } });
+        // A fully cancelled free order gives its promo use back (once: only the call that flipped the status)
+        if (closed.count === 1 && t.order.promoCodeId) {
+          await tx.$executeRaw`UPDATE promo_codes SET used = GREATEST(used - 1, 0) WHERE id = ${t.order.promoCodeId}::uuid`;
+        }
       }
     }, t.seatKey || e.seatMapVersionId ? SEATED_TX : undefined);
     return { ok: true };

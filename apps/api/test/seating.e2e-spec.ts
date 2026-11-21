@@ -1423,6 +1423,59 @@ run('Seat everywhere', () => {
     expect((await ttRow(tt)).sold).toBe(1);
   });
 
+  async function promo(eventId: string, value: number, maxUses: number | null) {
+    const owner = await prisma.user.findFirstOrThrow({ where: { email: `own-ev-${tag}@e2e.test` } });
+    const code = `P${randomBytes(4).toString('hex')}`.toUpperCase();
+    const row = await prisma.promoCode.create({ data: { eventId, code, kind: 'PERCENT', value, maxUses, createdById: owner.id } });
+    return { code, id: row.id };
+  }
+  const promoUsed = async (id: string) => (await prisma.promoCode.findUniqueOrThrow({ where: { id } })).used;
+
+  it('cancelling the last ticket of a 100% promo order gives the use back', async () => {
+    const ev = await seatedEvent('CancelPromo');
+    const pc = await promo(ev.id, 10_000, 1);
+    const B = await login();
+    const o = await order(B, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    expect(o.body).toMatchObject({ status: 'CONFIRMED', totalMmk: 0 });
+    expect(await promoUsed(pc.id)).toBe(1);
+    const B2 = await login();
+    const used = await order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code });
+    expect(used.status).toBe(400);
+    expect(JSON.stringify(used.body)).toContain('This code has been used up');
+    const t = (await mine(B)).find((x) => x.seatKey === 'A:2:1');
+    await http.post(`/v1/me/tickets/${t.id}/cancel`).set(B).expect(200);
+    expect(await promoUsed(pc.id)).toBe(0);
+    await order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code }).expect(201);
+    expect(await promoUsed(pc.id)).toBe(1);
+  });
+
+  it('partial cancel keeps the use', async () => {
+    const ev = await seatedEvent('CancelPromoPartial');
+    const pc = await promo(ev.id, 10_000, 5);
+    const B = await login();
+    await order(B, ev.id, { seats: ['A:2:1', 'A:2:2'], promoCode: pc.code }).expect(201);
+    expect(await promoUsed(pc.id)).toBe(1);
+    const [t1, t2] = await mine(B);
+    await http.post(`/v1/me/tickets/${t1.id}/cancel`).set(B).expect(200);
+    expect(await promoUsed(pc.id)).toBe(1);
+    await http.post(`/v1/me/tickets/${t2.id}/cancel`).set(B).expect(200);
+    expect(await promoUsed(pc.id)).toBe(0);
+  });
+
+  it('admin refund keeps the use', async () => {
+    const ev = await seatedEvent('RefundPromo');
+    const pc = await promo(ev.id, 5_000, 5);
+    const B = await login();
+    const o = await order(B, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    expect(o.body).toMatchObject({ totalMmk: 5_000 });
+    const pay = await http.post(`/v1/orders/${o.body.id}/pay`).set(B).send({ provider: 'MOCK' }).expect(200);
+    const url = new URL(pay.body.payment.action.url);
+    await http.post(`${url.pathname}/pay`).type('form').send({ t: url.searchParams.get('t')! }).expect(201);
+    expect(await promoUsed(pc.id)).toBe(1);
+    await http.post(`/v1/admin/finance/orders/${o.body.id}/refund`).set(A).send({ reason: 'Buyer request' }).expect(200);
+    expect(await promoUsed(pc.id)).toBe(1);
+  });
+
   it('cannot cancel paid ticket', async () => {
     const ev = await seatedEvent('CancelPaid');
     const B = await login();
