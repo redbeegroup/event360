@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { api } from '../../../../../lib/api';
+import { SeatMapPreview } from '../../../../../components/SeatMapPreview';
 import { fmtMmk, t } from '../../../../../lib/i18n';
+import type { Layout } from '../../../../../lib/seat-layout';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,10 +105,11 @@ function HBars({ rows, title, lang }: { rows: { name: string; value: number; of?
 
 export default async function DashboardPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, d, ev] = await Promise.all([
+  const [tr, d, ev, seating] = await Promise.all([
     t(),
     api<Dashboard>(`/organizations/${orgId}/events/${id}/dashboard`),
     api<{ title: string; titleMy: string | null }>(`/organizations/${orgId}/events/${id}`),
+    api<{ layout: Layout | null; seats: { seatKey: string; status: string }[] }>(`/organizations/${orgId}/events/${id}/seating`).catch(() => null),
   ]);
   const n = nf(tr.lang);
   const dayLabel = (iso: string) => new Intl.DateTimeFormat(tr.lang === 'my' ? 'my-MM' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
@@ -129,6 +132,16 @@ export default async function DashboardPage({ params }: { params: Promise<{ orgI
           <div key={k} className="tile"><div className="muted">{k}</div><div className="tile-v">{v}</div></div>
         ))}
       </div>
+      {seating?.layout && (
+        <SeatMapPreview
+          layout={seating.layout}
+          seats={seating.seats}
+          href={`/organizer/${orgId}/events/${id}/seats`}
+          lang={tr.lang}
+          title={tr.dashSeatMap}
+          labels={{ available: tr.stAvailable, checkout: tr.stCheckout, guest: tr.stGuestHeld, sold: tr.stSold, unsold: tr.dashSeatUnsold, open: tr.dashSeatOpen }}
+        />
+      )}
       <div className="card">
         <Bars points={daily('orders')} title={tr.dashDailyOrders} fmt={(v) => n.format(Math.round(v))} tableLabel={tr.dashShowTable} xLabel={tr.day} lang={tr.lang} />
         <Bars points={daily('revenueMmk')} title={tr.dashDailyRevenue} fmt={(v) => n.format(Math.round(v))} tableLabel={tr.dashShowTable} xLabel={tr.day} lang={tr.lang} />
