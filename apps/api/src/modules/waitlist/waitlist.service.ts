@@ -70,11 +70,19 @@ export class WaitlistService {
    * releaseHold's last step: the checkout made from this offer was released before the offer's original expiry, and
    * `qty` was set aside for it again; the entry is OFFERED again until that same expiry. It keeps the released
    * order's id: an OFFERED entry with an order is a reopened offer (its buyer is told if the line closes).
+   * Skipped (false) when the buyer already has another active entry for the type: only one may be WAITING/OFFERED
+   * (waitlist_entries_active_key), and a failed update would abort the release (and wedge the sweeper). join refuses
+   * while such a checkout is unpaid (CHECKOUT_PENDING), so this only meets entries made before that check; the
+   * released stock is then the pool, offered on in line order.
    */
   async reopenOffer(tx: Tx, entryId: string, orderId: string, qty: number): Promise<boolean> {
     const n = await tx.$executeRaw`
-      UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, updated_at = now()
-      WHERE id = ${entryId}::uuid AND status = 'PURCHASED' AND order_id = ${orderId}::uuid AND offer_expires_at > clock_timestamp()`;
+      UPDATE waitlist_entries e SET status = 'OFFERED', offered_qty = ${qty}, updated_at = now()
+      WHERE e.id = ${entryId}::uuid AND e.status = 'PURCHASED' AND e.order_id = ${orderId}::uuid AND e.offer_expires_at > clock_timestamp()
+        AND NOT EXISTS (
+          SELECT 1 FROM waitlist_entries a
+          WHERE a.ticket_type_id = e.ticket_type_id AND a.user_id = e.user_id AND a.status IN ('WAITING', 'OFFERED') AND a.id <> e.id
+        )`;
     return n === 1;
   }
 
@@ -91,6 +99,10 @@ export class WaitlistService {
     if (quantity < 1 || quantity > t.maxPerOrder) throw new BadRequestException(`Join for 1 to ${t.maxPerOrder} tickets`);
     const seated = t._count.eventSeats > 0;
     const entryId = await this.prisma.$transaction(async (tx) => {
+      // The buyer's row first, as at checkout (lock order step 1): serialises one buyer's joins and checkouts, so the
+      // per-person limit can't be raced, and the entry insert's foreign-key lock on the user row never waits while
+      // this holds the counter row (a checkout holds the user row, then waits for that counter row: a deadlock).
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       // The type's counter row serialises the join with every path that frees or reserves this type's stock (they
       // hold it while reading the line), so a standing type can't be freed unseen by a joiner. Seated: event (share)
       // then the seated counter row, as in the recount; a release that races a join is caught by the sweeper.
@@ -110,6 +122,12 @@ export class WaitlistService {
       const already = held + (pending._sum.quantity ?? 0);
       if (already + quantity > t.maxPerOrder) {
         throw new ConflictException({ message: `You already have ${already} ${t.name} ticket(s); the limit is ${t.maxPerOrder} per person`, reasonCode: 'LIMIT' });
+      }
+      // A checkout made from this buyer's offer and not yet paid or released: its release reopens that offer, so a
+      // second active entry can't exist alongside it. (Its own code, not LIMIT: the buyer may be well under the limit.)
+      const paying = await tx.waitlistEntry.findFirst({ where: { ticketTypeId, userId, status: 'PURCHASED', order: { status: 'PENDING_PAYMENT' } }, select: { id: true } });
+      if (paying) {
+        throw new ConflictException({ message: 'Finish or cancel the checkout from your waitlist offer first', reasonCode: 'CHECKOUT_PENDING' });
       }
       if (await tx.waitlistEntry.findFirst({ where: { ticketTypeId, userId, status: { in: [...ACTIVE] } }, select: { id: true } })) {
         throw new ConflictException({ message: 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING' });

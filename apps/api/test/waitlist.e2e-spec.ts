@@ -14,7 +14,7 @@ import { PaymentsService } from '../src/modules/payments/payments.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { WaitlistService } from '../src/modules/waitlist/waitlist.service';
 import { expireHold } from './expire-hold';
-import { gated } from './lock-gate';
+import { gated, lockGate, queued } from './lock-gate';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 jest.setTimeout(90_000);
@@ -808,5 +808,140 @@ run('Waitlist', () => {
     expect(await entry(j.body.entryId)).toMatchObject({ status: 'EXPIRED' });
     expect(await prisma.notification.count({ where: { userId: W.id, kind: 'waitlist_closed' } })).toBe(1);
     await expectSeatCounters(ev.vip);
+  });
+
+  // ───────────── final review fixes ─────────────
+
+  const payFor = async (H: Record<string, string>, orderId: string) => (await http.post(`/v1/orders/${orderId}/pay`).set(H).send({ provider: 'mock' }).expect(200)).body.payment.id as string;
+
+  it('a re-join while paying for an offer is refused; an older re-join never wedges the release or the sweeper', async () => {
+    const ev = await standing('Rejoin', 2, 4);
+    const [H, W] = [await consumer(), await consumer()];
+    const held = await order(H.H, ev.id, items(ev.type, 2)).expect(201);
+    const j = await join(W.H, ev.type, 4).expect(201);
+    await http.post(`/v1/orders/${held.body.id}/cancel`).set(H.H).expect(200);
+    await sweepWaitlist();
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 2 }); // asked for 4, offered 2
+    const co = await order(W.H, ev.id, { ...items(ev.type, 2), waitlistEntryId: j.body.entryId }).expect(201);
+    // While that checkout is unpaid W can't join again (the release would reopen the offer)
+    const re = await join(W.H, ev.type, 2).expect(409);
+    expect(re.body.reasonCode).toBe('CHECKOUT_PENDING');
+
+    // A re-join made before that check existed: cancelling skips the reopen, and the released stock is the pool
+    const stray = await prisma.waitlistEntry.create({ data: { ticketTypeId: ev.type, userId: W.id, quantity: 2 } });
+    await http.post(`/v1/orders/${co.body.id}/cancel`).set(W.H).expect(200);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: co.body.id } })).toMatchObject({ status: 'CANCELLED' });
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'PURCHASED' });
+    expect(await entry(stray.id)).toMatchObject({ status: 'WAITING' });
+    expect(await tt(ev.type)).toMatchObject({ held: 0, sold: 0, offered: 2 });
+    await sweepWaitlist();
+    expect(await entry(stray.id)).toMatchObject({ status: 'OFFERED', offeredQty: 2 });
+
+    // The same through the sweeper: the hold expires while a stray re-join is active, and the sweep carries on
+    const co2 = await order(W.H, ev.id, { ...items(ev.type, 2), waitlistEntryId: stray.id }).expect(201);
+    const stray2 = await prisma.waitlistEntry.create({ data: { ticketTypeId: ev.type, userId: W.id, quantity: 1 } });
+    await expireHold(prisma, pay, co2.body.id);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: co2.body.id } })).toMatchObject({ status: 'EXPIRED' });
+    expect(await entry(stray.id)).toMatchObject({ status: 'PURCHASED' });
+    expect(await entry(stray2.id)).toMatchObject({ status: 'WAITING' });
+    expect(await tt(ev.type)).toMatchObject({ held: 0, offered: 2 });
+    // Once nothing is being paid for, W may join again as usual
+    await prisma.waitlistEntry.update({ where: { id: stray2.id }, data: { status: 'LEFT' } });
+    await join(W.H, ev.type, 1).expect(201);
+  });
+
+  it('one order or payment that fails to sweep does not stop the rest', async () => {
+    const ev = await standing('Poison', 2, 1);
+    const [P, Q] = [await consumer(), await consumer()];
+    const bad = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+    const good = await order(Q.H, ev.id, items(ev.type, 1)).expect(201);
+    const badPay = await payFor(P.H, bad.body.id);
+    const goodPay = await payFor(Q.H, good.body.id);
+    const old = new Date(Date.now() - 3 * 3600e3);
+    await prisma.payment.updateMany({ where: { id: { in: [badPay, goodPay] } }, data: { status: 'PENDING', createdAt: old, lastCheckedAt: null } });
+    await prisma.order.updateMany({ where: { id: { in: [bad.body.id, good.body.id] } }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+    const svc = pay as any;
+    const release = svc.releaseHold.bind(pay);
+    const apply = svc.applyStatus.bind(pay);
+    const r1 = jest.spyOn(svc, 'releaseHold').mockImplementation((id: unknown, to: unknown) => (id === bad.body.id ? Promise.reject(new Error('poisoned order')) : release(id, to)));
+    const r2 = jest.spyOn(svc, 'applyStatus').mockImplementation((id: unknown, st: unknown) => (id === badPay ? Promise.reject(new Error('poisoned payment')) : apply(id, st)));
+    const warn = jest.spyOn(svc.logger, 'warn');
+    try {
+      for (let i = 0; i < 50; i++) {
+        await expect(pay.sweep()).resolves.toBeDefined();
+        const [o, p] = await Promise.all([prisma.order.findUniqueOrThrow({ where: { id: good.body.id } }), prisma.payment.findUniqueOrThrow({ where: { id: goodPay } })]);
+        if (o.status !== 'PENDING_PAYMENT' && p.status !== 'PENDING') break;
+      }
+    } finally {
+      r1.mockRestore();
+      r2.mockRestore();
+    }
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: good.body.id } })).toMatchObject({ status: 'EXPIRED' });
+    expect(await prisma.payment.findUniqueOrThrow({ where: { id: goodPay } })).toMatchObject({ status: 'EXPIRED' });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: bad.body.id } })).toMatchObject({ status: 'PENDING_PAYMENT' });
+    expect(warn.mock.calls.some(([m]) => /poisoned order/.test(String(m)))).toBe(true);
+    expect(warn.mock.calls.some(([m]) => /poisoned payment/.test(String(m)))).toBe(true);
+    warn.mockRestore();
+    await expireHold(prisma, pay, bad.body.id); // not poisoned any more
+  });
+
+  it('a join waits for the buyer row (as checkout does) before the counter row', async () => {
+    const ev = await standing('JoinLock', 1, 2);
+    const [H, W] = [await consumer(), await consumer()];
+    await order(H.H, ev.id, items(ev.type, 1)).expect(201);
+    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM users WHERE id = ${W.id}::uuid FOR UPDATE`);
+    let j: Promise<request.Response> | undefined;
+    try {
+      j = join(W.H, ev.type, 1).then((r) => r);
+      await queued(prisma, [gate.pid]);
+      // ...and holds no counter-row lock while it waits: the type's row is free
+      await prisma.$transaction((tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.type}::uuid FOR NO KEY UPDATE NOWAIT`);
+    } finally {
+      gate.release();
+      await gate.done;
+    }
+    expect((await j!).status).toBe(201);
+  });
+
+  it('a late payment for a reopened offer takes the offer\'s reserved stock and marks it purchased', async () => {
+    // Standing
+    const ev = await standing('LateReopen', 2, 2);
+    const [H, W] = [await consumer(), await consumer()];
+    const held = await order(H.H, ev.id, items(ev.type, 2)).expect(201);
+    const j = await join(W.H, ev.type, 2).expect(201);
+    await http.post(`/v1/orders/${held.body.id}/cancel`).set(H.H).expect(200);
+    await sweepWaitlist();
+    const co = await order(W.H, ev.id, { ...items(ev.type, 2), waitlistEntryId: j.body.entryId }).expect(201);
+    const p = await payFor(W.H, co.body.id);
+    await http.post(`/v1/orders/${co.body.id}/cancel`).set(W.H).expect(200);
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', offeredQty: 2, orderId: co.body.id });
+    expect(await tt(ev.type)).toMatchObject({ held: 0, sold: 0, offered: 2 });
+    await pay.settle(p); // the money arrives anyway
+    const paid = await prisma.order.findUniqueOrThrow({ where: { id: co.body.id }, include: { tickets: true } });
+    expect(paid).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(paid.tickets).toHaveLength(2);
+    expect(await tt(ev.type)).toMatchObject({ held: 0, sold: 2, offered: 0 });
+    expect(await entry(j.body.entryId)).toMatchObject({ status: 'PURCHASED', orderId: co.body.id });
+    await sweepWaitlist();
+    expect(await tt(ev.type)).toMatchObject({ held: 0, sold: 2, offered: 0 });
+
+    // Seated: the entry's WAITLIST_HOLD seats are sold
+    const s = await seated('LateReopenSeats');
+    const hs = await order(H.H, s.id, { seats: ['V:1:1', 'V:1:2', 'V:1:3', 'V:1:4'] }).expect(201);
+    const js = await join(W.H, s.vip, 2).expect(201);
+    await http.post(`/v1/orders/${hs.body.id}/cancel`).set(H.H).expect(200);
+    await sweepWaitlist();
+    const cs = await order(W.H, s.id, { seats: ['V:1:1', 'V:1:2'], waitlistEntryId: js.body.entryId }).expect(201);
+    const ps = await payFor(W.H, cs.body.id);
+    await http.post(`/v1/orders/${cs.body.id}/cancel`).set(W.H).expect(200);
+    expect(await entry(js.body.entryId)).toMatchObject({ status: 'OFFERED', orderId: cs.body.id });
+    await pay.settle(ps);
+    const seatedPaid = await prisma.order.findUniqueOrThrow({ where: { id: cs.body.id }, include: { tickets: true } });
+    expect(seatedPaid).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(seatedPaid.tickets).toHaveLength(2);
+    expect(await seat(s.id, 'V:1:1')).toMatchObject({ status: 'SOLD', waitlistEntryId: null });
+    expect(await seat(s.id, 'V:1:2')).toMatchObject({ status: 'SOLD', waitlistEntryId: null });
+    expect(await entry(js.body.entryId)).toMatchObject({ status: 'PURCHASED', orderId: cs.body.id });
+    await expectSeatCounters(s.vip);
   });
 });

@@ -12,7 +12,7 @@ export { CURRENT_RULE_TYPE } from './seat-rules';
  * back on sale left or joined) afterwards.
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
- * 1. user row: createOrder (the buyer), GuestsService.issue (the guest);
+ * 1. user row: createOrder and the waitlist join (the buyer), GuestsService.issue (the guest);
  * 2. event row: shared by checkouts and the waitlist sweeper (never upgraded), FOR UPDATE by organizer seat/map changes;
  * 3. payment row: settle (its conditional status update);
  * 4. order row: settle (SELECT … FOR UPDATE), releaseHold and refundOrder (conditional status update);
@@ -26,7 +26,9 @@ export { CURRENT_RULE_TYPE } from './seat-rules';
  *    waitlist sweeper locks a type's WAITLIST_HOLD seats in seat_key order;
  * 9. seated ticket_types rows, in id order, in the recount (the waitlist join takes a seated type's row here);
  * 10. waitlist_entries rows, in (created_at, id) order, always last: createOrder marks the offer it used PURCHASED
- *    and releaseHold reopens it (conditional updates); the sweeper locks WAITING entries to offer them, or OFFERED
+ *    and releaseHold reopens it, unless the buyer already has another active entry (conditional updates); a late
+ *    payment for a reopened offer takes its stock (the standing counter row first, then a fresh unlocked read of the
+ *    entry) and marks it PURCHASED again (conditional update); the sweeper locks WAITING entries to offer them, or OFFERED
  *    ones to expire them; leave. Freeing paths only read entries (an unlocked read can only over-reserve; the
  *    sweeper gives the excess back). Pointing a seat at an entry (sweeper, releaseHold's offerTo) takes a KEY SHARE
  *    lock on the entry row through the foreign key; nothing locks entries FOR UPDATE, so it never waits.

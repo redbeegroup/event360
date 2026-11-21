@@ -605,6 +605,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
 
       let issued = false;
+      // Released in time, a checkout made from a waitlist offer reopened it (OFFERED with this order): that offer's
+      // reserved stock is this buyer's, so a late payment takes it (standing: from `offered`; seated: the entry's
+      // WAITLIST_HOLD seats) rather than public stock, and the entry is PURCHASED again (last, below)
+      const offer = status === 'PENDING_PAYMENT' ? null : await tx.waitlistEntry.findFirst({ where: { orderId: order.id, status: 'OFFERED' }, select: { id: true, ticketTypeId: true } });
+      let offerUsed = false;
       const quantityItems = byTypeId(order.items.filter((i) => !i.seatKeys.length), (i) => i.ticketTypeId);
       if (status === 'PENDING_PAYMENT') {
         await tx.order.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: new Date() } });
@@ -613,7 +618,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       } else {
         // Hold expired or cancelled before the money arrived: try to take the same seats again (all or none)
         // Same lock order as createOrder: quantity lines (ticket_types) first, then seats.
-        const taken: { id: string; q: number }[] = [];
+        const taken: { id: string; q: number; fromOffer: number }[] = [];
         // A quantity type that has become seated since the order can only be sold with seats now
         const nowSeated =
           seatedIn && quantityItems.length
@@ -621,10 +626,22 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             : null;
         if (!nowSeated) {
           for (const i of quantityItems) {
-            // Stock reserved for the waitlist is not for late payments either
-            const n = await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid AND sold + held + offered + ${i.quantity} <= quota`;
+            let fromOffer = 0;
+            if (offer?.ticketTypeId === i.ticketTypeId) {
+              // The counter row first, then a fresh look at the offer: the sweeper re-offers or gives back an expired
+              // offer's stock only while holding this row, so an offer live now still owns its share of `offered`
+              await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${i.ticketTypeId}::uuid FOR NO KEY UPDATE`;
+              const [live] = await tx.$queryRaw<{ offered_qty: number }[]>`
+                SELECT offered_qty FROM waitlist_entries WHERE id = ${offer.id}::uuid AND status = 'OFFERED' AND order_id = ${order.id}::uuid AND offer_expires_at > clock_timestamp()`;
+              fromOffer = live ? Math.min(i.quantity, live.offered_qty) : 0;
+            }
+            // Stock reserved for the waitlist is not for late payments, except this buyer's own reopened offer
+            const n = await tx.$executeRaw`
+              UPDATE ticket_types SET sold = sold + ${i.quantity}, offered = offered - ${fromOffer}
+              WHERE id = ${i.ticketTypeId}::uuid AND offered >= ${fromOffer} AND sold + held + offered - ${fromOffer} + ${i.quantity} <= quota`;
             if (n !== 1) break;
-            taken.push({ id: i.ticketTypeId, q: i.quantity });
+            taken.push({ id: i.ticketTypeId, q: i.quantity, fromOffer });
+            if (fromOffer) offerUsed = true;
           }
         }
         // Expiry gave the promo use back; the order is PAID either way (tickets or refund review), so take it again,
@@ -634,8 +651,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         let seatsOk = taken.length === quantityItems.length;
         let claimed: string[] = [];
         const seatKeys = order.items.flatMap((i) => i.seatKeys);
+        // The reopened offer's seats (its WAITLIST_HOLD seats among the order's): claimable by this order, and put back
+        // for the offer if the payment can't be honoured after all
+        const offerSeats =
+          offer && seatedIn && seatKeys.length
+            ? await tx.$queryRaw<{ id: string }[]>`
+                SELECT s.id FROM event_seats s JOIN waitlist_entries w ON w.id = s.waitlist_entry_id
+                WHERE s.event_id = ${order.eventId}::uuid AND s.seat_key = ANY(${seatKeys}::text[]) AND s.status = 'WAITLIST_HOLD'
+                  AND w.id = ${offer.id}::uuid AND w.status = 'OFFERED' AND w.offer_expires_at > clock_timestamp()`
+            : [];
         if (seatsOk && seatKeys.length) {
-          const c = await claimSeats(tx, order.eventId, seatKeys, order.id, null, true);
+          const c = await claimSeats(tx, order.eventId, seatKeys, order.id, null, true, offerSeats.length ? offer!.id : null);
+          if (offerSeats.length && c.seats.some((x) => offerSeats.some((o) => o.id === x.id))) offerUsed = true;
           claimed = c.seats.map((s) => s.id);
           for (const s of c.seats) if (s.ticketTypeId && seatedIn && !seatedIn.typeIds.includes(s.ticketTypeId)) seatedIn.typeIds.push(s.ticketTypeId);
           // A seat now sold as another ticket type is not what was paid for
@@ -646,8 +673,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (!issued) {
           // Undo of what this transaction just took from public stock: it goes back to the public, not to the
           // waitlist (it was free a moment ago, and the hold's release already reserved for the line)
-          for (const t of taken) await tx.$executeRaw`UPDATE ticket_types SET sold = sold - ${t.q} WHERE id = ${t.id}::uuid`;
+          for (const t of taken) await tx.$executeRaw`UPDATE ticket_types SET sold = sold - ${t.q}, offered = offered + ${t.fromOffer} WHERE id = ${t.id}::uuid`;
           await unclaimSeats(tx, claimed);
+          // ...and the reopened offer's seats go back to it
+          const back = offerSeats.map((o) => o.id).filter((id) => claimed.includes(id));
+          if (back.length) {
+            await tx.$executeRaw`UPDATE event_seats SET status = 'WAITLIST_HOLD', waitlist_entry_id = ${offer!.id}::uuid, order_id = NULL, held_until = NULL WHERE id = ANY(${back}::uuid[]) AND ticket_id IS NULL`;
+          }
+          offerUsed = false;
         }
         await tx.order.update({
           where: { id: order.id },
@@ -658,6 +691,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       }
       if (issued) await this.issueTickets(tx, order.id, order.userId, order.items.map((i) => ({ ticketTypeId: i.ticketTypeId, quantity: i.quantity, seatKeys: i.seatKeys })));
       if (seatedIn) await this.seating.recountTicketTypes(tx, seatedIn.eventId, [], seatedIn.typeIds);
+      // The entry row last (lock order): the reopened offer was used by this payment
+      if (issued && offerUsed && offer) {
+        await tx.$executeRaw`UPDATE waitlist_entries SET status = 'PURCHASED', updated_at = now() WHERE id = ${offer.id}::uuid AND status = 'OFFERED' AND order_id = ${order.id}::uuid`;
+      }
       await journal(tx, 'order', order.id, [
         { account: clearing, debit: order.totalMmk },
         { account: ACC.payable(order.event.organizationId), credit: order.totalMmk - order.commissionMmk },
@@ -683,7 +720,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   async sweep(now = new Date()) {
     const expired = await this.prisma.order.findMany({ where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now } }, select: { id: true }, take: 200 });
-    for (const o of expired) await this.releaseHold(o.id, 'EXPIRED');
+    // One order (or payment) that fails must never stop the rest: every hold and payment is its own step
+    for (const o of expired) {
+      await this.releaseHold(o.id, 'EXPIRED').catch((e) => this.logger.warn(`hold expiry ${o.id}: ${(e as Error).message}`));
+    }
 
     const due = await this.prisma.payment.findMany({
       where: {
@@ -701,9 +741,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         if (st !== 'PENDING') await this.applyStatus(p.id, st);
         else if (tooOld) await this.applyStatus(p.id, 'EXPIRED');
       } catch (e) {
-        await this.prisma.payment.update({ where: { id: p.id }, data: { lastCheckedAt: now } });
-        if (tooOld) await this.applyStatus(p.id, 'EXPIRED');
         this.logger.warn(`query ${p.provider} ${p.id}: ${(e as Error).message}`);
+        try {
+          await this.prisma.payment.update({ where: { id: p.id }, data: { lastCheckedAt: now } });
+          if (tooOld) await this.applyStatus(p.id, 'EXPIRED');
+        } catch (e2) {
+          this.logger.warn(`reconcile ${p.provider} ${p.id}: ${(e2 as Error).message}`);
+        }
       }
     }
     return { expired: expired.length, checked: due.length };

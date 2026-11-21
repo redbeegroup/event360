@@ -11,6 +11,7 @@ import { NotifyService } from '../src/modules/notifications/notify.service';
 import { PaymentsService } from '../src/modules/payments/payments.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { expireHold } from './expire-hold';
+import { lockGate } from './lock-gate';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 jest.setTimeout(90_000);
@@ -209,6 +210,20 @@ run('Organizer growth', () => {
     expect(rs.every((r) => r.status === 200 || r.status === 409)).toBe(true);
     expect(rs.some((r) => r.status === 200)).toBe(true);
     expect(await prisma.ticketPriceStep.count({ where: { ticketTypeId: e.paid } })).toBe(1);
+  });
+
+  it('a price-steps edit does not wait for checkouts that only key-share the type row', async () => {
+    const e = await newEvent('StepLock');
+    // A checkout inserting an order item holds KEY SHARE on the type row (its foreign key) until it commits
+    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${e.paid}::uuid FOR KEY SHARE`);
+    try {
+      const put = http.put(`${e.base}/ticket-types/${e.paid}/price-steps`).set(O).send({ steps: [{ startsAt: inHours(5), priceMmk: 12_000 }] }).then((r) => r.status);
+      const slow = new Promise((r) => setTimeout(() => r('blocked'), 3000));
+      expect(await Promise.race([put, slow])).toBe(200);
+    } finally {
+      gate.release();
+      await gate.done;
+    }
   });
 
   // ───────────── group discounts ─────────────

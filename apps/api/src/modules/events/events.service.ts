@@ -405,9 +405,10 @@ export class EventsService implements OnModuleDestroy {
     const wanted = steps.map((x) => ({ startsAt: new Date(x.startsAt), priceMmk: BigInt(x.priceMmk) }));
     if (new Set(wanted.map((x) => x.startsAt.getTime())).size !== wanted.length) throw new BadRequestException('Two price steps start at the same time');
     try {
-      // Serialise concurrent edits of one type: the in-effect checks and the replacement see the same rows
+      // Serialise concurrent edits of one type: the in-effect checks and the replacement see the same rows. NO KEY:
+      // checkouts inserting order items key-share this row (foreign key) and must not wait for an organizer edit
       await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR NO KEY UPDATE`;
         const existing = await tx.ticketPriceStep.findMany({ where: { ticketTypeId } });
         const inEffect = existing.filter((x) => x.startsAt <= now);
         for (const x of wanted) {
