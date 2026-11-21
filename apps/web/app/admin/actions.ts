@@ -83,6 +83,7 @@ export async function saveSmsSettingsAction(_: FormState, fd: FormData): Promise
         otpTemplate: s('otpTemplate'),
         enabled: fd.get('enabled') === 'on',
         testMode: fd.get('testMode') === 'on',
+        waitlistSms: fd.get('waitlistSms') === 'on',
       },
     });
     revalidatePath('/admin/settings');

@@ -16,6 +16,7 @@ import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/event_card.dart';
 import '../widgets/total_amounts.dart';
+import '../widgets/waitlist_offer.dart';
 
 class EventDetailScreen extends ConsumerWidget {
   const EventDetailScreen({super.key, required this.idOrSlug});
@@ -219,7 +220,8 @@ class _Detail extends ConsumerWidget {
               for (final tt in e.ticketTypes)
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
+                  child: Column(children: [
+                  ListTile(
                     leading: tt.seated ? Icon(Icons.event_seat, color: parseHexColor(tt.color)) : null,
                     title: Text(pickLang(lang, tt.name, tt.nameMy)),
                     subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -230,6 +232,8 @@ class _Detail extends ConsumerWidget {
                     trailing: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
                         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   ),
+                  if (tt.soldOut && !ended && !cancelled) _WaitlistRow(event: e, type: tt),
+                  ]),
                 ),
               if (!payable && e.ticketTypes.any((tt) => !tt.isFree)) Text(t.paidSoon, style: theme.textTheme.bodySmall),
             ]),
@@ -385,6 +389,147 @@ class _Detail extends ConsumerWidget {
       builder: (_) => _RegisterSheet(event: event, payable: payable),
     );
     if (orderId != null && context.mounted) await context.push('/checkout/$orderId');
+  }
+}
+
+/// Under a sold-out ticket type: "Join waitlist", then "You're #N in line · Leave" (or "Buy now" once an offer arrives).
+class _WaitlistRow extends ConsumerStatefulWidget {
+  const _WaitlistRow({required this.event, required this.type});
+  final EventSummary event;
+  final TicketType type;
+  @override
+  ConsumerState<_WaitlistRow> createState() => _WaitlistRowState();
+}
+
+class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
+  bool _busy = false;
+
+  Future<void> _join() async {
+    final me = await ref.read(sessionProvider.future);
+    if (!mounted) return;
+    if (me == null) {
+      await context.push('/login?from=${Uri.encodeComponent('/event/${widget.event.id}')}');
+      return;
+    }
+    final joined = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _JoinWaitlistSheet(type: widget.type),
+    );
+    if (joined == true) ref.invalidate(waitlistProvider);
+  }
+
+  Future<void> _leave() async {
+    final t = L10n.of(context);
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiProvider).leaveWaitlist(widget.type.id);
+      ref.invalidate(waitlistProvider);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.waitlistLeft), duration: const Duration(seconds: 2)));
+    } on ApiException catch (e) {
+      ref.invalidate(waitlistProvider); // e.g. already gone: show what the server says now
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    final theme = Theme.of(context);
+    final entry = activeEntryFor(ref.watch(waitlistProvider).value ?? const [], widget.type.id);
+    final id = widget.type.id;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(children: [
+        if (entry == null)
+          Expanded(
+            child: OutlinedButton.icon(
+              key: Key('joinWaitlist-$id'),
+              onPressed: _join,
+              icon: const Icon(Icons.hourglass_empty),
+              label: Text(t.joinWaitlist),
+            ),
+          )
+        else if (entry.isOffered) ...[
+          Expanded(child: Text(t.waitlistOfferedInline, key: Key('waitlistOffered-$id'), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700))),
+          FilledButton(key: Key('buyOffer-$id'), onPressed: () => openOffer(context, ref, entry), child: Text(t.buyNow)),
+        ] else ...[
+          Expanded(
+            child: Text(
+              t.waitlistPosition(entry.position ?? 1),
+              key: Key('waitlistPosition-$id'),
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          TextButton(key: Key('leaveWaitlist-$id'), onPressed: _busy ? null : _leave, child: Text(t.leaveWaitlist)),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Quantity picker (1..maxPerOrder) for joining a sold-out type's line. Pops true once joined.
+class _JoinWaitlistSheet extends ConsumerStatefulWidget {
+  const _JoinWaitlistSheet({required this.type});
+  final TicketType type;
+  @override
+  ConsumerState<_JoinWaitlistSheet> createState() => _JoinWaitlistSheetState();
+}
+
+class _JoinWaitlistSheetState extends ConsumerState<_JoinWaitlistSheet> {
+  int _qty = 1;
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(apiProvider).joinWaitlist(widget.type.id, _qty);
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+      if (e.status == 409) ref.invalidate(waitlistProvider); // e.g. already in line, or tickets came back
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = L10n.of(context);
+    final lang = ref.watch(langProvider);
+    final theme = Theme.of(context);
+    final max_ = widget.type.maxPerOrder;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(t.waitlistSheetTitle, style: theme.textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(pickLang(lang, widget.type.name, widget.type.nameMy), style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(t.waitlistHint),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: Text('${t.quantity} · ${t.perPersonLimit(max_)}')),
+          IconButton.outlined(key: const Key('waitMinus'), onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', key: const Key('waitQty'), style: theme.textTheme.titleLarge)),
+          IconButton.outlined(key: const Key('waitPlus'), onPressed: _qty < max_ ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
+        ]),
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, key: const Key('waitError'), style: TextStyle(color: theme.colorScheme.error))),
+        const SizedBox(height: 16),
+        FilledButton(
+          key: const Key('waitSubmit'),
+          onPressed: _busy ? null : _submit,
+          child: _busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.waitlistJoinAction),
+        ),
+      ]),
+    );
   }
 }
 

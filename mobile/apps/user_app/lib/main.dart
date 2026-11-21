@@ -48,7 +48,10 @@ class _UserAppState extends ConsumerState<UserApp> {
       if (id != null && id.isNotEmpty && prev?.value?.id != id) register();
     }, fireImmediately: true);
     _subs.add(push.onTokenRefresh.listen(register));
-    _subs.add(push.onForeground.listen((_) => ref.invalidate(inboxProvider)));
+    _subs.add(push.onForeground.listen((_) {
+      ref.invalidate(inboxProvider);
+      ref.invalidate(waitlistProvider); // an offer may have just arrived
+    }));
     _subs.add(push.onOpenLink.listen(_open));
     push.initialLink().then((l) {
       if (l != null) _open(l);
@@ -57,6 +60,7 @@ class _UserAppState extends ConsumerState<UserApp> {
 
   void _open(String link) {
     ref.invalidate(inboxProvider);
+    ref.invalidate(waitlistProvider);
     ref.read(routerProvider).push(link);
   }
 

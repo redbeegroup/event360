@@ -563,4 +563,58 @@ class L10nEn extends L10n {
 
   @override
   String get ticketCancelledDone => 'Ticket cancelled';
+
+  @override
+  String get joinWaitlist => 'Join waitlist';
+
+  @override
+  String get waitlistSheetTitle => 'Join the waitlist';
+
+  @override
+  String get waitlistHint =>
+      'If tickets come back we\'ll tell you, and you\'ll have 30 minutes to buy them.';
+
+  @override
+  String get waitlistJoinAction => 'Join the line';
+
+  @override
+  String waitlistPosition(int n) {
+    return 'You\'re #$n in line';
+  }
+
+  @override
+  String get leaveWaitlist => 'Leave';
+
+  @override
+  String get waitlistLeft => 'You left the waitlist';
+
+  @override
+  String get waitlistOfferedInline => 'Tickets are reserved for you';
+
+  @override
+  String get buyNow => 'Buy now';
+
+  @override
+  String offerBanner(String time) {
+    return 'Tickets are waiting for you — $time left';
+  }
+
+  @override
+  String get offerSheetTitle => 'Your reserved tickets';
+
+  @override
+  String offerSheetHint(int n, String time) {
+    return 'You can buy up to $n now · $time left';
+  }
+
+  @override
+  String get offerEnded => 'This offer has ended';
+
+  @override
+  String get reservedForYou => 'Reserved for you';
+
+  @override
+  String reservedForYouLeft(String time) {
+    return 'Reserved for you · $time left';
+  }
 }

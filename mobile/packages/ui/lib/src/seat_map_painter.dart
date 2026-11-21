@@ -16,6 +16,7 @@ class SeatMapPainter extends CustomPainter {
     required this.states,
     required this.colors,
     this.selected = const {},
+    this.reserved = const {},
     this.lang = 'en',
     this.scale = 1,
     this.ink = const Color(0xFF3A3550),
@@ -34,6 +35,9 @@ class SeatMapPainter extends CustomPainter {
 
   /// Seat indexes the buyer picked.
   final Set<int> selected;
+
+  /// Seat indexes held for the buyer by a waitlist offer: drawn with a gold ring, selected or not.
+  final Set<int> reserved;
   final String lang;
 
   /// Current zoom (screen px per layout unit); only used to keep labels readable at any zoom.
@@ -117,6 +121,13 @@ class SeatMapPainter extends CustomPainter {
       mark.color = Colors.white;
       if (seat.attrs.contains(SeatAttr.wheelchair)) canvas.drawCircle(p, 4, mark);
       if (seat.attrs.contains(SeatAttr.restrictedView)) canvas.drawLine(p + const Offset(-4, 4), p + const Offset(4, -4), mark);
+      if (reserved.contains(i)) {
+        ring
+          ..color = const Color(0xFFE0A800)
+          ..strokeWidth = 2.4;
+        canvas.drawCircle(p, kSeatRadius + 4, ring);
+        ring.strokeWidth = 1.2;
+      }
       if (selected.contains(i)) {
         ring
           ..color = ink
@@ -146,6 +157,8 @@ class SeatMapPainter extends CustomPainter {
       !identical(old.colors, colors) ||
       old.selected.length != selected.length ||
       !old.selected.containsAll(selected) ||
+      old.reserved.length != reserved.length ||
+      !old.reserved.containsAll(reserved) ||
       old.lang != lang ||
       (old.scale - scale).abs() > 0.01 ||
       old.highlightSection != highlightSection ||

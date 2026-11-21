@@ -30,4 +30,28 @@ void main() {
       throwsA(isA<ApiException>().having((e) => e.reasonCode, 'reasonCode', isNull).having((e) => e.takenSeats, 'takenSeats', ['A:1:1'])),
     );
   });
+
+  test('WaitlistEntry: an OFFERED entry is a live offer whatever its orderId; an expired one is not', () {
+    Map<String, dynamic> row(String status, Duration left, {String? orderId}) => {
+          'id': 'w1',
+          'ticketTypeId': 'tt',
+          'eventId': 'e1',
+          'status': status,
+          'quantity': 2,
+          'position': null,
+          'offeredQty': 2,
+          'offerExpiresAt': DateTime.now().toUtc().add(left).toIso8601String(),
+          'seatKeys': ['A:1:1', 'A:1:2'],
+          'orderId': orderId,
+          'event': {'id': 'e1', 'slug': 's', 'title': 'T', 'titleMy': null},
+          'ticketType': {'id': 'tt', 'name': 'General', 'nameMy': null},
+        };
+    final reopened = WaitlistEntry.fromJson(row('OFFERED', const Duration(minutes: 5), orderId: 'old'));
+    expect(reopened.isOffered, isTrue);
+    expect(reopened.isSeated, isTrue);
+    expect(reopened.seatKeys, ['A:1:1', 'A:1:2']);
+    expect(WaitlistEntry.fromJson(row('OFFERED', const Duration(minutes: -1))).isOffered, isFalse);
+    expect(WaitlistEntry.fromJson(row('PURCHASED', const Duration(minutes: 5))).isOffered, isFalse);
+    expect(WaitlistEntry.fromJson(row('WAITING', Duration.zero)).isWaiting, isTrue);
+  });
 }

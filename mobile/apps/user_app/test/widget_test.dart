@@ -141,8 +141,58 @@ class FakeApi extends Event360Api {
     });
   }
 
+  // ───── Waitlist ─────
+  List<Map<String, dynamic>> waitlist = []; // /me/waitlist rows
+  int waitlistLoads = 0;
+  final waitlistJoins = <String>[];
+  final waitlistLeaves = <String>[];
+  final offerOrders = <String>[]; // 'event:type:qty:entry' for orders made from an offer
+  final offerSeatOrders = <String>[]; // 'entry:seat,seat' for seated orders made from an offer
+  final offerBest = <String?>[];
+  ApiException? joinError;
+
+  /// A /me/waitlist row. An offer carries its expiry, quantity and (seated types) seat keys.
+  static Map<String, dynamic> waitlistRow(String id,
+          {String status = 'WAITING', String event = 'soldout', String type = 'tt-soldout', int? position, int offeredQty = 0, Duration? left, List<String> seatKeys = const [], String? orderId}) =>
+      {
+        'id': id,
+        'ticketTypeId': type,
+        'eventId': event,
+        'status': status,
+        'quantity': 2,
+        'position': position,
+        'offeredQty': offeredQty,
+        'offerExpiresAt': left == null ? null : DateTime.now().toUtc().add(left).toIso8601String(),
+        'seatKeys': seatKeys,
+        'orderId': orderId,
+        'event': {'id': event, 'slug': 'slug-$event', 'title': 'Yangon Food Fair $event', 'titleMy': null},
+        'ticketType': {'id': type, 'name': 'General', 'nameMy': 'အထွေထွေ'},
+      };
+
   @override
-  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity) async {
+  Future<List<WaitlistEntry>> myWaitlist() async {
+    waitlistLoads++;
+    return waitlist.map(WaitlistEntry.fromJson).toList();
+  }
+
+  @override
+  Future<WaitlistJoin> joinWaitlist(String ticketTypeId, int quantity) async {
+    final err = joinError;
+    if (err != null) throw err;
+    waitlistJoins.add('$ticketTypeId:$quantity');
+    waitlist = [...waitlist, waitlistRow('w-new', position: 3)];
+    return WaitlistJoin(entryId: 'w-new', position: 3);
+  }
+
+  @override
+  Future<void> leaveWaitlist(String ticketTypeId) async {
+    waitlistLeaves.add(ticketTypeId);
+    waitlist = [for (final w in waitlist) if (w['ticketTypeId'] != ticketTypeId) w];
+  }
+
+  @override
+  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity, {String? waitlistEntryId}) async {
+    offerBest.add(waitlistEntryId);
     bestCalls.add('$ticketTypeId:$quantity');
     return [for (var n = 1; n <= quantity; n++) 'A:2:$n'];
   }
@@ -152,7 +202,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<Order> createOrder(String eventId, Map<String, int> quantities,
-      {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const []}) async {
+      {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const [], String? waitlistEntryId}) async {
     final err = nextOrderError;
     if (err != null) {
       nextOrderError = null;
@@ -166,6 +216,7 @@ class FakeApi extends Event360Api {
         throw ApiException(409, 'Some seats were just taken', takenSeats: taken);
       }
       seatOrders.add(seats);
+      if (waitlistEntryId != null) offerSeatOrders.add('$waitlistEntryId:${seats.join(',')}');
       seatOrderKeys.add(idempotencyKey);
       seatPromoCodes.add(promoCode);
       final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 20000 * seats.length, qty: seats.length);
@@ -173,6 +224,7 @@ class FakeApi extends Event360Api {
       return Order.fromJson(o);
     }
     final e = quantities.entries.first;
+    if (waitlistEntryId != null) offerOrders.add('$eventId:${e.key}:${e.value}:$waitlistEntryId');
     registered.add('$eventId:${e.key}:${e.value}${promoCode != null ? ':$promoCode' : ''}');
     if (eventId == 'e1') return Order.fromJson({...orderJson('free-1', 'CONFIRMED', total: 0, qty: e.value), 'ticketIds': ['t1']});
     final o = orderJson('ord-1', 'PENDING_PAYMENT', total: 5000 * e.value, qty: e.value);
@@ -296,7 +348,14 @@ class FakeApi extends Event360Api {
   Map<String, dynamic>? nextPriceJson;
 
   EventSummary _event(String idOrSlug) {
-    final j = idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+    final j = idOrSlug == 'soldout'
+        ? {
+            ...eventJson('soldout', free: false),
+            'ticketTypes': [
+              {'id': 'tt-soldout', 'name': 'General', 'nameMy': 'အထွေထွေ', 'priceMmk': 5000, 'quota': 100, 'remaining': 0, 'maxPerOrder': 4},
+            ],
+          }
+        : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
@@ -1495,5 +1554,214 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.cancelled, ['ticket-seat-0001']);
     expect(find.text('Ticket cancelled'), findsOneWidget);
+  });
+
+  // ───── Waitlist ─────
+
+  Future<void> openEvent(WidgetTester tester, String id) async {
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/$id');
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('join waitlist on sold-out type shows position', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    await openEvent(tester, 'soldout');
+    final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+    await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Join waitlist'), findsOneWidget);
+    await tester.tap(join);
+    await tester.pumpAndSettle();
+    expect(find.text('Join the waitlist'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('waitPlus')));
+    await tester.tap(find.byKey(const Key('waitPlus')));
+    await tester.pump();
+    expect(find.byKey(const Key('waitQty')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('waitQty'))).data, '3');
+    await tester.tap(find.byKey(const Key('waitSubmit')));
+    await tester.pumpAndSettle();
+    expect(api.waitlistJoins, ['tt-soldout:3']);
+    expect(find.text("You're #3 in line"), findsOneWidget);
+    expect(find.byKey(const Key('joinWaitlist-tt-soldout')), findsNothing);
+    expect(find.text('Leave'), findsOneWidget);
+  });
+
+  testWidgets('quantity picker stops at maxPerOrder and a 409 shows the API message', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.joinError = ApiException(409, 'You are already on this waitlist'));
+    await openEvent(tester, 'soldout');
+    final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+    await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(join);
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byKey(const Key('waitPlus')), warnIfMissed: false);
+      await tester.pump();
+    }
+    expect(tester.widget<Text>(find.byKey(const Key('waitQty'))).data, '4'); // the type's maxPerOrder
+    await tester.tap(find.byKey(const Key('waitSubmit')));
+    await tester.pumpAndSettle();
+    expect(find.text('You are already on this waitlist'), findsOneWidget);
+    expect(api.waitlistJoins, isEmpty);
+  });
+
+  testWidgets('leave waitlist', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w1', position: 2)]);
+    await openEvent(tester, 'soldout');
+    await tester.scrollUntilVisible(find.byKey(const Key('waitlistPosition-tt-soldout')), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text("You're #2 in line"), findsOneWidget);
+    await tester.tap(find.byKey(const Key('leaveWaitlist-tt-soldout')));
+    await tester.pumpAndSettle();
+    expect(api.waitlistLeaves, ['tt-soldout']);
+    expect(find.text("You're #2 in line"), findsNothing);
+    expect(find.byKey(const Key('joinWaitlist-tt-soldout')), findsOneWidget); // can join again
+  });
+
+  testWidgets('signed out: Join waitlist asks to sign in first', (tester) async {
+    await pumpApp(tester);
+    await openEvent(tester, 'soldout');
+    final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+    await tester.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(join);
+    await tester.pumpAndSettle();
+    expect(find.text('Join the waitlist'), findsNothing);
+    expect(find.byType(TextField), findsWidgets); // the login screen
+  });
+
+  testWidgets('offer banner shows countdown and opens checkout with waitlistEntryId', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 2, left: const Duration(minutes: 23, seconds: 41, milliseconds: 900))];
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Tickets are waiting for you — 23:41 left'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('offerBanner')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Your reserved tickets'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('offerQty'))).data, '2');
+    await tester.tap(find.byKey(const Key('offerMinus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('offerSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.offerOrders, ['e2:tt-e2:1:w1']);
+    expect(find.text('Checkout'), findsWidgets); // checkout opened for the new order
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a reopened offer (it still carries the cancelled order id) is still "buy now"', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 1, left: const Duration(minutes: 5, milliseconds: 900), orderId: 'old-cancelled-order')];
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Tickets are waiting for you — 05:00 left'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('offerBanner')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const Key('offerSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.offerOrders, ['e2:tt-e2:1:w1']); // a new order from the offer, not the old order's checkout
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('banner also shows on My Tickets, in Myanmar, and not for WAITING or ended offers', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) {
+      a.waitlist = [
+        FakeApi.waitlistRow('w0', position: 4),
+        FakeApi.waitlistRow('w9', status: 'EXPIRED', event: 'e2', type: 'tt-e2'),
+        FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 2, left: const Duration(minutes: 10, milliseconds: 900)),
+      ];
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('သင့်အတွက် လက်မှတ်များ စောင့်နေသည် — 10:00 ကျန်သည်'), findsOneWidget);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).go('/tickets');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('offerBanner')), findsOneWidget);
+    expect(api.waitlistLoads, 1); // one shared list
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('no banner and no polling when the buyer has no active entry', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true);
+    expect(find.byKey(const Key('offerBanner')), findsNothing);
+    final n = api.waitlistLoads;
+    await tester.pump(const Duration(seconds: 65));
+    expect(api.waitlistLoads, n);
+  });
+
+  testWidgets('waitlist refreshes when the app resumes and every 30 s while in line', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'e2', type: 'tt-e2', offeredQty: 2, left: const Duration(minutes: 20))];
+    });
+    await tester.pump(const Duration(milliseconds: 100));
+    var n = api.waitlistLoads;
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.waitlistLoads, n + 1);
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.waitlistLoads, n + 2);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    n = api.waitlistLoads;
+    await tester.pump(const Duration(seconds: 90));
+    expect(api.waitlistLoads, n); // backgrounded: no polling
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(api.waitlistLoads, n + 1); // refreshed on return
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.waitlistLoads, n + 2);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seat picker preselects offered seats', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.seatStatus = 'ATTAAAAAAA'; // the public map shows the offered seats taken
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'seated', type: 'tt-seat', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900), seatKeys: ['A:1:2', 'A:1:3'])];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats?offer=w1');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key('chip-A:1:2')), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:1:3')), findsOneWidget);
+    expect(find.text('2 seats · Total'), findsOneWidget);
+    expect(find.text('40,000 MMK'), findsOneWidget);
+    expect(find.text('Reserved for you · 20:00 left'), findsOneWidget);
+    expect(find.text('Reserved for you'), findsOneWidget); // legend
+    await tester.tap(find.byKey(const Key('seatContinue')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.offerSeatOrders, ['w1:A:1:2,A:1:3']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('without the offer the same seats are taken, and best available sends the offer id', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, setup: (a) {
+      a.seatStatus = 'ATTAAAAAAA';
+      a.waitlist = [FakeApi.waitlistRow('w1', status: 'OFFERED', event: 'seated', type: 'tt-seat', offeredQty: 2, left: const Duration(minutes: 20, milliseconds: 900), seatKeys: ['A:1:2', 'A:1:3'])];
+    });
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats'); // opened without the offer
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
+    expect(find.text('Tap a seat to select it'), findsOneWidget);
+    expect(api.offerBest, isEmpty);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
+    await tester.pump(const Duration(milliseconds: 500));
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated/seats?offer=w1');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('bestAvailable')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key('bestFind')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(api.offerBest, ['w1']);
+    await tester.pumpWidget(const SizedBox());
   });
 }

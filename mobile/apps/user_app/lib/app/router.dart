@@ -16,6 +16,7 @@ import '../screens/profile_screen.dart';
 import '../screens/ticket_screen.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/watch_screen.dart';
+import '../widgets/waitlist_offer.dart';
 import 'providers.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -34,7 +35,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => LoginScreen(returnTo: s.uri.queryParameters['from']),
       ),
       GoRoute(path: '/event/:id', builder: (_, s) => EventDetailScreen(idOrSlug: s.pathParameters['id']!)),
-      GoRoute(path: '/event/:id/seats', builder: (_, s) => SeatPickerScreen(idOrSlug: s.pathParameters['id']!)),
+      GoRoute(path: '/event/:id/seats', builder: (_, s) => SeatPickerScreen(idOrSlug: s.pathParameters['id']!, offerEntryId: s.uri.queryParameters['offer'])),
       GoRoute(path: '/ticket/:id', builder: (_, s) => TicketScreen(ticketId: s.pathParameters['id']!)),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
       GoRoute(path: '/checkout/:id', builder: (_, s) => CheckoutScreen(orderId: s.pathParameters['id']!)),
@@ -66,7 +67,7 @@ class _Shell extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     return Scaffold(
-      body: shell,
+      body: WaitlistSync(child: shell),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),

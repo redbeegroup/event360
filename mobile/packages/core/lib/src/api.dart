@@ -162,6 +162,23 @@ class Event360Api {
         (d) => ((d as Map<String, dynamic>)['ticketIds'] as List).cast<String>(),
       );
 
+  // ───── Waitlist ─────
+
+  /// Joins the line of a sold-out ticket type for [quantity] tickets (1..maxPerOrder). 409 when it is not sold out, the
+  /// line is closed or paused, the buyer is already in line, or the per-person limit is reached.
+  Future<WaitlistJoin> joinWaitlist(String ticketTypeId, int quantity) => _call(
+        () => _dio.post('/ticket-types/$ticketTypeId/waitlist', data: {'quantity': quantity}),
+        (d) => WaitlistJoin.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<void> leaveWaitlist(String ticketTypeId) => _call(() => _dio.delete('/ticket-types/$ticketTypeId/waitlist'), (_) {});
+
+  /// The buyer's entries: active ones (place in line, or a live offer with its expiry and seat keys) and recently ended ones.
+  Future<List<WaitlistEntry>> myWaitlist() => _call(
+        () => _dio.get('/me/waitlist'),
+        (d) => (d as List).map((x) => WaitlistEntry.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
   // ───── Notifications ─────
 
   Future<Inbox> notifications({DateTime? before, int limit = 30}) => _call(
@@ -188,8 +205,9 @@ class Event360Api {
   /// Creates an order (free → confirmed with tickets; paid → seats held for 10 minutes).
   ///
   /// [seats] (seated events) are seat keys; they are claimed all or none, and a 409 carries [ApiException.takenSeats].
+  /// [waitlistEntryId] buys from the buyer's live waitlist offer (see [myWaitlist]); other types may be added from normal sale.
   Future<Order> createOrder(String eventId, Map<String, int> quantities,
-          {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const []}) =>
+          {required String idempotencyKey, String channel = 'APP', String? promoCode, List<String> seats = const [], String? waitlistEntryId}) =>
       _call(
         () => _dio.post('/events/$eventId/orders', data: {
           'items': [for (final e in quantities.entries) if (e.value > 0) {'ticketTypeId': e.key, 'quantity': e.value}],
@@ -197,6 +215,7 @@ class Event360Api {
           'idempotencyKey': idempotencyKey,
           'channel': channel,
           if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
+          if (waitlistEntryId != null) 'waitlistEntryId': waitlistEntryId,
         }),
         (d) => Order.fromJson(d as Map<String, dynamic>),
       );
@@ -208,8 +227,11 @@ class Event360Api {
       );
 
   /// Server-picked seats (adjacent where possible). Holds nothing. 409 'Not enough seats together' when none fit.
-  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity) => _call(
-        () => _dio.post('/events/$eventId/seats/best', data: {'ticketTypeId': ticketTypeId, 'quantity': quantity}, options: Options(extra: {'auth': false})),
+  /// With [waitlistEntryId] (the buyer's live offer) the seats reserved for them count as free; that call is signed in.
+  Future<List<String>> bestSeats(String eventId, String ticketTypeId, int quantity, {String? waitlistEntryId}) => _call(
+        () => _dio.post('/events/$eventId/seats/best',
+            data: {'ticketTypeId': ticketTypeId, 'quantity': quantity, if (waitlistEntryId != null) 'waitlistEntryId': waitlistEntryId},
+            options: waitlistEntryId == null ? Options(extra: {'auth': false}) : null),
         (d) => ((d as Map<String, dynamic>)['seats'] as List).cast<String>(),
       );
 

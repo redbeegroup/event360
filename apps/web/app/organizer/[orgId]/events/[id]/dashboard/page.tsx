@@ -14,6 +14,11 @@ interface Dashboard {
   ticketTypes: { id: string; name: string; sold: number; quota: number; priceMmk: number }[];
 }
 
+interface WaitlistCounts {
+  ticketTypes: { id: string; name: string; waiting: number; offered: number }[];
+  total: number;
+}
+
 const nf = (lang: string) => new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US');
 const compact = (lang: string) => new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US', { notation: 'compact', maximumFractionDigits: 1 });
 /** Round an axis maximum up to 1/2/5 × 10^n. */
@@ -105,10 +110,14 @@ function HBars({ rows, title, lang }: { rows: { name: string; value: number; of?
 
 export default async function DashboardPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, d, ev, seating] = await Promise.all([
+  const [tr, d, ev, waitlist, seating] = await Promise.all([
     t(),
     api<Dashboard>(`/organizations/${orgId}/events/${id}/dashboard`),
     api<{ title: string; titleMy: string | null }>(`/organizations/${orgId}/events/${id}`),
+    api<WaitlistCounts>(`/organizations/${orgId}/events/${id}/waitlist`).catch((err) => {
+      if (err instanceof ApiError) return null;
+      throw err; // keep Next's redirect (401 -> /login) working
+    }),
     api<{ layout: Layout | null; seats: { seatKey: string; status: string }[] }>(`/organizations/${orgId}/events/${id}/seating`).catch((err) => {
       if (err instanceof ApiError) return null;
       throw err; // keep Next's redirect (401 -> /login) working
@@ -124,6 +133,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ orgI
     [tr.dashDiscount, fmtMmk(d.totals.discountMmk, tr.lang)],
     [tr.dashCheckedIn, n.format(d.totals.checkedIn)],
     [tr.dashConversion, d.totals.conversion == null ? '—' : `${d.totals.conversion}%`],
+    ...(waitlist ? ([[tr.dashWaitlist, n.format(waitlist.total)]] as [string, string][]) : []),
   ];
   const daily = (k: 'orders' | 'revenueMmk' | 'views') => d.daily.map((r) => ({ x: r.day, y: r[k], label: dayLabel(r.day) }));
   return (

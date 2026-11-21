@@ -8,6 +8,7 @@ import '../app/format.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
+import '../widgets/waitlist_offer.dart';
 
 class TicketsScreen extends ConsumerWidget {
   const TicketsScreen({super.key});
@@ -29,16 +30,21 @@ class TicketsScreen extends ConsumerWidget {
         error: (_, __) => MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: () => ref.invalidate(myTicketsProvider)),
         data: (list) {
           if (list.isEmpty && pending.isEmpty) {
-            return MessageView(icon: Icons.confirmation_number_outlined, message: t.noTickets, actionLabel: t.explore, onAction: () => context.go('/explore'));
+            return Column(children: [
+              const OfferBanner(),
+              Expanded(child: MessageView(icon: Icons.confirmation_number_outlined, message: t.noTickets, actionLabel: t.explore, onAction: () => context.go('/explore'))),
+            ]);
           }
           final upcoming = list.where((x) => x.isUpcoming).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
           final past = list.where((x) => !x.isUpcoming).toList();
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(pendingOrdersProvider);
+              ref.invalidate(waitlistProvider);
               await ref.read(myTicketsProvider.notifier).refresh();
             },
             child: ListView(padding: const EdgeInsets.all(16), children: [
+              const OfferBanner(padding: EdgeInsets.only(bottom: 12)),
               if (fromCache)
                 Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [const Icon(Icons.cloud_off, size: 18), const SizedBox(width: 6), Text(t.offlineReady)])),
               if (pending.isNotEmpty) _Header(t.pendingPayments),

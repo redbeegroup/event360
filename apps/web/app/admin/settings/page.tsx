@@ -13,6 +13,7 @@ interface SmsView {
   senderId: string;
   enabled: boolean;
   testMode: boolean;
+  waitlistSms: boolean;
   otpTemplate: string;
   canStoreSecrets: boolean;
   balance: { balance: number; currency: string } | null;
@@ -119,6 +120,7 @@ export default async function SettingsPage() {
           </div>
           <label className="check"><input type="checkbox" name="enabled" defaultChecked={sms.enabled} /> {tr.smsEnabled}</label>
           <label className="check"><input type="checkbox" name="testMode" defaultChecked={sms.testMode} /> {tr.smsTestModeLabel}</label>
+          <label className="check"><input type="checkbox" name="waitlistSms" defaultChecked={sms.waitlistSms !== false} /> {tr.smsWaitlistLabel}</label>
         </ActionForm>
       </div>
 

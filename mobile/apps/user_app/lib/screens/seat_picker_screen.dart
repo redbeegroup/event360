@@ -13,6 +13,7 @@ import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/total_amounts.dart';
+import '../widgets/waitlist_offer.dart';
 
 /// Seats are tappable from this zoom (screen px per layout unit); below it a tap on a section zooms into it.
 const double kSeatTapScale = 1.6;
@@ -22,8 +23,11 @@ const int kMaxSeatsPerOrder = 20;
 
 /// Pick seats on the venue map (pinch-zoom), or let the server choose the best ones, then continue to checkout.
 class SeatPickerScreen extends ConsumerStatefulWidget {
-  const SeatPickerScreen({super.key, required this.idOrSlug, this.pollInterval = const Duration(seconds: 5)});
+  const SeatPickerScreen({super.key, required this.idOrSlug, this.offerEntryId, this.pollInterval = const Duration(seconds: 5)});
   final String idOrSlug;
+
+  /// The buyer's waitlist offer being bought (`/me/waitlist` entry id): its seats are shown as theirs and preselected.
+  final String? offerEntryId;
 
   /// How often availability is refreshed while the screen is open and in the foreground.
   final Duration pollInterval;
@@ -47,6 +51,9 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   List<Color?> _colors = const [];
   List<int?> _typeOf = const [];
   List<int> _selected = []; // seat indexes, in the order they were picked
+  Set<int> _reserved = {}; // seats a live waitlist offer holds for this buyer (the public map shows them taken)
+  bool _preselected = false; // the offered seats were put in the selection once
+  bool _hadOffer = false;
 
   // Promo: the entered code, the last check for the current seats (null while pending), and a debounce for re-checks
   final _promoCtl = TextEditingController();
@@ -119,6 +126,16 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     if ((s - _scale).abs() > 0.02 && mounted) setState(() => _scale = s);
   }
 
+  // ───── Waitlist offer ─────
+
+  /// The live offer this screen was opened for, if it is still live.
+  WaitlistEntry? get _offer {
+    final id = widget.offerEntryId;
+    if (id == null) return null;
+    final entries = ref.read(waitlistProvider).value ?? const <WaitlistEntry>[];
+    return entries.where((e) => e.id == id && e.isOffered).firstOrNull;
+  }
+
   // ───── Data ─────
 
   /// [force] repaints even if the response looks unchanged. If a load is already running, one follow-up
@@ -157,7 +174,10 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     final old = _data;
     if (!force && old != null && old.versionId == d.versionId && old.status == d.status && old.seatTypes == d.seatTypes && _sameTypes(old.types, d.types)) return; // nothing changed: no repaint
     // A different map version has different seats: the old picks mean nothing
-    if (old != null && old.versionId != d.versionId) _selected = [];
+    if (old != null && old.versionId != d.versionId) {
+      _selected = [];
+      _preselected = false;
+    }
     final layout = (old != null && old.versionId == d.versionId) ? _layout! : SeatLayout.fromJson(d.layout);
     final colors = <Color?>[];
     final typeOf = <int?>[];
@@ -169,10 +189,29 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       colors.add(valid ? (parseHexColor(d.types[ti].color) ?? Colors.deepPurple) : null);
       states.add(i < d.status.length ? SeatState.fromChar(d.status[i]) : SeatState.unavailable);
     }
-    // Seats the buyer picked that someone else took meanwhile
+    // The seats reserved for this buyer look taken on the public map; here they are theirs
+    final offer = _offer;
+    final reserved = <int>{};
+    if (offer != null) {
+      for (final k in offer.seatKeys) {
+        final seat = layout.seatByKey(k);
+        if (seat != null && seat.index < states.length && typeOf[seat.index] != null) {
+          reserved.add(seat.index);
+          states[seat.index] = SeatState.available;
+        }
+      }
+    }
+    final offerEnded = _hadOffer && offer == null && widget.offerEntryId != null;
+    // Seats the buyer picked that someone else took meanwhile (or whose reservation ended)
     final lost = [for (final i in _selected) if (states[i] != SeatState.available) i];
     final lang = ref.read(langProvider);
     setState(() {
+      if (offer != null) _hadOffer = true;
+      _reserved = reserved;
+      if (reserved.isNotEmpty && !_preselected) {
+        _preselected = true;
+        _selected = [..._selected, for (final i in reserved) if (!_selected.contains(i)) i];
+      }
       _data = d;
       _layout = layout;
       _states = states;
@@ -181,7 +220,9 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       _loadFailed = false;
       if (lost.isNotEmpty) {
         _selected = [for (final i in _selected) if (!lost.contains(i)) i];
-        _notice = L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
+        _notice = offerEnded ? L10n.of(context).offerEnded : L10n.of(context).seatsJustTaken([for (final i in lost) layout.seats[i].labelFor(lang)].join(', '));
+      } else if (offerEnded) {
+        _notice = L10n.of(context).offerEnded;
       }
     });
     final repriced = old != null && old.versionId == d.versionId && (old.seatTypes != d.seatTypes || !_sameTypes(old.types, d.types));
@@ -381,7 +422,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _BestSheet(idOrSlug: widget.idOrSlug, types: d.types, event: event, available: _availableByType()),
+      builder: (_) => _BestSheet(idOrSlug: widget.idOrSlug, types: d.types, event: event, available: _availableByType(), offerEntryId: _offer?.id),
     );
     final l = _layout;
     if (keys == null || l == null || !mounted) return;
@@ -427,8 +468,12 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     });
     try {
       final key = '$_idempotencyKey-${Object.hashAll([...([...keys]..sort()), code ?? '']).toRadixString(16)}';
-      final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys, promoCode: code);
+      // Only an order that includes the offered seats draws on the offer
+      final offer = _offer;
+      final fromOffer = offer != null && _selected.any(_reserved.contains);
+      final o = await ref.read(apiProvider).createOrder(event.id, const {}, idempotencyKey: key, seats: keys, promoCode: code, waitlistEntryId: fromOffer ? offer.id : null);
       _idempotencyKey = _newSalt();
+      ref.invalidate(waitlistProvider);
       ref.invalidate(eventProvider(event.id));
       ref.invalidate(pendingOrdersProvider);
       if (!mounted) return;
@@ -481,6 +526,10 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     final d = _data;
     final l = _layout;
     final event = ref.watch(eventProvider(widget.idOrSlug)).value;
+    ref.listen(waitlistProvider, (_, __) {
+      final cur = _data;
+      if (cur != null && widget.offerEntryId != null) _apply(cur, force: true); // the offer arrived, changed or ended
+    });
     ref.listen(eventProvider(widget.idOrSlug), (_, next) {
       if (next.value != null && _promoCode.isNotEmpty && _selected.isNotEmpty && _promo == null && _promoError == null) _checkPromo();
     });
@@ -494,8 +543,10 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
             })
           : const Center(child: CircularProgressIndicator());
     } else {
+      final offer = _offer;
       body = Column(children: [
-        _Legend(types: d.types, lang: lang),
+        if (offer != null) OfferCountdown(expiresAt: offer.offerExpiresAt!, onExpired: () => ref.invalidate(waitlistProvider)),
+        _Legend(types: d.types, lang: lang, reserved: _reserved.isNotEmpty),
         Expanded(
           child: LayoutBuilder(builder: (context, c) {
             _place(Size(c.maxWidth, c.maxHeight));
@@ -520,6 +571,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
                           states: _states,
                           colors: _colors,
                           selected: _selected.toSet(),
+                          reserved: _reserved,
                           lang: lang,
                           scale: _scale,
                           ink: theme.colorScheme.onSurface,
@@ -596,9 +648,12 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
 }
 
 class _Legend extends StatelessWidget {
-  const _Legend({required this.types, required this.lang});
+  const _Legend({required this.types, required this.lang, this.reserved = false});
   final List<SeatTypeInfo> types;
   final String lang;
+
+  /// A waitlist offer holds seats for the buyer: add "Reserved for you".
+  final bool reserved;
 
   @override
   Widget build(BuildContext context) {
@@ -627,6 +682,7 @@ class _Legend extends StatelessWidget {
                 if (priceRiseText(t, lang, ty.priceMmk, ty.nextPrice) != null) priceRiseText(t, lang, ty.priceMmk, ty.nextPrice)!,
               ].join(' · '))),
             ),
+          if (reserved) Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(const Color(0xFFE0A800), t.reservedForYou, icon: Icons.star))),
           Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(const Color(0xFFBDBDBD), t.legendTaken))),
           Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(Colors.grey, t.legendWheelchair, icon: Icons.accessible))),
           Padding(padding: const EdgeInsets.only(right: 14), child: Center(child: dot(Colors.grey, t.legendRestricted, icon: Icons.visibility_off))),
@@ -784,8 +840,9 @@ class _BottomBar extends StatelessWidget {
 
 /// "Best available": choose a ticket type and how many; the server picks adjacent seats. Pops with the seat keys.
 class _BestSheet extends ConsumerStatefulWidget {
-  const _BestSheet({required this.idOrSlug, required this.types, required this.event, required this.available});
+  const _BestSheet({required this.idOrSlug, required this.types, required this.event, required this.available, this.offerEntryId});
   final String idOrSlug;
+  final String? offerEntryId; // the buyer's live offer: its seats count as free
   final List<SeatTypeInfo> types;
   final EventSummary? event;
   final List<int> available; // free seats per type, same order as [types]
@@ -812,7 +869,7 @@ class _BestSheetState extends ConsumerState<_BestSheet> {
       _error = null;
     });
     try {
-      final seats = await ref.read(apiProvider).bestSeats(widget.idOrSlug, widget.types[_type].id, min(_qty, _max));
+      final seats = await ref.read(apiProvider).bestSeats(widget.idOrSlug, widget.types[_type].id, min(_qty, _max), waitlistEntryId: widget.offerEntryId);
       if (mounted) Navigator.of(context).pop(seats);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);

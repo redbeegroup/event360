@@ -168,6 +168,38 @@ final pendingOrdersProvider = FutureProvider<List<Order>>((ref) async {
   }
 });
 
+// ───── Waitlist ─────
+
+/// The signed-in buyer's waitlist entries (`GET /me/waitlist`); empty when signed out or offline. A refresh keeps the
+/// previous list on screen (and on failure) so a banner doesn't flicker.
+class WaitlistNotifier extends AsyncNotifier<List<WaitlistEntry>> {
+  @override
+  Future<List<WaitlistEntry>> build() async {
+    final me = await ref.watch(sessionProvider.future);
+    if (me == null) return const [];
+    try {
+      return await ref.read(apiProvider).myWaitlist();
+    } on ApiException {
+      return state.value ?? const [];
+    }
+  }
+
+  Future<void> refresh() async => ref.invalidateSelf();
+}
+
+final waitlistProvider = AsyncNotifierProvider<WaitlistNotifier, List<WaitlistEntry>>(WaitlistNotifier.new);
+
+/// The buyer's active entry for a ticket type (WAITING, or OFFERED), if any.
+WaitlistEntry? activeEntryFor(List<WaitlistEntry> entries, String ticketTypeId) =>
+    entries.where((e) => e.ticketTypeId == ticketTypeId && e.isActive && (e.status != 'OFFERED' || e.isOffered)).firstOrNull;
+
+/// The live offer that ends first, if any. Any OFFERED entry counts, whatever its `orderId` (a reopened offer still carries
+/// the cancelled order's id).
+WaitlistEntry? soonestOffer(List<WaitlistEntry> entries) {
+  final live = entries.where((e) => e.isOffered).toList()..sort((a, b) => a.offerExpiresAt!.compareTo(b.offerExpiresAt!));
+  return live.firstOrNull;
+}
+
 // ───── Notifications ─────
 
 final pushProvider = Provider<PushClient>((ref) => FirebasePush.configured ? FirebasePush() : const NoPush());

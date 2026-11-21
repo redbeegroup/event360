@@ -80,8 +80,13 @@ interface Announcements {
   remainingToday: number;
 }
 
+interface WaitlistCounts {
+  ticketTypes: { id: string; name: string; nameMy: string | null; waiting: number; waitingQuantity: number; offered: number; offeredQuantity: number }[];
+  total: number;
+}
+
 interface Sales {
-  ticketTypes: { id: string; name: string; priceMmk: number; quota: number; sold: number; held: number; revenueMmk: number }[];
+  ticketTypes: { id: string; name: string; priceMmk: number; quota: number; sold: number; held: number; offered?: number; revenueMmk: number }[];
   paidOrders: number;
   grossMmk: number;
   commissionMmk: number;
@@ -93,7 +98,7 @@ interface Sales {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos, seatMaps, me] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos, seatMaps, waitlist, me] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -105,6 +110,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
     api<Promo[]>(`/organizations/${orgId}/events/${id}/promo-codes`).catch(() => null),
     api<SeatMapOption[]>('/seat-maps').catch(() => null),
+    api<WaitlistCounts>(`/organizations/${orgId}/events/${id}/waitlist`).catch(() => null),
     getMe(),
   ]);
   // Same roles the API allows for PUT /group-discounts (ORG_EDITORS, or a platform admin)
@@ -385,6 +391,27 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
         </>
       )}
 
+      {waitlist && (
+        <>
+          <h2>{tr.waitlistTitle}</h2>
+          <div className="card table-wrap" data-testid="waitlist-counts">
+            <p className="muted">{tr.waitlistHint}</p>
+            {waitlist.total === 0 ? (
+              <p className="muted">{tr.waitlistNobody}</p>
+            ) : (
+              <table>
+                <thead><tr><th>{tr.name}</th><th>{tr.wlWaiting}</th><th>{tr.wlWantedTickets}</th><th>{tr.wlOffered}</th><th>{tr.wlOfferedTickets}</th></tr></thead>
+                <tbody>
+                  {waitlist.ticketTypes.filter((x) => x.waiting + x.offered > 0).map((x) => (
+                    <tr key={x.id}><td>{pick(tr.lang, x.name, x.nameMy)}</td><td>{x.waiting}</td><td>{x.waitingQuantity}</td><td>{x.offered}</td><td>{x.offeredQuantity}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+
       {sales && hasPaid && (
         <>
           <h2>{tr.salesTitle}</h2>
@@ -397,10 +424,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
               <div><div className="muted">{tr.refunded}</div><strong>{sales.refundedOrders} · {fmtMmk(sales.refundedMmk, tr.lang)}</strong></div>
             </div>
             <table style={{ marginTop: 12 }}>
-              <thead><tr><th>{tr.name}</th><th>{tr.price}</th><th>{tr.sold}</th><th>{tr.held}</th><th>{tr.quota}</th><th>{tr.revenue}</th></tr></thead>
+              <thead><tr><th>{tr.name}</th><th>{tr.price}</th><th>{tr.sold}</th><th>{tr.held}</th><th>{tr.offered}</th><th>{tr.quota}</th><th>{tr.revenue}</th></tr></thead>
               <tbody>
                 {sales.ticketTypes.filter((x) => x.priceMmk > 0).map((x) => (
-                  <tr key={x.id}><td>{x.name}</td><td>{fmtMmk(x.priceMmk, tr.lang)}</td><td>{x.sold}</td><td>{x.held}</td><td>{x.quota}</td><td>{fmtMmk(x.revenueMmk, tr.lang)}</td></tr>
+                  <tr key={x.id}><td>{x.name}</td><td>{fmtMmk(x.priceMmk, tr.lang)}</td><td>{x.sold}</td><td>{x.held}</td><td>{x.offered ?? 0}</td><td>{x.quota}</td><td>{fmtMmk(x.revenueMmk, tr.lang)}</td></tr>
                 ))}
               </tbody>
             </table>

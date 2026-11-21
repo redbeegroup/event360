@@ -1098,6 +1098,96 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Ticket cancelled'**
   String get ticketCancelledDone;
+
+  /// No description provided for @joinWaitlist.
+  ///
+  /// In en, this message translates to:
+  /// **'Join waitlist'**
+  String get joinWaitlist;
+
+  /// No description provided for @waitlistSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Join the waitlist'**
+  String get waitlistSheetTitle;
+
+  /// No description provided for @waitlistHint.
+  ///
+  /// In en, this message translates to:
+  /// **'If tickets come back we\'ll tell you, and you\'ll have 30 minutes to buy them.'**
+  String get waitlistHint;
+
+  /// No description provided for @waitlistJoinAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Join the line'**
+  String get waitlistJoinAction;
+
+  /// No description provided for @waitlistPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re #{n} in line'**
+  String waitlistPosition(int n);
+
+  /// No description provided for @leaveWaitlist.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get leaveWaitlist;
+
+  /// No description provided for @waitlistLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'You left the waitlist'**
+  String get waitlistLeft;
+
+  /// No description provided for @waitlistOfferedInline.
+  ///
+  /// In en, this message translates to:
+  /// **'Tickets are reserved for you'**
+  String get waitlistOfferedInline;
+
+  /// No description provided for @buyNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy now'**
+  String get buyNow;
+
+  /// No description provided for @offerBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Tickets are waiting for you — {time} left'**
+  String offerBanner(String time);
+
+  /// No description provided for @offerSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your reserved tickets'**
+  String get offerSheetTitle;
+
+  /// No description provided for @offerSheetHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You can buy up to {n} now · {time} left'**
+  String offerSheetHint(int n, String time);
+
+  /// No description provided for @offerEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'This offer has ended'**
+  String get offerEnded;
+
+  /// No description provided for @reservedForYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Reserved for you'**
+  String get reservedForYou;
+
+  /// No description provided for @reservedForYouLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Reserved for you · {time} left'**
+  String reservedForYouLeft(String time);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

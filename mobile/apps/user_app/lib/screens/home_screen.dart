@@ -8,6 +8,7 @@ import 'notifications_screen.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
+import '../widgets/waitlist_offer.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -25,6 +26,7 @@ class HomeScreen extends ConsumerWidget {
       ref.invalidate(categoriesProvider);
       ref.invalidate(upcomingProvider);
       ref.invalidate(freeEventsProvider);
+      ref.invalidate(waitlistProvider);
       await ref.read(upcomingProvider.future);
     }
 
@@ -33,6 +35,7 @@ class HomeScreen extends ConsumerWidget {
         onRefresh: refresh,
         child: CustomScrollView(slivers: [
           SliverAppBar.large(title: Text(t.appTitle, style: const TextStyle(fontWeight: FontWeight.w700)), actions: const [InboxBell()]),
+          const SliverToBoxAdapter(child: OfferBanner()),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

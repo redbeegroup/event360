@@ -565,4 +565,58 @@ class L10nMy extends L10n {
 
   @override
   String get ticketCancelledDone => 'လက်မှတ်ကို ပယ်ဖျက်ပြီးပါပြီ';
+
+  @override
+  String get joinWaitlist => 'စောင့်ဆိုင်းစာရင်း ဝင်ရန်';
+
+  @override
+  String get waitlistSheetTitle => 'စောင့်ဆိုင်းစာရင်းသို့ ဝင်မည်';
+
+  @override
+  String get waitlistHint =>
+      'လက်မှတ်များ ပြန်ရလာလျှင် အသိပေးပါမည်။ ဝယ်ယူရန် 30 မိနစ် ရပါမည်။';
+
+  @override
+  String get waitlistJoinAction => 'တန်းစီစာရင်း ဝင်မည်';
+
+  @override
+  String waitlistPosition(int n) {
+    return 'သင်သည် တန်းစီစာရင်း အမှတ် $n ဖြစ်သည်';
+  }
+
+  @override
+  String get leaveWaitlist => 'ထွက်မည်';
+
+  @override
+  String get waitlistLeft => 'စောင့်ဆိုင်းစာရင်းမှ ထွက်လိုက်ပါပြီ';
+
+  @override
+  String get waitlistOfferedInline => 'သင့်အတွက် လက်မှတ်များ ထိန်းထားသည်';
+
+  @override
+  String get buyNow => 'ယခု ဝယ်မည်';
+
+  @override
+  String offerBanner(String time) {
+    return 'သင့်အတွက် လက်မှတ်များ စောင့်နေသည် — $time ကျန်သည်';
+  }
+
+  @override
+  String get offerSheetTitle => 'သင့်အတွက် ထိန်းထားသော လက်မှတ်များ';
+
+  @override
+  String offerSheetHint(int n, String time) {
+    return 'ယခု $n စောင်အထိ ဝယ်နိုင်သည် · $time ကျန်သည်';
+  }
+
+  @override
+  String get offerEnded => 'ကမ်းလှမ်းချက် ပြီးဆုံးသွားပါပြီ';
+
+  @override
+  String get reservedForYou => 'သင့်အတွက် ထိန်းထားသည်';
+
+  @override
+  String reservedForYouLeft(String time) {
+    return 'သင့်အတွက် ထိန်းထားသည် · $time ကျန်သည်';
+  }
 }
