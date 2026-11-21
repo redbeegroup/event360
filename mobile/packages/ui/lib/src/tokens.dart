@@ -52,6 +52,9 @@ class E360Colors {
 
   /// Disabled outline (stepper at its limit).
   static const Color disabledLine = Color(0xFFC5C8DC);
+
+  /// Disabled icon (stepper at its limit).
+  static const Color disabledIcon = Color(0xFF9A9DB5);
 }
 
 /// Dark-mode counterparts (spec decision 10). Gold stays the main action.

@@ -62,21 +62,24 @@ class E360Badge extends StatelessWidget {
         dark ? (E360DarkColors.successBadgeBg, E360DarkColors.successBadgeInk) : (E360Colors.successBadgeBg, E360Colors.successBadgeInk),
       E360BadgeKind.dark => dark ? (E360DarkColors.navy, E360DarkColors.onNavy) : (E360Colors.night, Colors.white),
     };
-    return _BadgeBox(label: label, bg: bg, fg: fg, my: my);
+    final isDarkKind = kind == E360BadgeKind.dark;
+    return _BadgeBox(label: label, bg: bg, fg: fg, my: my, radius: isDarkKind ? 6 : 13, tracking: isDarkKind ? 0.72 : 0.48);
   }
 }
 
 class _BadgeBox extends StatelessWidget {
-  const _BadgeBox({required this.label, required this.bg, required this.fg, required this.my, this.upper = true});
+  const _BadgeBox({required this.label, required this.bg, required this.fg, required this.my, this.upper = true, this.radius = 13, this.tracking = 0.48});
   final String label;
   final Color bg, fg;
   final bool my;
   final bool upper;
+  final double radius;
+  final double tracking;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(13)),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(radius)),
         child: Text(
           my || !upper ? label : label.toUpperCase(),
           maxLines: 1,
@@ -85,7 +88,7 @@ class _BadgeBox extends StatelessWidget {
             color: fg,
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            letterSpacing: my || !upper ? 0 : 0.48,
+            letterSpacing: my || !upper ? 0 : tracking,
             height: my ? 1.5 : 1.3,
           ),
         ),
@@ -94,7 +97,8 @@ class _BadgeBox extends StatelessWidget {
 
 /// Small rounded label, e.g. "Free" or "Sold out". Kept for source compatibility:
 /// renders like [E360Badge] neutral, but keeps the label's case (existing screens and tests
-/// rely on it). Only an error [color] keeps its meaning (danger tint).
+/// rely on it). [color] is ignored except for the error colour (danger tint).
+@Deprecated('Use E360Badge')
 class Pill extends StatelessWidget {
   const Pill(this.label, {super.key, this.color});
   final String label;
@@ -203,7 +207,9 @@ class StepperButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
-    final color = enabled ? scheme.primary : (_isDark(context) ? E360DarkColors.disabledLine : E360Colors.disabledLine);
+    final dark = _isDark(context);
+    final color = enabled ? scheme.primary : (dark ? E360DarkColors.disabledLine : E360Colors.disabledLine);
+    final iconColor = enabled ? scheme.primary : (dark ? E360DarkColors.muted : E360Colors.disabledIcon);
     return Semantics(
       label: semanticLabel,
       button: true,
@@ -219,7 +225,7 @@ class StepperButton extends StatelessWidget {
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onPressed,
-            child: Icon(icon, size: 20, color: color),
+            child: Icon(icon, size: 20, color: iconColor),
           ),
         ),
       ),
