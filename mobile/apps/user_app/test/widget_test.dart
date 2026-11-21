@@ -107,16 +107,27 @@ class FakeApi extends Event360Api {
         ],
       };
 
+  static Map<String, dynamic> twoTypeEventJson() => {
+        ...seatedEventJson(),
+        'id': 'seated2',
+        'ticketTypes': [
+          {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'quota': 5, 'remaining': 5, 'maxPerOrder': 3, 'seated': true, 'color': '#f2b632'},
+          {'id': 'tt-circle', 'name': 'Circle', 'nameMy': null, 'priceMmk': 30000, 'quota': 5, 'remaining': 5, 'maxPerOrder': 2, 'seated': true, 'color': '#3b6fd8'},
+        ],
+      };
+
   @override
   Future<SeatMapData> seatMap(String eventId) async {
     seatLoads++;
+    final two = eventId == 'seated2';
     return SeatMapData.fromJson({
       'versionId': 'v1',
       'layout': seatedLayout,
       'types': [
         {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'color': '#f2b632'},
+        if (two) {'id': 'tt-circle', 'name': 'Circle', 'nameMy': null, 'priceMmk': 30000, 'color': '#3b6fd8'},
       ],
-      'seatTypes': '0' * 10,
+      'seatTypes': two ? '0000011111' : '0' * 10,
       'status': seatStatus,
     });
   }
@@ -240,7 +251,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<EventSummary> event(String idOrSlug) async => EventSummary.fromJson(
-      idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2')));
+      idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2')));
 
   @override
   Future<OrganizerProfile> organizer(String slug) async => OrganizerProfile.fromJson({
@@ -712,12 +723,12 @@ void main() {
     return rect.topLeft + layoutPoint * k;
   }
 
-  Future<void> openPicker(WidgetTester tester, {void Function(FakeApi)? setup, String lang = 'en'}) async {
+  Future<void> openPicker(WidgetTester tester, {void Function(FakeApi)? setup, String lang = 'en', String event = 'seated'}) async {
     final (api, _) = await pumpApp(tester, signedIn: true, lang: lang, setup: (a) {
       a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
       setup?.call(a);
     });
-    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated');
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/$event');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chooseSeats')));
     await tester.pumpAndSettle();
@@ -757,6 +768,24 @@ void main() {
     await tapSeat(tester, 1, 2); // tapping a selected seat unselects it
     expect(find.byKey(const Key('chip-A:1:2')), findsNothing);
     expect(find.text('40,000 MMK'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('with two ticket types the lower maxPerOrder caps the whole selection', (tester) async {
+    await openPicker(tester, event: 'seated2'); // Stalls (row 1) allows 3, Circle (row 2) allows 2
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 2);
+    await tapSeat(tester, 1, 3); // three Stalls seats are fine on their own
+    expect(find.byKey(const Key('chip-A:1:3')), findsOneWidget);
+    await tapSeat(tester, 1, 3); // back to two
+    await tapSeat(tester, 2, 1); // adding a Circle seat makes the Circle limit (2) apply to the total
+    expect(find.text('You can choose up to 2 seats'), findsOneWidget);
+    expect(find.byKey(const Key('chip-A:2:1')), findsNothing);
+    await tapSeat(tester, 1, 2); // unselect one Stalls seat, then one Circle seat fits
+    await tapSeat(tester, 2, 1);
+    expect(find.byKey(const Key('chip-A:2:1')), findsOneWidget);
+    expect(find.text('2 seats · Total'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

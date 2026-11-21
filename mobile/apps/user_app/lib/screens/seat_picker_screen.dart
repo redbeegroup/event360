@@ -51,7 +51,9 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   double _fit = 0.3;
   double _scale = 0.3;
   bool _placed = false;
-  bool _forceNext = false;
+  bool _reloadQueued = false;
+  Animation<Matrix4>? _zoomAnim;
+  VoidCallback? _zoomTick;
 
   @override
   void initState() {
@@ -66,6 +68,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    if (_zoomTick != null) _zoomAnim?.removeListener(_zoomTick!);
     _anim.dispose();
     _controller
       ..removeListener(_onTransform)
@@ -99,25 +102,43 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
 
   // ───── Data ─────
 
-  Future<void> _load() async {
-    if (_loading) return;
+  /// [force] repaints even if the response looks unchanged. If a load is already running, one follow-up
+  /// load is queued instead, so the older (possibly stale) response can't stand in for it.
+  Future<void> _load({bool force = false}) async {
+    if (_loading) {
+      if (force) _reloadQueued = true;
+      return;
+    }
     _loading = true;
     try {
       final d = await ref.read(apiProvider).seatMap(widget.idOrSlug);
       if (!mounted) return;
-      _apply(d);
-    } on ApiException {
+      _apply(d, force: force);
+    } catch (_) {
+      // Network, API or parse errors: keep what we have; only a first load that fails shows the error
       if (mounted && _data == null) setState(() => _loadFailed = true);
     } finally {
       _loading = false;
     }
+    if (_reloadQueued && mounted) {
+      _reloadQueued = false;
+      await _load(force: true);
+    }
   }
 
-  void _apply(SeatMapData d) {
+  static bool _sameTypes(List<SeatTypeInfo> a, List<SeatTypeInfo> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].name != b[i].name || a[i].nameMy != b[i].nameMy || a[i].priceMmk != b[i].priceMmk || a[i].color != b[i].color) return false;
+    }
+    return true;
+  }
+
+  void _apply(SeatMapData d, {bool force = false}) {
     final old = _data;
-    final force = _forceNext;
-    _forceNext = false;
-    if (!force && old != null && old.versionId == d.versionId && old.status == d.status && old.seatTypes == d.seatTypes) return; // nothing changed: no repaint
+    if (!force && old != null && old.versionId == d.versionId && old.status == d.status && old.seatTypes == d.seatTypes && _sameTypes(old.types, d.types)) return; // nothing changed: no repaint
+    // A different map version has different seats: the old picks mean nothing
+    if (old != null && old.versionId != d.versionId) _selected = [];
     final layout = (old != null && old.versionId == d.versionId) ? _layout! : SeatLayout.fromJson(d.layout);
     final colors = <Color?>[];
     final typeOf = <int?>[];
@@ -227,9 +248,12 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     }
     final end = Matrix4.diagonal3Values(s, s, 1)..setTranslationRaw(_viewport.width / 2 - c.dx * s, _viewport.height / 2 - c.dy * s, 0);
     final tween = Matrix4Tween(begin: _controller.value, end: end).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    void tick() => _controller.value = tween.value;
-    tween.addListener(tick);
-    _anim.forward(from: 0).whenComplete(() => tween.removeListener(tick));
+    // One listener at a time: a new zoom replaces the running one
+    if (_zoomTick != null) _zoomAnim?.removeListener(_zoomTick!);
+    _zoomAnim = tween;
+    _zoomTick = () => _controller.value = tween.value;
+    tween.addListener(_zoomTick!);
+    _anim.forward(from: 0);
   }
 
   void _onTap(Offset p) {
@@ -318,8 +342,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           _selected = [for (final i in _selected) if (!taken.any((s) => s.index == i)) i];
           _notice = t.seatsJustTaken([for (final s in taken) s.labelFor(lang)].join(', '));
         });
-        _forceNext = true; // the map may look unchanged to us, but those seats are gone
-        await _load();
+        await _load(force: true); // the map may look unchanged to us, but those seats are gone
       } else {
         setState(() => _error = e.message);
       }

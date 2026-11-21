@@ -46,12 +46,12 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
     final t = L10n.of(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(t.cancelTicketTitle),
         content: Text(t.cancelTicketBody),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(t.keepTicket)),
-          FilledButton(key: const Key('cancelTicketConfirm'), onPressed: () => Navigator.of(context).pop(true), child: Text(t.cancelTicket)),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(t.keepTicket)),
+          FilledButton(key: const Key('cancelTicketConfirm'), onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(t.cancelTicket)),
         ],
       ),
     );
