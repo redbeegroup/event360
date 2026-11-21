@@ -27,6 +27,8 @@ import { KbzPayProvider } from './providers/kbzpay.provider';
 import { MockProvider } from './providers/mock.provider';
 import { InvalidSignatureError, PaymentProvider, ProviderStatus } from './providers/provider';
 import { WavePayProvider } from './providers/wavepay.provider';
+import { WaitlistService } from '../waitlist/waitlist.service';
+import { reserveFreed } from '../waitlist/waitlist-stock';
 
 export const HOLD_MINUTES = 10;
 const OPEN_ORDER = ['PENDING_PAYMENT'] as const;
@@ -63,6 +65,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     settings: PaymentSettingsService,
     private readonly notify: NotifyService,
     private readonly seating: EventSeatsService,
+    private readonly waitlist: WaitlistService,
   ) {
     const secret = createHmac('sha256', config.get<string>('JWT_ACCESS_SECRET') ?? 'dev-only').update('mock-pay').digest('hex');
     this.mock = new MockProvider(prisma, config.get('PAYMENTS_MOCK') === 'true', secret, this.apiBase);
@@ -79,7 +82,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if ((process.env.APP_ROLE ?? 'api') === 'api' && process.env.NODE_ENV !== 'test') {
-      this.timer = setInterval(() => this.sweep().catch((e) => this.logger.warn(`sweep: ${e.message}`)), 30_000);
+      this.timer = setInterval(() => void this.sweepAll(), 30_000);
     }
   }
   onModuleDestroy() {
@@ -104,6 +107,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   /**
    * Quantity lines (`items`) take from ticket_types counters; seats (`seats`, seated events) are claimed in
    * event_seats, all or none, and each seat is one ticket of the type assigned to it. Both may be in one order.
+   * `waitlistEntryId`: the buyer's live waitlist offer. Its type's line takes up to the offered quantity from the
+   * stock reserved for it (`offered`, or the entry's WAITLIST_HOLD seats) instead of public stock; the entry becomes
+   * PURCHASED and whatever the buyer left goes to the next in line. Prices, discounts and promo rules are as usual.
    */
   async createOrder(
     userId: string,
@@ -113,6 +119,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     channel: 'APP' | 'WEB' = 'APP',
     promoCode?: string,
     seats: string[] = [],
+    waitlistEntryId?: string,
   ) {
     if (idempotencyKey) {
       const existing = await this.prisma.order.findUnique({ where: { idempotencyKey } });
@@ -156,6 +163,18 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       ...[...merged].map(([id, q]): [string, number, string[]] => [id, q, []]),
       ...[...bySeatType].map(([id, keys]): [string, number, string[]] => [id, keys.length, keys]),
     ];
+
+    // The offer: the buyer's own, live, for a type in this order, and not for more than was offered
+    let offer: { id: string; ticketTypeId: string; offeredQty: number } | null = null;
+    if (waitlistEntryId) {
+      const e = await this.prisma.waitlistEntry.findUnique({ where: { id: waitlistEntryId }, include: { ticketType: { select: { eventId: true } } } });
+      if (!e || e.userId !== userId || e.ticketType.eventId !== eventId) throw new NotFoundException('Waitlist offer not found');
+      if (e.status !== 'OFFERED' || !e.offerExpiresAt || e.offerExpiresAt <= now) throw new ConflictException('This waitlist offer is no longer open');
+      const line = wanted.find(([id]) => id === e.ticketTypeId);
+      if (!line) throw new BadRequestException('The order must include the tickets you were offered');
+      if (!line[2].length && line[1] > e.offeredQty) throw new BadRequestException(`Your offer is for at most ${e.offeredQty} ticket(s)`);
+      offer = { id: e.id, ticketTypeId: e.ticketTypeId, offeredQty: e.offeredQty };
+    }
 
     let subtotal = 0n;
     const lines = wanted.map(([ticketTypeId, quantity, seatKeys]) => {
@@ -218,10 +237,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
           throw new ConflictException(`You already have ${already} ${tt.name} ticket(s); the limit is ${tt.maxPerOrder} per person`);
         }
         if (seatKeys.length) continue; // seats are claimed below; their counters follow event_seats
-        const n = paid
-          ? await tx.$executeRaw`UPDATE ticket_types SET held = held + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + ${quantity} <= quota`
-          : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + ${quantity} <= quota`;
-        if (n !== 1) throw new ConflictException(`Not enough ${tt.name} tickets left`);
+        // An offer's line moves its quantity from `offered` (reserved for it) to held/sold; others take public stock
+        const fromOffer = offer?.ticketTypeId === tt.id;
+        const n = fromOffer
+          ? paid
+            ? await tx.$executeRaw`UPDATE ticket_types SET held = held + ${quantity}, offered = offered - ${quantity} WHERE id = ${tt.id}::uuid AND offered >= ${quantity}`
+            : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity}, offered = offered - ${quantity} WHERE id = ${tt.id}::uuid AND offered >= ${quantity}`
+          : paid
+            ? await tx.$executeRaw`UPDATE ticket_types SET held = held + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + offered + ${quantity} <= quota`
+            : await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${quantity} WHERE id = ${tt.id}::uuid AND sold + held + offered + ${quantity} <= quota`;
+        if (n !== 1) throw new ConflictException(fromOffer ? 'This waitlist offer is no longer open' : `Not enough ${tt.name} tickets left`);
       }
       if (merged.size) {
         // Quantity lines never sell a seated type. Checked again here, after the counter rows are locked: on a seated
@@ -253,11 +278,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         },
       });
       if (seats.length) {
-        const c = await claimSeats(tx, eventId, seats, order.id, order.holdExpiresAt, !paid);
+        const c = await claimSeats(tx, eventId, seats, order.id, order.holdExpiresAt, !paid, offer?.id ?? null);
         if (!c.ok) throw seatsTaken(c.taken);
       }
       if (!paid) await this.issueTickets(tx, order.id, userId, lines.map(({ tt, quantity, seatKeys }) => ({ ticketTypeId: tt.id, quantity, seatKeys })));
       if (seats.length) await this.seating.recountTicketTypes(tx, eventId, [], [...bySeatType.keys()]);
+      // The offer's entry row last (lock order): it must still be live now, or everything above rolls back
+      if (offer && !(await this.waitlist.markPurchased(tx, offer.id, userId, order.id))) throw new ConflictException('This waitlist offer is no longer open');
       return order.id;
     }, seats.length ? SEATED_TX : undefined);
     if (!paid) {
@@ -445,6 +472,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       for (const i of items) {
         if (i.seatKeys.length) continue;
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
+        await reserveFreed(tx, i.ticketTypeId, i.quantity); // people waiting get it first (row still locked)
       }
       // Same lock order as createOrder and settle: standing ticket_types rows, then the promo code, then seats
       const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { promoCodeId: true } });
@@ -564,7 +592,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             : null;
         if (!nowSeated) {
           for (const i of quantityItems) {
-            const n = await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid AND sold + held + ${i.quantity} <= quota`;
+            // Stock reserved for the waitlist is not for late payments either
+            const n = await tx.$executeRaw`UPDATE ticket_types SET sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid AND sold + held + offered + ${i.quantity} <= quota`;
             if (n !== 1) break;
             taken.push({ id: i.ticketTypeId, q: i.quantity });
           }
@@ -586,6 +615,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         }
         issued = seatsOk;
         if (!issued) {
+          // Undo of what this transaction just took from public stock: it goes back to the public, not to the
+          // waitlist (it was free a moment ago, and the hold's release already reserved for the line)
           for (const t of taken) await tx.$executeRaw`UPDATE ticket_types SET sold = sold - ${t.q} WHERE id = ${t.id}::uuid`;
           await unclaimSeats(tx, claimed);
         }
@@ -613,6 +644,13 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ───────────── background: holds + reconciliation ─────────────
+
+  /** The 30 s loop on API pods: holds and payments, then the waitlist (expired offers out, reserved stock offered). */
+  async sweepAll(now = new Date()) {
+    await this.sweep(now).catch((e) => this.logger.warn(`sweep: ${(e as Error).message}`));
+    await this.waitlist.expireOffers(now).catch((e) => this.logger.warn(`waitlist expiry: ${(e as Error).message}`));
+    await this.waitlist.assignOffers(now).catch((e) => this.logger.warn(`waitlist offers: ${(e as Error).message}`));
+  }
 
   async sweep(now = new Date()) {
     const expired = await this.prisma.order.findMany({ where: { status: 'PENDING_PAYMENT', holdExpiresAt: { lt: now } }, select: { id: true }, take: 200 });
@@ -659,7 +697,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticket.updateMany({ where: { id: { in: live.map((t) => t.id) } }, data: { status: 'REFUNDED' } });
       const perType = new Map<string, number>();
       for (const t of live) if (!t.seatKey) perType.set(t.ticketTypeId, (perType.get(t.ticketTypeId) ?? 0) + 1);
-      for (const [id, q] of byTypeId([...perType], ([k]) => k)) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
+      for (const [id, q] of byTypeId([...perType], ([k]) => k)) {
+        await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
+        await reserveFreed(tx, id, q); // people waiting get it first (row still locked)
+      }
       if (seatedIn?.typeIds.length) {
         // Refunded seats go back on sale; seated counters follow event_seats
         const back = await refundSeats(tx, orderId);
@@ -897,7 +938,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const gross = paid._sum.totalMmk ?? 0n;
     const fee = paid._sum.commissionMmk ?? 0n;
     return {
-      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, ...priceView(t, nowT), quota: t.quota, sold: t.sold, held: t.held, revenueMmk: mmk(earned.get(t.id) ?? 0n) })),
+      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, ...priceView(t, nowT), quota: t.quota, sold: t.sold, held: t.held, offered: t.offered, revenueMmk: mmk(earned.get(t.id) ?? 0n) })),
       paidOrders: paid._count,
       grossMmk: mmk(gross),
       commissionMmk: mmk(fee),

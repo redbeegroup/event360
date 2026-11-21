@@ -1,7 +1,8 @@
-import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Header, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, Header, Headers, HttpCode, Injectable, Module, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res, UnauthorizedException } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { JwtService } from '@nestjs/jwt';
 import { Transform, Type } from 'class-transformer';
 import { Allow, ArrayMaxSize, ArrayMinSize, IsArray, Matches, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
@@ -216,13 +217,20 @@ export class EventGuestsController {
 class BestSeatsDto {
   @ApiProperty() @IsUUID() ticketTypeId: string;
   @ApiProperty({ minimum: 1, maximum: 20 }) @IsInt() @Min(1) @Max(20) quantity: number;
+  @ApiPropertyOptional({ description: "The buyer's live waitlist offer: its seats count as available for them (requires sign-in)" })
+  @IsOptional()
+  @IsUUID()
+  waitlistEntryId?: string;
 }
 
 /** Public seat availability. `events/:idOrSlug/seats` does not overlap the routes of PublicEventsController. */
 @ApiTags('events')
 @Controller('events')
 export class PublicSeatsController {
-  constructor(private readonly seats: EventSeatsService) {}
+  constructor(
+    private readonly seats: EventSeatsService,
+    private readonly jwt: JwtService,
+  ) {}
 
   /** Polled by every open seat picker and served from a short cache, so it skips the per-IP limit (a venue shares one IP). */
   @Get(':idOrSlug/seats') @SkipThrottle()
@@ -232,8 +240,16 @@ export class PublicSeatsController {
 
   /** Suggests seats; holds nothing. The buyer then submits them to createOrder. */
   @Post(':idOrSlug/seats/best') @HttpCode(200) @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  async best(@Param('idOrSlug') idOrSlug: string, @Body() dto: BestSeatsDto) {
-    const seats = await this.seats.bestSeats(idOrSlug, dto.ticketTypeId, dto.quantity);
+  async best(@Param('idOrSlug') idOrSlug: string, @Body() dto: BestSeatsDto, @Headers('authorization') authorization?: string) {
+    let own: { userId: string; waitlistEntryId: string } | undefined;
+    if (dto.waitlistEntryId) {
+      // Only the offer's owner may count its seats: the endpoint is public, so the token is checked here
+      const [type, token] = (authorization ?? '').split(' ');
+      const user = type === 'Bearer' && token ? await this.jwt.verifyAsync<AuthUser>(token).catch(() => null) : null;
+      if (!user || user.typ === 'crew') throw new UnauthorizedException();
+      own = { userId: user.sub, waitlistEntryId: dto.waitlistEntryId };
+    }
+    const seats = await this.seats.bestSeats(idOrSlug, dto.ticketTypeId, dto.quantity, own);
     if (!seats) throw new ConflictException({ message: 'Not enough seats together', seats: [] });
     return { seats };
   }

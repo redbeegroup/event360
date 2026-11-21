@@ -9,6 +9,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { SmsService } from '../src/modules/notifications/sms.service';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 jest.setTimeout(60_000);
@@ -83,6 +84,15 @@ run('SMS via SMSPoh', () => {
     // View shows the provider balance
     const view = await http.get('/v1/admin/settings/sms').set(A).expect(200);
     expect(view.body.balance).toEqual({ balance: 120000, currency: 'MMK' });
+
+    // "Waitlist SMS" is on by default and can be switched off on its own
+    expect(saved.body.waitlistSms).toBe(true);
+    const wlOff = await http.put('/v1/admin/settings/sms').set(A).send({ waitlistSms: false }).expect(200);
+    expect(wlOff.body).toMatchObject({ waitlistSms: false, senderId: 'Event360', apiSecretSet: true });
+    expect((await app.get(SmsService).settingsConfig())!.waitlistSms).toBe(false);
+    await http.put('/v1/admin/settings/sms').set(A).send({ waitlistSms: 'yes' }).expect(400);
+    await http.put('/v1/admin/settings/sms').set(A).send({ waitlistSms: true }).expect(200);
+    expect((await app.get(SmsService).settingsConfig())!.waitlistSms).toBe(true);
 
     // Test SMS: correct auth header and payload
     calls.length = 0;

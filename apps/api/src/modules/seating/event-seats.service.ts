@@ -6,6 +6,7 @@ import { EDITABLE_STATUSES, needsReReview } from '../events/events.service';
 import { currentPrice, nextStep } from '../payments/pricing';
 import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { reserveAvailableSeats } from '../waitlist/waitlist-stock';
 import { aisleKeys, bestAvailable, stageCentre } from './best-available';
 import { expandSeats, ExpandedSeat, Layout } from './layout';
 import { SeatMapsService } from './seat-maps.service';
@@ -23,7 +24,8 @@ export const MAX_SEATED_TYPES = TYPE_CHARS.length;
 export const SEAT_PALETTE = ['#f2b632', '#1f8a70', '#3b6fd8', '#c2410c', '#7c3aed', '#0891b2', '#be185d', '#4d7c0f'];
 /** A seated type's map colour: its own, or the palette by its place in price order (then id) among the seated types. */
 export const seatTypeColor = (t: { color: string | null }, i: number) => t.color ?? SEAT_PALETTE[i % SEAT_PALETTE.length];
-const STATUS_CHAR: Record<string, string> = { AVAILABLE: 'A', CHECKOUT_HOLD: 'T', SOLD: 'T', GUEST_HOLD: 'G', UNSOLD: 'U' };
+// WAITLIST_HOLD seats are taken for the public; an offeree finds theirs in GET /me/waitlist (seatKeys)
+const STATUS_CHAR: Record<string, string> = { AVAILABLE: 'A', CHECKOUT_HOLD: 'T', SOLD: 'T', WAITLIST_HOLD: 'T', GUEST_HOLD: 'G', UNSOLD: 'U' };
 const VISIBLE = ['PUBLISHED', 'ONGOING', 'COMPLETED', 'CANCELLED'] as const;
 
 type Db = Prisma.TransactionClient;
@@ -50,8 +52,9 @@ export class EventSeatsService {
    * Sets quota, held and sold of the event's seated ticket types from event_seats (same transaction as the
    * seat change). Only types that have at least one seat (plus `alsoTypeIds`, e.g. types that just lost
    * their last seat) are touched; standing and unseated types keep the organizer's quota and counters.
-   * quota = AVAILABLE + CHECKOUT_HOLD + SOLD seats; comps (SOLD seats whose ticket is complimentary) are
-   * excluded from quota and sold; GUEST_HOLD seats are not for sale.
+   * quota = AVAILABLE + CHECKOUT_HOLD + WAITLIST_HOLD + SOLD seats; comps (SOLD seats whose ticket is complimentary)
+   * are excluded from quota and sold; GUEST_HOLD seats are not for sale. WAITLIST_HOLD seats (reserved for the
+   * waitlist) are `offered`, so they are not available to the public (quota - sold - held - offered).
    *
    * `onlyTypeIds` limits the recount to those types (checkout paths pass the order's seated types, so checkouts
    * of other types don't wait on these rows). The rows are locked first, in id order, and counted in a second
@@ -69,11 +72,12 @@ export class EventSeatsService {
       ORDER BY tt.id
       FOR NO KEY UPDATE`;
     await tx.$executeRaw`
-      UPDATE ticket_types tt SET quota = c.quota, held = c.held, sold = c.sold
+      UPDATE ticket_types tt SET quota = c.quota, held = c.held, sold = c.sold, offered = c.offered
       FROM (
         SELECT tt2.id,
-          count(*) FILTER (WHERE s.status IN ('AVAILABLE', 'CHECKOUT_HOLD') OR (s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false)))::int AS quota,
+          count(*) FILTER (WHERE s.status IN ('AVAILABLE', 'CHECKOUT_HOLD', 'WAITLIST_HOLD') OR (s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false)))::int AS quota,
           count(*) FILTER (WHERE s.status = 'CHECKOUT_HOLD')::int AS held,
+          count(*) FILTER (WHERE s.status = 'WAITLIST_HOLD')::int AS offered,
           count(*) FILTER (WHERE s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false))::int AS sold
         FROM ticket_types tt2
         LEFT JOIN event_seats s ON s.ticket_type_id = tt2.id
@@ -198,6 +202,11 @@ export class EventSeatsService {
       await tx.$executeRaw`
         UPDATE event_seats SET status = CASE WHEN ticket_type_id IS NULL THEN 'UNSOLD'::"SeatStatus" ELSE 'AVAILABLE'::"SeatStatus" END
         WHERE event_id = ${eventId}::uuid AND status IN ('AVAILABLE', 'UNSOLD')`;
+      // Seats newly on sale for a type people are waiting for go to the line first (this lock excludes every checkout)
+      const waited = await tx.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT w.ticket_type_id::text AS id FROM waitlist_entries w JOIN ticket_types t ON t.id = w.ticket_type_id
+        WHERE t.event_id = ${eventId}::uuid AND w.status = 'WAITING' ORDER BY 1`;
+      for (const w of waited) await reserveAvailableSeats(tx, w.id);
       await this.recountTicketTypes(tx, eventId, before.map((t) => t.id));
     });
     return this.result(eventId, false);
@@ -231,10 +240,11 @@ export class EventSeatsService {
     const [rules, seats, counted, types] = await Promise.all([
       this.prisma.eventSection.findMany({ where: { eventId }, select: { sectionKey: true, rowLabel: true, ticketTypeId: true }, orderBy: [{ sectionKey: 'asc' }, { rowLabel: 'asc' }] }),
       this.prisma.eventSeat.findMany({ where: { eventId }, select: { seatKey: true, status: true, ticketTypeId: true, holdLabel: true } }),
-      this.prisma.$queryRaw<{ ticket_type_id: string; available: number; held: number; guest: number; sold: number; comp: number }[]>`
+      this.prisma.$queryRaw<{ ticket_type_id: string; available: number; held: number; offered: number; guest: number; sold: number; comp: number }[]>`
         SELECT s.ticket_type_id,
           count(*) FILTER (WHERE s.status = 'AVAILABLE')::int AS available,
           count(*) FILTER (WHERE s.status = 'CHECKOUT_HOLD')::int AS held,
+          count(*) FILTER (WHERE s.status = 'WAITLIST_HOLD')::int AS offered,
           count(*) FILTER (WHERE s.status = 'GUEST_HOLD')::int AS guest,
           count(*) FILTER (WHERE s.status = 'SOLD' AND NOT COALESCE(t.is_complimentary, false))::int AS sold,
           count(*) FILTER (WHERE s.status = 'SOLD' AND COALESCE(t.is_complimentary, false))::int AS comp
@@ -249,8 +259,8 @@ export class EventSeatsService {
     [...seatedTypes, ...types.filter((t) => t._count.eventSeats === 0)].forEach((t, i) => (colors[t.id] = seatTypeColor(t, i)));
     const order = new Map(expandSeats(layout).map((s, i) => [s.seatKey, i]));
     seats.sort((a, b) => (order.get(a.seatKey) ?? 0) - (order.get(b.seatKey) ?? 0));
-    const counts: Record<string, { available: number; held: number; guest: number; sold: number; comp: number }> = {};
-    for (const c of counted) counts[c.ticket_type_id] = { available: c.available, held: c.held, guest: c.guest, sold: c.sold, comp: c.comp };
+    const counts: Record<string, { available: number; held: number; offered: number; guest: number; sold: number; comp: number }> = {};
+    for (const c of counted) counts[c.ticket_type_id] = { available: c.available, held: c.held, offered: c.offered, guest: c.guest, sold: c.sold, comp: c.comp };
     return { layout, versionId: e.seatMapVersionId, rules, counts, colors, seats };
   }
 
@@ -270,8 +280,12 @@ export class EventSeatsService {
     return { versionId: a.versionId, layout, types: a.types, seatTypes: a.seatTypes, status: a.status };
   }
 
-  /** Best available seats of a type for a public event. Holds nothing; null when no good block/section exists. */
-  async bestSeats(idOrSlug: string, ticketTypeId: string, quantity: number): Promise<string[] | null> {
+  /**
+   * Best available seats of a type for a public event. Holds nothing; null when no good block/section exists.
+   * WAITLIST_HOLD seats are skipped, except the seats offered to `own` (a live offer of that user; anyone else's
+   * entry id is ignored).
+   */
+  async bestSeats(idOrSlug: string, ticketTypeId: string, quantity: number, own?: { userId: string; waitlistEntryId: string }): Promise<string[] | null> {
     const isUuid = /^[0-9a-f-]{36}$/i.test(idOrSlug);
     const e = await this.prisma.event.findFirst({
       where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: { in: [...VISIBLE] } },
@@ -282,10 +296,17 @@ export class EventSeatsService {
     const [{ layout, seats, aisles }, type, rows] = await Promise.all([
       this.layouts.get(versionId, () => this.loadLayout(versionId)),
       this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId: e.id, eventSeats: { some: {} } }, select: { id: true } }),
-      this.prisma.eventSeat.findMany({ where: { eventId: e.id, ticketTypeId }, select: { seatKey: true, status: true } }),
+      this.prisma.eventSeat.findMany({ where: { eventId: e.id, ticketTypeId }, select: { seatKey: true, status: true, waitlistEntryId: true } }),
     ]);
     if (!type) throw new NotFoundException('Seated ticket type not found');
-    const status = new Map(rows.map((r) => [r.seatKey, r.status as string]));
+    const offer = own
+      ? await this.prisma.waitlistEntry.findFirst({
+          where: { id: own.waitlistEntryId, userId: own.userId, ticketTypeId, status: 'OFFERED', offerExpiresAt: { gt: new Date() } },
+          select: { id: true },
+        })
+      : null;
+    const mine = (r: { status: string; waitlistEntryId: string | null }) => !!offer && r.status === 'WAITLIST_HOLD' && r.waitlistEntryId === offer.id;
+    const status = new Map(rows.map((r) => [r.seatKey, mine(r) ? 'AVAILABLE' : (r.status as string)]));
     const states = seats.map((s) => ({ ...s, status: status.get(s.seatKey) ?? 'UNSOLD', ticketTypeId: status.has(s.seatKey) ? ticketTypeId : null }));
     return bestAvailable(states, stageCentre(layout), ticketTypeId, quantity, aisles);
   }

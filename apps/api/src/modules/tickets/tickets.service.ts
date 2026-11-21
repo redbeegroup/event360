@@ -9,6 +9,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { returnSeatsToSale, SEATED_TX, shareLockEvent } from '../seating/seat-claims';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from './ticket-token.service';
+import { reserveFreed } from '../waitlist/waitlist-stock';
 
 @Injectable()
 export class TicketsService {
@@ -47,7 +48,7 @@ export class TicketsService {
       }
       const reserved = await tx.$executeRaw`
         UPDATE ticket_types SET sold = sold + ${quantity}
-        WHERE id = ${ticketTypeId}::uuid AND sold + held + ${quantity} <= quota`;
+        WHERE id = ${ticketTypeId}::uuid AND sold + held + offered + ${quantity} <= quota`;
       if (reserved !== 1) throw new ConflictException('Not enough tickets left');
       // Checked again with the counter row locked (see PaymentsService.createOrder)
       if (await tx.eventSeat.findFirst({ where: { eventId, ticketTypeId }, select: { id: true } })) throw new BadRequestException('Seated tickets are bought by choosing seats');
@@ -156,7 +157,10 @@ export class TicketsService {
       if (n.count !== 1) throw new ConflictException('This ticket changed meanwhile; please refresh');
       // Lock order as in checkout: standing ticket_types row, then the promo code (its use may be given back
       // below), then seats and the seated counter rows
-      if (!t.seatKey) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
+      if (!t.seatKey) {
+        await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
+        await reserveFreed(tx, t.ticketTypeId, 1); // people waiting get it first (row still locked)
+      }
       if (t.order.promoCodeId) await tx.$queryRaw`SELECT id FROM promo_codes WHERE id = ${t.order.promoCodeId}::uuid FOR UPDATE`;
       if (t.seatKey) {
         // Back on sale under the current rules (another type, or UNSOLD, if they changed since the sale)

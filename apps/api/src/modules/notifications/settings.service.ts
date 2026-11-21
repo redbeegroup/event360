@@ -14,6 +14,8 @@ interface StoredSms {
   enabled?: boolean;
   testMode?: boolean;
   otpTemplate?: string;
+  /** Waitlist offers by SMS (one per offer) while SMS is enabled; unset = on. */
+  waitlistSms?: boolean;
 }
 
 /** Decrypted settings, for sending only — never returned by the API. */
@@ -25,6 +27,7 @@ export interface SmsConfig {
   enabled: boolean;
   testMode: boolean;
   otpTemplate: string;
+  waitlistSms: boolean;
 }
 
 export interface SmsSettingsInput {
@@ -34,6 +37,7 @@ export interface SmsSettingsInput {
   enabled?: boolean;
   testMode?: boolean;
   otpTemplate?: string;
+  waitlistSms?: boolean;
 }
 
 const last4 = (s?: string) => (s ? `••••${s.slice(-4)}` : null);
@@ -79,6 +83,7 @@ export class SettingsService {
       enabled: !!s.enabled,
       testMode: !!s.testMode,
       otpTemplate: s.otpTemplate || DEFAULT_OTP_TEMPLATE,
+      waitlistSms: s.waitlistSms ?? true,
       canStoreSecrets: !!this.box,
     };
   }
@@ -94,6 +99,7 @@ export class SettingsService {
       enabled: input.enabled ?? cur.enabled ?? false,
       testMode: input.testMode ?? cur.testMode ?? false,
       otpTemplate: input.otpTemplate?.trim() || cur.otpTemplate || DEFAULT_OTP_TEMPLATE,
+      waitlistSms: input.waitlistSms ?? cur.waitlistSms ?? true,
     };
     await this.prisma.$transaction([
       this.prisma.platformSetting.upsert({
@@ -111,6 +117,7 @@ export class SettingsService {
             changed: Object.keys(input).filter((k) => (input as Record<string, unknown>)[k] !== undefined && (input as Record<string, unknown>)[k] !== ''),
             enabled: next.enabled,
             testMode: next.testMode,
+            waitlistSms: next.waitlistSms,
           },
         },
       }),
@@ -137,6 +144,7 @@ export class SettingsService {
       enabled: !!s.enabled,
       testMode: !!s.testMode,
       otpTemplate: s.otpTemplate || DEFAULT_OTP_TEMPLATE,
+      waitlistSms: s.waitlistSms ?? true,
     };
   }
 }

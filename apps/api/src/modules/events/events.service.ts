@@ -6,6 +6,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { MicroCache, publicCacheMs } from '../../common/micro-cache';
 import { currentPrice, nextStep } from '../payments/pricing';
 import { PrismaService } from '../prisma/prisma.service';
+import { reserveFreed } from '../waitlist/waitlist-stock';
 import {
   CreateEventDto,
   FaqItemDto,
@@ -82,7 +83,7 @@ export class EventsService implements OnModuleDestroy {
       basePriceMmk: mmk(t.priceMmk),
       nextPrice: next ? { priceMmk: mmk(next.priceMmk), startsAt: next.startsAt } : null,
       quota: t.quota,
-      remaining: Math.max(0, t.quota - t.sold - t.held),
+      remaining: Math.max(0, t.quota - t.sold - t.held - t.offered), // stock reserved for the waitlist is not for sale
       maxPerOrder: t.maxPerOrder,
       deliveryMode: t.deliveryMode,
       salesStartAt: t.salesStartAt,
@@ -360,22 +361,32 @@ export class EventsService implements OnModuleDestroy {
     const t = await this.prisma.ticketType.findFirst({ where: { id: ticketTypeId, eventId } });
     if (!t) throw new NotFoundException('Ticket type not found');
     if (dto.quota !== undefined && (await this.prisma.eventSeat.count({ where: { ticketTypeId } }))) throw new BadRequestException('Quota of a seated ticket type is computed from its seats');
-    if (dto.quota !== undefined && dto.quota < t.sold + t.held) throw new BadRequestException(`Quota cannot be below the ${t.sold + t.held} tickets already issued`);
     if (dto.priceMmk !== undefined && t.sold > 0 && BigInt(dto.priceMmk) !== t.priceMmk) throw new ConflictException('Price cannot change after tickets are issued');
     if (dto.priceMmk === 0 && (await this.prisma.ticketPriceStep.count({ where: { ticketTypeId } }))) throw new BadRequestException('Remove the price steps before making this ticket type free');
-    const updated = await this.prisma.ticketType.update({
-      where: { id: ticketTypeId },
-      data: {
-        name: dto.name,
-        nameMy: dto.nameMy,
-        priceMmk: dto.priceMmk !== undefined ? BigInt(dto.priceMmk) : undefined,
-        quota: dto.quota,
-        maxPerOrder: dto.maxPerOrder,
-        deliveryMode: dto.deliveryMode,
-        salesStartAt: dto.salesStartAt !== undefined ? new Date(dto.salesStartAt) : undefined,
-        salesEndAt: dto.salesEndAt !== undefined ? new Date(dto.salesEndAt) : undefined,
-        color: dto.color,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The counter row first (lock order: standing ticket_types), so the quota check and a raise's reservation for
+      // the waitlist see the counters checkouts and releases leave behind
+      const [c] = await tx.$queryRaw<{ quota: number; sold: number; held: number; offered: number }[]>`
+        SELECT quota, sold, held, offered FROM ticket_types WHERE id = ${ticketTypeId}::uuid FOR NO KEY UPDATE`;
+      const taken = c.sold + c.held + c.offered;
+      if (dto.quota !== undefined && dto.quota < taken) throw new BadRequestException(`Quota cannot be below the ${taken} tickets already issued or reserved`);
+      await tx.ticketType.update({
+        where: { id: ticketTypeId },
+        data: {
+          name: dto.name,
+          nameMy: dto.nameMy,
+          priceMmk: dto.priceMmk !== undefined ? BigInt(dto.priceMmk) : undefined,
+          quota: dto.quota,
+          maxPerOrder: dto.maxPerOrder,
+          deliveryMode: dto.deliveryMode,
+          salesStartAt: dto.salesStartAt !== undefined ? new Date(dto.salesStartAt) : undefined,
+          salesEndAt: dto.salesEndAt !== undefined ? new Date(dto.salesEndAt) : undefined,
+          color: dto.color,
+        },
+      });
+      // A raise frees stock: people waiting for this type get it first
+      if (dto.quota !== undefined && dto.quota > c.quota) await reserveFreed(tx, ticketTypeId, dto.quota - c.quota);
+      return tx.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } });
     });
     await this.recomputeIsFree(eventId);
     return { ...updated, priceMmk: mmk(updated.priceMmk) };

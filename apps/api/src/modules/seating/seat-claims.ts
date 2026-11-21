@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
 import type { EventSeat } from '@prisma/client';
+import { reserveFreedSeats } from '../waitlist/waitlist-stock';
+import { CURRENT_RULE_TYPE } from './seat-rules';
+
+export { CURRENT_RULE_TYPE } from './seat-rules';
 
 /**
  * Seat state changes for checkout. Every function runs inside the caller's transaction, which must already hold
@@ -9,14 +13,21 @@ import type { EventSeat } from '@prisma/client';
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
  * 1. user row: createOrder (the buyer), GuestsService.issue (the guest);
- * 2. event row: shared by checkouts (never upgraded), FOR UPDATE by organizer seat/map changes;
+ * 2. event row: shared by checkouts and the waitlist sweeper (never upgraded), FOR UPDATE by organizer seat/map changes;
  * 3. payment row: settle (its conditional status update);
  * 4. order row: settle (SELECT … FOR UPDATE), releaseHold and refundOrder (conditional status update);
  * 5. ticket rows: TicketsService.cancel and GuestsService.revoke (conditional VOID);
- * 6. standing ticket_types rows, in id order;
+ * 6. standing ticket_types rows, in id order (FOR NO KEY UPDATE or a conditional UPDATE). A path that frees standing
+ *    stock calls reserveFreed (waitlist-stock.ts) while it holds the row, and the organizer quota edit and the
+ *    waitlist join and sweeper (assignOffers) take it here too;
  * 7. promo_codes row (orders with a code; TicketsService.cancel locks it FOR UPDATE here);
- * 8. seat rows: claims lock them in seat_key order; the other functions only touch seats the order already owns;
- * 9. seated ticket_types rows, in id order, in the recount (the last step before commit).
+ * 8. seat rows: claims lock them in seat_key order; the other functions only touch seats the order already owns.
+ *    returnSeatsToSale locks its seats, then reserveFreedSeats keeps some as WAITLIST_HOLD for the line; the
+ *    waitlist sweeper locks a type's WAITLIST_HOLD seats in seat_key order;
+ * 9. seated ticket_types rows, in id order, in the recount (the waitlist join takes a seated type's row here);
+ * 10. waitlist_entries rows, in (created_at, id) order, always last: createOrder marks the offer it used PURCHASED
+ *    (conditional update); the sweeper locks WAITING entries to offer them, or OFFERED ones to expire them; leave.
+ *    Freeing paths only read entries (an unlocked read can only over-reserve; the sweeper gives the excess back).
  * Two exceptions, both safe:
  * - TicketsService.cancel takes its (free) order's row last, after the recount, only to serialise cancels within
  *   that order; no other path holds a free order's row while waiting for a counter or seat.
@@ -39,6 +50,8 @@ export async function shareLockEvent(tx: Tx, eventId: string): Promise<void> {
  * a claim that waited re-checks the status after the other commits and leaves out a seat that was taken.
  * When some are missing from the result the caller must give back what was taken (throwing rolls back the
  * transaction; settle uses unclaimSeats). `final` sells them at once (free orders, late payments).
+ * With `waitlistEntryId` (an offer the caller has checked belongs to the buyer) that entry's WAITLIST_HOLD seats can
+ * be claimed too; every other WAITLIST_HOLD seat is taken, as for the public.
  */
 export async function claimSeats(
   tx: Tx,
@@ -47,16 +60,18 @@ export async function claimSeats(
   orderId: string,
   heldUntil: Date | null,
   final: boolean,
+  waitlistEntryId: string | null = null,
 ): Promise<{ ok: true; seats: EventSeat[] } | { ok: false; taken: string[]; seats: EventSeat[] }> {
   const status = final ? 'SOLD' : 'CHECKOUT_HOLD';
+  const free = Prisma.sql`(status = 'AVAILABLE' OR (status = 'WAITLIST_HOLD' AND waitlist_entry_id = ${waitlistEntryId}::uuid))`;
   const rows = await tx.$queryRaw<{ id: string }[]>`
-    UPDATE event_seats SET status = ${status}::"SeatStatus", order_id = ${orderId}::uuid, held_until = ${heldUntil}
+    UPDATE event_seats SET status = ${status}::"SeatStatus", order_id = ${orderId}::uuid, held_until = ${heldUntil}, waitlist_entry_id = NULL
     WHERE id IN (
       SELECT id FROM event_seats
-      WHERE event_id = ${eventId}::uuid AND seat_key = ANY(${seatKeys}::text[]) AND status = 'AVAILABLE'
+      WHERE event_id = ${eventId}::uuid AND seat_key = ANY(${seatKeys}::text[]) AND ${free}
       ORDER BY seat_key
       FOR UPDATE
-    ) AND status = 'AVAILABLE'
+    ) AND ${free}
     RETURNING id`;
   const seats = await tx.eventSeat.findMany({ where: { id: { in: rows.map((r) => r.id) } } });
   if (seats.length === new Set(seatKeys).size) return { ok: true, seats };
@@ -77,40 +92,36 @@ export interface ReturnedSeats {
 }
 
 /**
- * The ticket type the event's current assignment rules give a seat: a row rule wins over a whole-section rule,
- * NULL with no rule. A scalar subquery over the seat row aliased `seat` (an event_seats row) in the outer statement.
- */
-export const CURRENT_RULE_TYPE = Prisma.sql`(SELECT r.ticket_type_id FROM event_sections r
-  WHERE r.event_id = seat.event_id AND r.section_key = seat.section_key AND (r.row_label = seat.row_label OR r.row_label IS NULL)
-  ORDER BY r.row_label IS NULL LIMIT 1)`;
-
-/**
- * Seats matching `where` (a condition on event_seats columns; include the expected status) go back on sale under
- * the event's current assignment rules, which may have changed while they were held or sold: a row rule wins over
- * a whole-section rule, and with no rule the seat is UNSOLD with no type. Locks the seats in seat_key order.
+ * Seats matching `where` (a condition on event_seats columns aliased `seat`; include the expected status) go back on
+ * sale under the event's current assignment rules, which may have changed while they were held or sold: a row rule
+ * wins over a whole-section rule, and with no rule the seat is UNSOLD with no type. Locks the seats in seat_key order.
+ * While people are waiting for a seat's (new) type, reserveFreedSeats keeps it for them as WAITLIST_HOLD instead
+ * (`reserve: false` skips that: the waitlist sweeper giving back seats nobody is waiting for).
  * The caller must hold the event row lock (shared or exclusive) so the rules can't change meanwhile, and must then
  * recount `typeIds` (the old and the new types) with EventSeatsService.recountTicketTypes(tx, eventId, typeIds, ...),
  * which locks those ticket_types rows in id order, after the seats.
  */
-export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql): Promise<ReturnedSeats> {
-  const rows = await tx.$queryRaw<{ seat_key: string; old_type: string | null; new_type: string | null }[]>`
-    WITH s AS (
-      SELECT seat.id, seat.seat_key, seat.ticket_type_id AS old_type, ${CURRENT_RULE_TYPE} AS new_type
-      FROM event_seats seat
-      WHERE ${where}
-      ORDER BY seat.seat_key
-      FOR UPDATE OF seat
-    )
-    UPDATE event_seats e SET
-      ticket_type_id = s.new_type,
-      status = CASE WHEN s.new_type IS NULL THEN 'UNSOLD'::"SeatStatus" ELSE 'AVAILABLE'::"SeatStatus" END,
-      order_id = NULL, ticket_id = NULL, held_until = NULL, hold_label = NULL
-    FROM s
-    WHERE e.id = s.id
-    RETURNING s.seat_key, s.old_type::text AS old_type, s.new_type::text AS new_type`;
+export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql, opts: { reserve?: boolean } = {}): Promise<ReturnedSeats> {
+  const locked = await tx.$queryRaw<{ id: string; seat_key: string; old_type: string | null; new_type: string | null }[]>`
+    SELECT seat.id, seat.seat_key, seat.ticket_type_id::text AS old_type, ${CURRENT_RULE_TYPE}::text AS new_type
+    FROM event_seats seat
+    WHERE ${where}
+    ORDER BY seat.seat_key
+    FOR UPDATE OF seat`;
+  if (!locked.length) return { seatKeys: [], typeIds: [] };
+  const kept = new Set(opts.reserve === false ? [] : await reserveFreedSeats(tx, locked.map((r) => r.id)));
+  const onSale = locked.filter((r) => !kept.has(r.id)).map((r) => r.id);
+  if (onSale.length) {
+    await tx.$executeRaw`
+      UPDATE event_seats seat SET
+        ticket_type_id = ${CURRENT_RULE_TYPE},
+        status = CASE WHEN ${CURRENT_RULE_TYPE} IS NULL THEN 'UNSOLD'::"SeatStatus" ELSE 'AVAILABLE'::"SeatStatus" END,
+        order_id = NULL, ticket_id = NULL, held_until = NULL, hold_label = NULL, waitlist_entry_id = NULL
+      WHERE seat.id = ANY(${onSale}::uuid[])`;
+  }
   const types = new Set<string>();
-  for (const r of rows) for (const t of [r.old_type, r.new_type]) if (t) types.add(t);
-  return { seatKeys: rows.map((r) => r.seat_key), typeIds: [...types] };
+  for (const r of locked) for (const t of [r.old_type, r.new_type]) if (t) types.add(t);
+  return { seatKeys: locked.map((r) => r.seat_key), typeIds: [...types] };
 }
 
 /** Hold expired or cancelled: the order's CHECKOUT_HOLD seats go back on sale (under the current rules). */

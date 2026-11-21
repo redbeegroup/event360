@@ -18,6 +18,7 @@ class SmsSettingsDto {
   @ApiPropertyOptional({ example: 'Event360' }) @IsOptional() @IsString() @MaxLength(20) senderId?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() testMode?: boolean;
+  @ApiPropertyOptional({ description: 'Send waitlist offers by SMS too (one per offer, while SMS is enabled). Default on.' }) @IsOptional() @IsBoolean() waitlistSms?: boolean;
   @ApiPropertyOptional({ example: 'Your Event 360 code is {code}. Valid {minutes} minutes.' })
   @IsOptional()
   @IsString()

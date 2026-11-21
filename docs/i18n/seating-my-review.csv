@@ -245,3 +245,7 @@
 "addTier","Add tier","အဆင့် ထည့်မည်","portal"
 "tierBad","Each tier needs 2 to 100 tickets and a discount of 1% to 90%.","အဆင့်တိုင်းတွင် လက်မှတ် ၂ မှ ၁၀၀ နှင့် လျှော့စျေး ၁% မှ ၉၀% လိုအပ်သည်။","portal"
 "promoChecking","Checking your code…","သင့်ကုဒ်ကို စစ်ဆေးနေသည်…","user_app"
+"waitlistOfferTitle","Tickets are available for you","သင့်အတွက် လက်မှတ် ရနိုင်ပါပြီ","api_inbox"
+"waitlistOfferBody","{qty} {type} ticket(s) for {event} are held for you until {time}. Buy them before then.","{event} အတွက် {type} လက်မှတ် {qty} စောင်ကို {time} အထိ သင့်အတွက် ထိန်းထားပါသည်။ ထိုအချိန်မတိုင်မီ ဝယ်ယူပါ။","api_inbox"
+"waitlistClosedTitle","Tickets didn't become available","လက်မှတ် ပြန်မရနိုင်ခဲ့ပါ","api_inbox"
+"waitlistClosedBody","The waitlist for {type} at {event} has closed. Tickets didn't become available.","{event} ၏ {type} စောင့်ဆိုင်းစာရင်း ပိတ်သွားပါပြီ။ လက်မှတ် ပြန်မရနိုင်ခဲ့ပါ။","api_inbox"

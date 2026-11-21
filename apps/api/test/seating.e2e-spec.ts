@@ -2,7 +2,6 @@
  * Reserved seating over HTTP against a real PostgreSQL. Skipped when DATABASE_URL is not set.
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import { randomBytes, randomInt } from 'crypto';
 import { readFileSync } from 'fs';
@@ -19,74 +18,9 @@ import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
 import { normalizeMyanmarPhone } from '../src/modules/auth/phone';
 import { expireHold } from './expire-hold';
+import { gated } from './lock-gate';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
-
-/**
- * Lock-order tests. `lockGate` opens a transaction that holds row locks (taken by `lock`) until `release()`;
- * `done` settles when it ends (errors swallowed: a failed gate must not leave an unhandled rejection).
- * `queued` waits until a backend (other than `except`) is blocked by any of `blockers` and returns its pid.
- */
-async function lockGate(prisma: PrismaService, lock: (tx: Prisma.TransactionClient) => Promise<unknown>) {
-  let release!: () => void;
-  const gate = new Promise<void>((r) => (release = r));
-  let ready!: () => void;
-  const locked = new Promise<void>((r) => (ready = r));
-  let pid = 0;
-  const tx = prisma.$transaction(
-    async (t) => {
-      pid = (await t.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
-      await lock(t);
-      ready();
-      await gate;
-    },
-    { timeout: 30_000 },
-  );
-  try {
-    await Promise.race([locked, tx.then(() => Promise.reject(new Error('the gate ended before locking')))]);
-  } catch (e) {
-    release();
-    throw e;
-  }
-  return { pid, release, done: tx.catch(() => undefined) };
-}
-async function queued(prisma: PrismaService, blockers: number[], except: number[] = []): Promise<number> {
-  for (let i = 0; i < 200; i++) {
-    const rows = await prisma.$queryRaw<{ pid: number }[]>`
-      SELECT pid FROM pg_stat_activity WHERE pg_blocking_pids(pid) && ${blockers}::int[] AND NOT (pid = ANY(${except}::int[]))`;
-    if (rows.length) return rows[0].pid;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  throw new Error('nothing queued behind the gate');
-}
-/**
- * Holds the gate's locks, starts `first` and waits until it queues behind the gate, then starts `second` and waits
- * until it queues behind the gate or `first`; then always releases the gate and returns both results.
- */
-async function gated<A, B>(
-  prisma: PrismaService,
-  lock: (tx: Prisma.TransactionClient) => Promise<unknown>,
-  first: () => Promise<A>,
-  second: () => Promise<B>,
-): Promise<[A, B]> {
-  const gate = await lockGate(prisma, lock);
-  let a: Promise<A> | undefined;
-  let b: Promise<B> | undefined;
-  try {
-    a = first();
-    const aPid = await queued(prisma, [gate.pid]);
-    b = second();
-    await queued(prisma, [gate.pid, aPid], [aPid]);
-  } catch (e) {
-    void a?.catch(() => undefined);
-    void b?.catch(() => undefined);
-    throw e;
-  } finally {
-    gate.release();
-    await gate.done;
-  }
-  return Promise.all([a, b]);
-}
 
 /** Like Promise.allSettled over `tasks`, with at most `limit` running at once. */
 async function settledWithLimit<T>(limit: number, tasks: (() => Promise<T>)[]): Promise<PromiseSettledResult<T>[]> {
@@ -415,8 +349,8 @@ run('Seated events', () => {
     expect(g.body.rules).toHaveLength(3);
     expect(g.body.versionId).toBe(versionId);
     expect(g.body.layout.sections).toHaveLength(3);
-    expect(g.body.counts[vip]).toEqual({ available: 3, held: 0, guest: 0, sold: 0, comp: 0 });
-    expect(g.body.counts[std]).toEqual({ available: 5, held: 0, guest: 0, sold: 0, comp: 0 });
+    expect(g.body.counts[vip]).toEqual({ available: 3, held: 0, offered: 0, guest: 0, sold: 0, comp: 0 });
+    expect(g.body.counts[std]).toEqual({ available: 5, held: 0, offered: 0, guest: 0, sold: 0, comp: 0 });
     expect(g.body.seats).toHaveLength(8);
     expect(g.body.seats[0]).toMatchObject({ seatKey: expect.any(String), status: expect.any(String) });
   });
@@ -460,7 +394,7 @@ run('Seated events', () => {
     await app.get(EventSeatsService).recountTicketTypes(prisma as any, ev.id);
     expect(await ttRow(std)).toMatchObject({ quota: 5, held: 1, sold: 1 });
     const g = await http.get(`${base(ev.id)}/seating`).set(O).expect(200);
-    expect(g.body.counts[std]).toEqual({ available: 3, held: 1, guest: 1, sold: 1, comp: 0 });
+    expect(g.body.counts[std]).toEqual({ available: 3, held: 1, offered: 0, guest: 1, sold: 1, comp: 0 });
   });
 
   it('reassign keeps sold seats', async () => {
@@ -1540,8 +1474,8 @@ run('Seat everywhere', () => {
     expect(st.body.byTicketType.find((x: any) => x.id === ev.std).comp).toBe(1);
     expect(st.body.byTicketType.find((x: any) => x.id === ev.free).comp).toBe(0);
     const dash = await http.get(`${base(ev.id)}/dashboard`).set(O).expect(200);
-    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.free).seats).toEqual({ available: 4, held: 0, guest: 0, sold: 1, comp: 0 });
-    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.std).seats).toEqual({ available: 4, held: 0, guest: 0, sold: 0, comp: 1 });
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.free).seats).toEqual({ available: 4, held: 0, offered: 0, guest: 0, sold: 1, comp: 0 });
+    expect(dash.body.ticketTypes.find((x: any) => x.id === ev.std).seats).toEqual({ available: 4, held: 0, offered: 0, guest: 0, sold: 0, comp: 1 });
   });
 
   it('attendee CSV has Seat column', async () => {

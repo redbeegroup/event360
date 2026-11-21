@@ -68,7 +68,7 @@ run('Notifications', () => {
     });
     // SMS "enabled", sends recorded
     const sms = app.get(SmsService);
-    jest.spyOn(sms, 'settingsConfig').mockResolvedValue({ provider: 'smspoh', apiKey: 'k', apiSecret: 's', senderId: 'E360', enabled: true, testMode: true, otpTemplate: '{code}' });
+    jest.spyOn(sms, 'settingsConfig').mockResolvedValue({ provider: 'smspoh', apiKey: 'k', apiSecret: 's', senderId: 'E360', enabled: true, testMode: true, otpTemplate: '{code}', waitlistSms: true });
     jest.spyOn(sms, 'send').mockImplementation(async (phone: string, text: string) => {
       texts.push({ phone, text });
       return { messageId: 'm', status: 'Accepted', network: 'MPT' };

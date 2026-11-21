@@ -41,6 +41,7 @@ import { ORG_VIEWERS, OrgAccessService } from '../../common/org-access.service';
 import { PAYMENT_PROVIDER_FIELDS, PaymentProviderKey, PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SeatingModule } from '../seating/seating.module';
+import { WaitlistModule } from '../waitlist/waitlist.module';
 import { mockPage, mockResultPage } from './mock-page';
 import { PaymentsService } from './payments.service';
 
@@ -73,6 +74,10 @@ class CreateOrderDto {
   idempotencyKey?: string;
   @ApiPropertyOptional({ enum: ['APP', 'WEB'] }) @IsOptional() @IsIn(['APP', 'WEB']) channel?: 'APP' | 'WEB';
   @ApiPropertyOptional({ description: 'Promo code' }) @IsOptional() @IsString() @MaxLength(24) promoCode?: string;
+  @ApiPropertyOptional({ description: "The buyer's live waitlist offer (GET /me/waitlist): its type is bought from the stock reserved for it" })
+  @IsOptional()
+  @IsUUID()
+  waitlistEntryId?: string;
 }
 
 class PromoCheckDto {
@@ -138,7 +143,7 @@ export class CheckoutController {
   @Post('events/:id/orders')
   @Auth()
   create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateOrderDto, @CurrentUser() u: AuthUser) {
-    return this.payments.createOrder(u.sub, id, dto.items ?? [], dto.idempotencyKey, dto.channel, dto.promoCode, dto.seats);
+    return this.payments.createOrder(u.sub, id, dto.items ?? [], dto.idempotencyKey, dto.channel, dto.promoCode, dto.seats, dto.waitlistEntryId);
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 10 } }) // codes can't be guessed by brute force
@@ -341,7 +346,7 @@ export class OrgSalesController {
 }
 
 @Module({
-  imports: [SeatingModule],
+  imports: [SeatingModule, WaitlistModule],
   controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController],
   providers: [PaymentsService],
   exports: [PaymentsService],

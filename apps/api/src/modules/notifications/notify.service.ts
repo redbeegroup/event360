@@ -13,6 +13,8 @@ export type NotificationKind =
   | 'order_refunded'
   | 'announcement'
   | 'ticket_received'
+  | 'waitlist_offer'
+  | 'waitlist_closed'
   | 'test'
   | 'org_event_approved'
   | 'org_event_rejected'
