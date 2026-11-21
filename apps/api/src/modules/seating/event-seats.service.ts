@@ -250,8 +250,11 @@ export class EventSeatsService {
 
   /** Layout and seat order never change for a version; kept long. */
   private readonly layouts = new MicroCache<{ layout: Layout; index: Map<string, number>; seats: ExpandedSeat[]; aisles: Set<string> }>(process.env.NODE_ENV === 'test' ? 0 : 600_000, 50);
-  /** Types and seat status change with every order; kept at most 2 s per pod. */
-  private readonly availability = new MicroCache<{ id: string; versionId: string; types: unknown[]; seatTypes: string; status: string }>(Math.min(publicCacheMs(2000), 2000));
+  /** Types and seat status change with every order; fresh for 2 s per pod, then served stale up to 8 s more while refreshing. */
+  private readonly availability = new MicroCache<{ id: string; versionId: string; types: unknown[]; seatTypes: string; status: string }>(Math.min(publicCacheMs(2000), 2000), 500, {
+    // Ordering always re-checks seats in the DB, so a stale map can't oversell.
+    staleMs: Math.min(publicCacheMs(2000), 2000) > 0 ? 8000 : 0,
+  });
 
   async publicSeats(idOrSlug: string) {
     const a = await this.availability.get(idOrSlug, () => this.loadAvailability(idOrSlug));
