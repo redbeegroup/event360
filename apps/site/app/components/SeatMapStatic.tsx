@@ -9,6 +9,9 @@ const SEAT_RADIUS = 9;
 const TYPE_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 /** Seats without a ticket type. */
 const NO_TYPE = '#e5e3ee';
+/** Taken (T), held for guests (G) or not for sale (U). */
+const UNAVAILABLE = '#c9c7d1';
+const isUnavailable = (c: string | undefined) => c === 'T' || c === 'G' || c === 'U';
 /** Colours reach the page as inline SVG/CSS, so only accept plain hex values. */
 const safeColor = (c: string) => (/^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '#6c2bd9');
 
@@ -46,7 +49,8 @@ export function SeatMapStatic({ seats, lang, t }: { seats: PublicSeats; lang: La
         ))}
         {list.map((s, i) => {
           const ti = TYPE_CHARS.indexOf(seats.seatTypes[i] ?? '-');
-          return <circle key={s.seatKey} cx={s.x} cy={s.y} r={SEAT_RADIUS} fill={ti >= 0 && types[ti] ? safeColor(types[ti].color) : NO_TYPE} />;
+          const fill = isUnavailable(seats.status[i]) ? UNAVAILABLE : ti >= 0 && types[ti] ? safeColor(types[ti].color) : NO_TYPE;
+          return <circle key={s.seatKey} cx={s.x} cy={s.y} r={SEAT_RADIUS} fill={fill} />;
         })}
       </svg>
       <ul className="seatmap-legend">
@@ -57,6 +61,10 @@ export function SeatMapStatic({ seats, lang, t }: { seats: PublicSeats; lang: La
             <strong>{ty.priceMmk === 0 ? t.free : fmtMmk(ty.priceMmk, lang)}</strong>
           </li>
         ))}
+        <li>
+          <span className="swatch" style={{ background: UNAVAILABLE }} aria-hidden="true" />
+          <span>{t.seatUnavailable}</span>
+        </li>
       </ul>
       <p className="muted small">{t.seatMapNote}</p>
     </div>
