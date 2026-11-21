@@ -1155,6 +1155,13 @@ run('Guest seats', () => {
     const two = await get(`?ids=${ids.join(',')}`).expect(200);
     expect(pages(two.body)).toBe(2);
     await get('?ids=nope').expect(400);
+    // JSON for the portal print page: signed QR token per VALID comp, editors only
+    const data = await http.get(`${seating(ev.id)}/comps/print?ids=${ids.join(',')}`).set(O).expect(200);
+    expect(data.body.event.title).toBeTruthy();
+    expect(data.body.tickets).toHaveLength(2);
+    expect(data.body.tickets[0]).toMatchObject({ seatLabel: expect.any(String), compLabel: 'Press' });
+    expect(data.body.tickets[0].token).toMatch(/\./);
+    await http.get(`${seating(ev.id)}/comps/print`).expect(401);
   });
 });
 

@@ -101,3 +101,15 @@ label.check input { width: auto; }
 .seat-editor-side, .seat-editor-main { display: grid; gap: 12px; min-width: 0; }
 .seat-editor details > summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 @media (max-width: 900px) { .seat-editor { grid-template-columns: 1fr; } }
+
+/* Organizer seats tab */
+.seats-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); align-items: start; }
+@media (max-width: 860px) { .seats-grid { grid-template-columns: minmax(0, 1fr); } }
+.seats-map { min-width: 0; overflow-x: auto; }
+.seats-side { display: grid; gap: 12px; min-width: 0; }
+.seats-side .card { margin-bottom: 0; }
+.legend { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.legend li { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; font-size: 0.9rem; }
+.sw { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; border: 1px solid var(--border); }
+.sw.hatched { background: repeating-linear-gradient(45deg, #444 0 3px, #fff 3px 6px); }
+.type-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }

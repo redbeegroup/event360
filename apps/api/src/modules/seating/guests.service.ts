@@ -193,8 +193,8 @@ export class GuestsService {
     return { ok: true };
   }
 
-  /** One A5 page per ticket; `ids` (comma-separated ticket ids) limits it, otherwise every live comp of the event. */
-  async pdf(orgId: string, eventId: string, ids?: string): Promise<Buffer> {
+  /** VALID comp tickets of the event (optionally limited to `ids`, comma-separated ticket ids), with their signed QR tokens. */
+  private async printable(orgId: string, eventId: string, ids?: string) {
     const e = await this.assertEvent(orgId, eventId);
     let only: string[] | undefined;
     if (ids !== undefined && ids !== '') {
@@ -208,11 +208,9 @@ export class GuestsService {
     });
     if (!rows.length) throw new NotFoundException('No guest tickets to print');
     const venue = e.venue ? [e.venue.name, e.venue.city].filter(Boolean).join(', ') : '';
-    const items: PdfTicket[] = rows.map((t) => ({
-      title: e.title,
-      titleMy: e.titleMy,
-      startsAt: e.startsAt,
-      venue,
+    const venueMy = e.venue ? [e.venue.nameMy || e.venue.name, e.venue.city].filter(Boolean).join(', ') : '';
+    const tickets = rows.map((t) => ({
+      id: t.id,
       guestName: t.guestName ?? '',
       phoneHint: maskPhone(t.holder.phone) ?? '',
       seatLabel: t.seatLabel ?? '',
@@ -221,6 +219,19 @@ export class GuestsService {
       token: this.tokens.sign({ tid: t.id, eid: e.id, tt: t.ticketTypeId, v: t.qrVersion }),
       code: t.id.slice(0, 8).toUpperCase(),
     }));
+    return { e, venue, venueMy, tickets };
+  }
+
+  /** Data for the portal's print page (it renders Myanmar script, which the PDF cannot). Same guard as comps.pdf: live QR tokens. */
+  async printData(orgId: string, eventId: string, ids?: string) {
+    const { e, venue, venueMy, tickets } = await this.printable(orgId, eventId, ids);
+    return { event: { title: e.title, titleMy: e.titleMy, startsAt: e.startsAt, venue, venueMy }, tickets };
+  }
+
+  /** One A5 page per ticket; `ids` (comma-separated ticket ids) limits it, otherwise every live comp of the event. */
+  async pdf(orgId: string, eventId: string, ids?: string): Promise<Buffer> {
+    const { e, venue, tickets } = await this.printable(orgId, eventId, ids);
+    const items: PdfTicket[] = tickets.map((t) => ({ title: e.title, titleMy: e.titleMy, startsAt: e.startsAt, venue, ...t }));
     return renderTicketsPdf(items);
   }
 }

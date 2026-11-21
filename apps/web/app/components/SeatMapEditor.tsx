@@ -286,7 +286,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
             <div className="field"><label>{L.smWidth}</label><input type="number" value={layout.width} onChange={(e) => edit((l) => { l.width = Math.max(1, numOr(e.target.value, 1)!); })} /></div>
             <div className="field"><label>{L.smHeight}</label><input type="number" value={layout.height} onChange={(e) => edit((l) => { l.height = Math.max(1, numOr(e.target.value, 1)!); })} /></div>
             {!layout.stage && (
-              <div className="field"><button type="button" className="secondary" onClick={() => edit((l) => { l.stage = { x: Math.round(l.width / 2 - 280), y: 40, w: 560, h: 60, label: L.smStage }; })}>{L.smAddStage}</button></div>
+              <div className="field"><button type="button" className="secondary" onClick={() => edit((l) => { l.stage = { x: Math.round(l.width / 2 - 280), y: 40, w: 560, h: 60 }; })}>{L.smAddStage}</button></div>
             )}
             {layout.stage && (
               <>

@@ -8,6 +8,7 @@ import { fmtDate, fmtMmk, pick, t, toLocalInput } from '../../../../lib/i18n';
 import type { CategoryDto, EventDto } from '../../../../lib/types';
 import {
   attendanceAction,
+  pickSeatMapAction,
   createCrewCodeAction,
   revokeCrewCodeAction,
   type AttendanceStats,
@@ -33,6 +34,15 @@ interface CrewCode {
   expiresAt: string;
   devices: number;
   active: boolean;
+}
+
+interface SeatMapOption {
+  id: string;
+  venueName: string;
+  venueNameMy: string | null;
+  city: string;
+  latestVersionId: string;
+  seatCount: number;
 }
 
 interface Attendee {
@@ -77,7 +87,7 @@ interface Sales {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos, seatMaps] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -88,6 +98,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<Sales>(`/organizations/${orgId}/events/${id}/sales`).catch(() => null),
     api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
     api<Promo[]>(`/organizations/${orgId}/events/${id}/promo-codes`).catch(() => null),
+    api<SeatMapOption[]>('/seat-maps').catch(() => null),
   ]);
   const paidTypes = e.ticketTypes.filter((tt) => tt.priceMmk > 0);
   const hasPaid = e.ticketTypes.some((tt) => tt.priceMmk > 0);
@@ -106,7 +117,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     </>
   );
   const closed = ['CANCELLED', 'COMPLETED'].includes(e.status);
-  const okText = { saved: tr.saved, rereview: tr.reReview };
+  const okText = { saved: tr.saved, rereview: tr.reReview, mapSaved: tr.stMapSaved, mapCleared: tr.stMapCleared };
   return (
     <>
       <p><Link href={`/organizer/${orgId}`}>← {tr.events}</Link></p>
@@ -118,6 +129,38 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
           <p className="muted">{tr.submitHint}</p>
           <ActionForm action={submitEventAction} submitLabel={tr.submit} okText={okText}>{hidden}</ActionForm>
         </div>
+      )}
+
+      {!!(seatMaps?.length || e.seating) && (
+        <>
+          <h2>{tr.stSeatedVenue}</h2>
+          <div className="card">
+            <p className="muted">{tr.stSeatedHint}</p>
+            {!closed && seatMaps && (
+              <ActionForm action={pickSeatMapAction} submitLabel={tr.save} okText={okText}>
+                {hidden}
+                <div className="field">
+                  <select name="seatMapVersionId" aria-label={tr.stSeatedVenue} defaultValue={e.seating?.seatMapVersionId ?? ''}>
+                    <option value="">{tr.stNoSeatMap}</option>
+                    {seatMaps.map((m) => (
+                      <option key={m.latestVersionId} value={m.latestVersionId}>
+                        {pick(tr.lang, m.venueName, m.venueNameMy)} · {m.city} · {m.seatCount} {tr.stSeatsWord}
+                      </option>
+                    ))}
+                    {e.seating && !seatMaps.some((m) => m.latestVersionId === e.seating!.seatMapVersionId) && (
+                      <option value={e.seating.seatMapVersionId}>{e.seating.venueName ?? e.seating.seatMapVersionId}</option>
+                    )}
+                  </select>
+                </div>
+              </ActionForm>
+            )}
+            {e.seating && (
+              <p style={{ marginTop: 12 }}>
+                <Link className="btn secondary" href={`/organizer/${orgId}/events/${id}/seats`}>{tr.stOpenSeats}</Link>
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       <h2>{tr.ticketTypes}</h2>

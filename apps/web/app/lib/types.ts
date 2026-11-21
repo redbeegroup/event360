@@ -65,6 +65,8 @@ export interface EventDto {
   media?: { id: string; key: string; url: string; caption: string | null; captionMy: string | null }[];
   faqs?: { id: string; question: string; questionMy: string | null; answer: string; answerMy: string | null }[];
   ticketTypes: TicketTypeDto[];
+  /** Set when the event has a venue seat map */
+  seating?: { seatMapVersionId: string; venueName: string | null } | null;
   soldOut: boolean;
 }
 

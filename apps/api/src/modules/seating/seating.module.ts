@@ -198,6 +198,12 @@ export class EventGuestsController {
     return this.guests.revoke(orgId, id, ticketId);
   }
 
+  /** Same tickets as comps.pdf, as JSON for the portal's print page. Editors only: the tokens are live QR codes. */
+  @Get('comps/print') async printData(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Query('ids') ids: string | undefined, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_EDITORS);
+    return this.guests.printData(orgId, id, ids);
+  }
+
   /** Printable guest tickets (the QR codes are live tickets, so editors only). */
   @Get('comps.pdf') async pdf(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Query('ids') ids: string | undefined, @CurrentUser() u: AuthUser, @Res() res: Response) {
     await this.access.assert(u, orgId, ORG_EDITORS);

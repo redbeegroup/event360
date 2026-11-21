@@ -441,3 +441,61 @@ export async function togglePromoAction(_: FormState, fd: FormData): Promise<For
     return err(e);
   }
 }
+
+// ───────────── Seats: map, assignments, guest holds and comps ─────────────
+
+export interface SeatRule {
+  sectionKey: string;
+  rowLabel?: string;
+  ticketTypeId: string;
+}
+export type SeatRes<T = null> = { ok: true; data: T } | { ok: false; error: string };
+const seatWrap = async <T>(orgId: string, eventId: string, f: () => Promise<T>): Promise<SeatRes<T>> => {
+  try {
+    const data = await f();
+    revalidatePath(`/organizer/${orgId}/events/${eventId}/seats`);
+    return { ok: true, data };
+  } catch (e) {
+    // api() redirects to /login on 401; let that through
+    if ((e as { digest?: string })?.digest?.startsWith('NEXT_REDIRECT')) throw e;
+    return { ok: false, error: e instanceof ApiError ? e.message : (e as Error).message };
+  }
+};
+const seating = (orgId: string, eventId: string) => `/organizations/${orgId}/events/${eventId}/seating`;
+
+/** Event page: pick a published venue map, or go back to "venue address only" when the version id is empty. */
+export async function pickSeatMapAction(_: FormState, fd: FormData): Promise<FormState> {
+  const orgId = String(fd.get('orgId'));
+  const eventId = String(fd.get('eventId'));
+  const versionId = str(fd, 'seatMapVersionId');
+  try {
+    const r = versionId
+      ? await api<{ reReviewRequired: boolean }>(`${seating(orgId, eventId)}/map`, { method: 'PUT', json: { seatMapVersionId: versionId } })
+      : await api<{ reReviewRequired: boolean }>(`${seating(orgId, eventId)}/map`, { method: 'DELETE' });
+    revalidatePath(`/organizer/${orgId}/events/${eventId}`);
+    return { ok: r.reReviewRequired ? 'rereview' : versionId ? 'mapSaved' : 'mapCleared' };
+  } catch (e) {
+    return err(e);
+  }
+}
+
+/** Sends the whole rule set; the API replaces all of the event's assignments. */
+export async function saveAssignmentsAction(orgId: string, eventId: string, rules: SeatRule[]) {
+  return seatWrap(orgId, eventId, () => api(`${seating(orgId, eventId)}/assignments`, { method: 'PUT', json: { rules } }).then(() => null));
+}
+
+export async function holdSeatsAction(orgId: string, eventId: string, seats: string[], label: string) {
+  return seatWrap(orgId, eventId, () => api<{ held: number }>(`${seating(orgId, eventId)}/hold`, { method: 'POST', json: { seats, label } }));
+}
+
+export async function releaseSeatsAction(orgId: string, eventId: string, seats: string[]) {
+  return seatWrap(orgId, eventId, () => api<{ released: number }>(`${seating(orgId, eventId)}/release`, { method: 'POST', json: { seats } }));
+}
+
+export async function issueCompsAction(orgId: string, eventId: string, body: { seats: string[]; guestName: string; phone: string; label?: string }) {
+  return seatWrap(orgId, eventId, () => api<{ tickets: unknown[] }>(`${seating(orgId, eventId)}/comps`, { method: 'POST', json: body }));
+}
+
+export async function revokeCompAction(orgId: string, eventId: string, ticketId: string) {
+  return seatWrap(orgId, eventId, () => api(`${seating(orgId, eventId)}/comps/${ticketId}/revoke`, { method: 'POST' }).then(() => null));
+}

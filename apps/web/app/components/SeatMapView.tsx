@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { expandSeats, type Layout } from '../lib/seat-layout';
 
 export const SEAT_RADIUS = 9;
@@ -22,6 +22,8 @@ export interface SeatMapViewProps {
   onToggle?: (seatKey: string) => void;
   onSectionClick?: (sectionKey: string) => void;
   onRowClick?: (sectionKey: string, rowLabel: string) => void;
+  /** Rubber-band selection (mouse / pen drag across empty space or seats). `add` is true with Shift/Ctrl/Cmd held. */
+  onSelectMany?: (seatKeys: string[], add: boolean) => void;
   /** Draw row labels next to the first seat of each row. Default: when onRowClick is given. */
   showRowLabels?: boolean;
   /** Outline restricted-view / wheelchair seats. Default true. */
@@ -44,6 +46,7 @@ export function SeatMapView({
   onToggle,
   onSectionClick,
   onRowClick,
+  onSelectMany,
   showRowLabels,
   showAttrs = true,
   lang = 'en',
@@ -75,12 +78,76 @@ export function SeatMapView({
   const withRows = showRowLabels ?? !!onRowClick;
   const hatch = `hatch-${pid}`;
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const suppressClick = useRef(false);
+  const onSelectManyRef = useRef(onSelectMany);
+  onSelectManyRef.current = onSelectMany;
+  const seatsRef = useRef(seats);
+  seatsRef.current = seats;
+  const dragCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanup.current?.(), []);
+
+  const toLocal = (cx: number, cy: number) => {
+    const svg = svgRef.current;
+    const m = svg?.getScreenCTM();
+    if (!svg || !m) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = cx;
+    pt.y = cy;
+    const r = pt.matrixTransform(m.inverse());
+    return { x: r.x, y: r.y };
+  };
+
+  const startDrag = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!onSelectMany || e.button !== 0 || e.pointerType === 'touch') return;
+    const start = { cx: e.clientX, cy: e.clientY, ...toLocal(e.clientX, e.clientY), add: e.shiftKey || e.ctrlKey || e.metaKey };
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - start.cx, ev.clientY - start.cy) < 6) return;
+      moved = true;
+      const p = toLocal(ev.clientX, ev.clientY);
+      setBand({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
+    };
+    const up = (ev: PointerEvent) => {
+      cleanup();
+      setBand(null);
+      if (!moved) return;
+      const p = toLocal(ev.clientX, ev.clientY);
+      const [xa, xb] = [Math.min(start.x, p.x), Math.max(start.x, p.x)];
+      const [ya, yb] = [Math.min(start.y, p.y), Math.max(start.y, p.y)];
+      const keys = seatsRef.current.filter((s) => s.x >= xa && s.x <= xb && s.y >= ya && s.y <= yb).map((s) => s.seatKey);
+      suppressClick.current = true;
+      setTimeout(() => (suppressClick.current = false), 60);
+      onSelectManyRef.current?.(keys, start.add);
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      dragCleanup.current = null;
+    };
+    const cancel = () => {
+      cleanup();
+      setBand(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    dragCleanup.current = cleanup;
+  };
+
   return (
     <svg
+      ref={svgRef}
+      onPointerDown={startDrag}
+      onClickCapture={(e) => {
+        if (suppressClick.current) e.stopPropagation();
+      }}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ width: '100%', height: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
+      style={{ width: '100%', height: 'auto', userSelect: 'none', background: 'var(--surface, #fff)', border: '1px solid var(--border, #ddd)', borderRadius: 8 }}
     >
       <defs>
         <pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -96,6 +163,20 @@ export function SeatMapView({
           </text>
         </g>
       )}
+      {/* Under the section titles and row labels, so those stay clickable where they overlap a row */}
+      {onRowClick &&
+        rowSpans.map((r) => (
+          <rect
+            key={`hit-${r.sectionKey}:${r.rowLabel}`}
+            x={r.x1 - 28}
+            y={r.y1 - SEAT_RADIUS - 2}
+            width={r.x2 - r.x1 + 28 + SEAT_RADIUS + 2}
+            height={r.y2 - r.y1 + 2 * SEAT_RADIUS + 4}
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onClick={() => onRowClick(r.sectionKey, r.rowLabel)}
+          />
+        ))}
       {layout.sections.map((sec) => (
         <g key={sec.key}>
           {sec.kind === 'STANDING' && (
@@ -144,19 +225,6 @@ export function SeatMapView({
             {r.rowLabel}
           </text>
         ))}
-      {onRowClick &&
-        rowSpans.map((r) => (
-          <rect
-            key={`hit-${r.sectionKey}:${r.rowLabel}`}
-            x={r.x1 - 28}
-            y={r.y1 - SEAT_RADIUS - 2}
-            width={r.x2 - r.x1 + 28 + SEAT_RADIUS + 2}
-            height={r.y2 - r.y1 + 2 * SEAT_RADIUS + 4}
-            fill="transparent"
-            style={{ cursor: 'pointer' }}
-            onClick={() => onRowClick(r.sectionKey, r.rowLabel)}
-          />
-        ))}
       {seats.map((s) => {
         const st = status?.[s.seatKey];
         const unavailable = st != null && UNAVAILABLE.has(st.toUpperCase());
@@ -176,6 +244,18 @@ export function SeatMapView({
           </g>
         );
       })}
+      {band && (
+        <rect
+          x={Math.min(band.x1, band.x2)}
+          y={Math.min(band.y1, band.y2)}
+          width={Math.abs(band.x2 - band.x1)}
+          height={Math.abs(band.y2 - band.y1)}
+          fill="rgba(108,43,217,0.12)"
+          stroke="#6c2bd9"
+          strokeDasharray="5 3"
+          pointerEvents="none"
+        />
+      )}
     </svg>
   );
 }
