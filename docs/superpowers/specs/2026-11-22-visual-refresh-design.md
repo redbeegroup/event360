@@ -159,6 +159,54 @@ Dev first. Prod only when the user asks.
 - Commit the six mockup sources from the canvas (`*.dc.html`) and `canvas.json` to `docs/design/visual-refresh/`, so implementers read exact values offline.
 - They are references, not shipped code.
 
+## Decisions after the builder check (controller's calls)
+1. **Portal menu maps to existing pages only.**
+   - Organizer side menu:
+     - Events → `organizer/[orgId]`;
+     - Payouts → `organizer/[orgId]/payouts`, shown to OWNER and FINANCE only, as today;
+     - Organization profile → `organizer/[orgId]/profile`.
+   - There is no separate Team page. Staff invites stay where they are on the organization page, so "Team" in the mockup is dropped.
+   - An event's own pages (Edit, Dashboard, Seats) appear as tabs under the event title.
+   - Admin menu: Organizations, Events, Venues, Finance, Ops, Settings. These are the existing pages.
+   - No new routes.
+2. **Token table beats mockup where they differ.**
+   - Mockups are the authority for layout and proportion. The token table is the authority for exact colours.
+   - Success text: use `#14594a` on `#d9f2e9` for badges and `#1f6f5c` for inline text such as "Free". Both pass contrast.
+   - Web titles keep fluid `clamp()` sizes that reach the mockup size at desktop width.
+   - Display weight is 800 for h1 and 700 for h2.
+3. **Myanmar type.**
+   - Myanmar text uses Noto Sans Myanmar at weight 700 where Latin uses 800. No synthetic bold.
+   - Titles in Myanmar are one step smaller (28 → 24, 20 → 18) with 1.5 line height.
+   - Badges are not uppercased or letter-spaced in Myanmar.
+   - Implement this as a locale-aware text theme in Flutter and `:lang(my)` rules on the web.
+4. **Portal fonts.**
+   - Use the same `@fontsource` packages as the site: self-hosted, no build-time Google fetch.
+   - Remove Inter.
+5. **Seat maps.**
+   - Ticket-type colours and seat states are unchanged.
+   - Only the surrounding chrome (legend, bars, buttons) takes the tokens.
+6. **Copy.**
+   - New or changed labels: tab names, "Find things to do", "Good to know", "Overview", "Read more", "Continue to payment" and so on.
+   - Each is added in English and Myanmar by the implementer, reusing existing strings where one already says the same thing.
+   - Every new Myanmar string gets a row in `docs/i18n/seating-my-review.csv` for the native-speaker review.
+   - Widget tests that find text by a changed label are updated.
+7. **Discover data.**
+   - The search pill's second line shows the city filter the buyer last chose in Explore, else "in Myanmar". No location feature.
+   - Category chips are the existing API categories (top level). Tapping one opens Explore filtered to it.
+   - The featured event is not repeated in the "Popular" list.
+   - `organizerName` is already in the event payload.
+8. **Assets.**
+   - The mark is the navy rounded square with a gold dot, drawn as a small widget or CSS shape. No new logo file.
+   - "Open the app" keeps its current link.
+   - Mockup photos are sample covers. Real screens use each event's cover.
+   - The mockups show layout; existing copy and states remain the source of truth.
+9. **Test harness.**
+   - Portal and site screenshots use ad-hoc Playwright scripts against a local API, as in earlier work. There is no permanent screenshot suite.
+10. **Dark mode.**
+    - Derive the dark values by inverting the neutrals: paper `#111326`, card `#1a1d38`, ink `#eef0fa`, muted `#a6abc8`, line `#2c3054`.
+    - Keep gold as the main action. Navy filled buttons become `#8f96e8` with dark text.
+    - Check contrast. No bespoke dark designs.
+
 ## Left to the builder
 - Exact widget decomposition and file layout inside each app.
 - Which existing optional event fields feed the "Good to know" cards beyond the price rise and group discount.
