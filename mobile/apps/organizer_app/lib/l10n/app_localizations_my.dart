@@ -112,13 +112,13 @@ class L10nMy extends L10n {
   String get seatsTitle => 'ထိုင်ခုံများ';
 
   @override
-  String get seatsAvailable => 'လွတ်';
+  String get seatsAvailable => 'ရနိုင်သည်';
 
   @override
-  String get seatsHeld => 'ဝယ်နေဆဲ';
+  String get seatsHeld => 'ငွေပေးချေနေဆဲ';
 
   @override
-  String get seatsGuest => 'ဧည့်သည်အတွက်';
+  String get seatsGuest => 'ဧည့်သည်အတွက် ထားသည်';
 
   @override
   String get seatsSold => 'ရောင်းပြီး';

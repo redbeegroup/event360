@@ -459,11 +459,11 @@ class L10nMy extends L10n {
   String get standingTickets => 'ရပ်ကြည့် လက်မှတ်များ';
 
   @override
-  String get tapSeatHint => 'ရွေးလိုသော ထိုင်ခုံကို ထိပါ';
+  String get tapSeatHint => 'ရွေးလိုသော ခုံကို ထိပါ';
 
   @override
   String get zoomToPick =>
-      'ထိုင်ခုံရွေးရန် ချဲ့ကြည့်ပါ သို့မဟုတ် ဧရိယာကို ထိပါ';
+      'ထိုင်ခုံရွေးရန် ချဲ့ကြည့်ပါ သို့မဟုတ် ပိုင်းကို ထိပါ';
 
   @override
   String get bestAvailable => 'အကောင်းဆုံး ခုံများ';
@@ -480,7 +480,7 @@ class L10nMy extends L10n {
 
   @override
   String seatLimit(int n) {
-    return 'ထိုင်ခုံ $n ခုအထိ ရွေးနိုင်ပါသည်';
+    return 'ခုံ $n ခုအထိ ရွေးနိုင်ပါသည်';
   }
 
   @override
@@ -489,7 +489,7 @@ class L10nMy extends L10n {
   }
 
   @override
-  String get seatNotAvailable => 'ဤထိုင်ခုံ မရနိုင်ပါ';
+  String get seatNotAvailable => 'ဤခုံ မရနိုင်ပါ';
 
   @override
   String seatsChosen(int n) {
@@ -506,14 +506,14 @@ class L10nMy extends L10n {
   String get legendWheelchair => 'ဘီးတပ်ကုလားထိုင် နေရာ';
 
   @override
-  String get legendRestricted => 'မြင်ကွင်း အကန့်အသတ်';
+  String get legendRestricted => 'မြင်ကွင်းကန့်သတ်';
 
   @override
-  String get complimentary => 'ဧည့်သည် လက်မှတ်';
+  String get complimentary => 'အခမဲ့';
 
   @override
   String complimentaryLabel(String label) {
-    return 'ဧည့်သည် လက်မှတ် · $label';
+    return 'အခမဲ့ · $label';
   }
 
   @override
@@ -524,7 +524,7 @@ class L10nMy extends L10n {
 
   @override
   String get cancelTicketBody =>
-      'သင့်ထိုင်ခုံကို ပြန်လည်ရောင်းချပါမည်။ ပြန်လည်ပြင်၍ မရပါ။';
+      'သင့်ခုံကို ပြန်လည်ရောင်းချပါမည်။ ပြန်လည်ပြင်၍ မရပါ။';
 
   @override
   String get keepTicket => 'ဆက်ထားမည်';
