@@ -509,7 +509,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         data: { status: 'SUCCEEDED' },
       });
       if (won.count !== 1) return; // duplicate callback / already settled
+      // Lock the order row before deciding anything: another payment for the same order (another provider, or a
+      // second late payment) may be settling right now, and only one of them may issue the tickets. Lock order:
+      // event (share) → payment → order → standing ticket_types → promo code → seats → seated ticket_types.
+      const [locked] = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM orders WHERE id = ${pay.orderId}::uuid FOR UPDATE`;
       const order = await tx.order.findUniqueOrThrow({ where: { id: pay.orderId }, include: { items: true, event: { select: { organizationId: true } } } });
+      const status = locked.status;
       const clearing = ACC.clearing(pay.provider);
 
       if (amountMmk !== undefined && amountMmk !== pay.amountMmk) {
@@ -517,16 +522,16 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         await tx.order.update({ where: { id: order.id }, data: { needsReview: true, reviewNote: `Amount mismatch: paid ${amountMmk}, expected ${pay.amountMmk} (payment ${pay.id})` } });
         return;
       }
-      if (order.status === 'PAID' || order.status === 'REFUNDED' || order.status === 'CONFIRMED') {
+      if (status === 'PAID' || status === 'REFUNDED' || status === 'CONFIRMED') {
         await journal(tx, 'payment', pay.id, [{ account: clearing, debit: pay.amountMmk }, { account: ACC.unallocated, credit: pay.amountMmk }]);
         await tx.order.update({ where: { id: order.id }, data: { needsReview: true, reviewNote: `Paid twice: extra payment ${pay.id} (${pay.provider}) must be refunded` } });
         return;
       }
 
       let issued = false;
-      const fromHold = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID', paidAt: new Date() } });
       const quantityItems = byTypeId(order.items.filter((i) => !i.seatKeys.length), (i) => i.ticketTypeId);
-      if (fromHold.count === 1) {
+      if (status === 'PENDING_PAYMENT') {
+        await tx.order.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: new Date() } });
         for (const i of quantityItems) await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0), sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid`;
         issued = true; // held seats become SOLD as their tickets are issued
       } else {

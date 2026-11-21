@@ -82,6 +82,10 @@ export class GuestsService {
     if (!phone) throw new BadRequestException('Enter a valid Myanmar mobile number');
     const keys = this.keys(dto.seats);
     const out = await this.prisma.$transaction(async (tx) => {
+      // The guest's user row before the event row, as in checkout (user → event): the guest may be buying a
+      // ticket for this event right now, and their order row references the same user
+      const guest = await upsertUserByPhone(tx, phone);
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${guest.id}::uuid FOR UPDATE`;
       const e = await this.lockedEvent(tx, orgId, eventId);
       const rows = await tx.eventSeat.findMany({ where: { eventId, seatKey: { in: keys } }, orderBy: { seatKey: 'asc' } });
       const ok = rows.filter((s) => s.status === 'GUEST_HOLD' && s.ticketTypeId);
@@ -89,7 +93,6 @@ export class GuestsService {
         const good = new Set(ok.map((s) => s.seatKey));
         throw taken('Seats must be held for guests first', keys.filter((k) => !good.has(k)));
       }
-      const guest = await upsertUserByPhone(tx, phone);
       const perType = new Map<string, number>();
       for (const s of ok) perType.set(s.ticketTypeId!, (perType.get(s.ticketTypeId!) ?? 0) + 1);
       const order = await tx.order.create({

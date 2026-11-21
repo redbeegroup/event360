@@ -8,10 +8,17 @@ import type { EventSeat } from '@prisma/client';
  * back on sale left or joined) afterwards.
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
- * user row (createOrder only) → event row (shared, never upgraded) → standing ticket_types rows (in id order) →
- * promo_codes row (orders with a code) → seat rows (claims lock them in seat_key order; the other functions only
- * touch seats the order already owns) → seated ticket_types rows (in id order, in the recount, the last step
- * before commit).
+ * 1. user row: createOrder (the buyer), GuestsService.issue (the guest);
+ * 2. event row: shared by checkouts (never upgraded), FOR UPDATE by organizer seat/map changes;
+ * 3. payment row: settle (its conditional status update);
+ * 4. order row: settle (SELECT … FOR UPDATE), releaseHold and refundOrder (conditional status update);
+ * 5. ticket rows: TicketsService.cancel and GuestsService.revoke (conditional VOID);
+ * 6. standing ticket_types rows, in id order;
+ * 7. promo_codes row (orders with a code; TicketsService.cancel locks it FOR UPDATE here);
+ * 8. seat rows: claims lock them in seat_key order; the other functions only touch seats the order already owns;
+ * 9. seated ticket_types rows, in id order, in the recount (the last step before commit).
+ * One exception: TicketsService.cancel takes its (free) order's row last, after the recount, only to serialise
+ * cancels within that order; no other path holds a free order's row while waiting for a counter or seat.
  */
 type Tx = Prisma.TransactionClient;
 

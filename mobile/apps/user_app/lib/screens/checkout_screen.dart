@@ -184,7 +184,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
             child: Row(children: [
               Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
-              Text(t.holdExpiresIn(_left(o.holdExpiresAt!)), key: const Key('countdown')),
+              Flexible(child: Text(t.holdExpiresIn(_left(o.holdExpiresAt!)), key: const Key('countdown'))), // wraps on a narrow phone (Myanmar)
             ]),
           ),
         const Divider(height: 32),

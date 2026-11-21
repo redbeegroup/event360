@@ -460,8 +460,15 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-      // A promo code rejected at order time (e.g. used up meanwhile) carries a reasonCode: show our own text
-      setState(() => _error = e.reasonCode != null ? promoReasonText(L10n.of(context), e.reasonCode) : e.message);
+      setState(() {
+        if (e.reasonCode != null) {
+          // The promo code was rejected at order time (e.g. used up meanwhile): it is no longer applied, and its
+          // reason shows under the code in our own (Myanmar) text. Submitting again orders at full price.
+          _promoResult = PromoCheck(valid: false, reasonCode: e.reasonCode, discountMmk: 0, totalMmk: _type.priceMmk * _qty);
+        } else {
+          _error = e.message;
+        }
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -553,17 +560,12 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: TotalAmounts(
-                        original: _promoResult?.valid == true ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
-                        total: t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
-                        totalKey: const Key('sheetTotal'),
-                      ),
-                    ),
-                  ]),
+                  child: TotalRow(
+                    label: Text(t.total, style: theme.textTheme.titleMedium),
+                    original: _promoResult?.valid == true ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+                    total: t.mmk(formatAmount(_promoResult?.valid == true ? _promoResult!.totalMmk : _type.priceMmk * _qty, lang)),
+                    totalKey: const Key('sheetTotal'),
+                  ),
                 ),
               ],
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),

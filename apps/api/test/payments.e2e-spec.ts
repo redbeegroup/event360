@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { PaymentsService } from '../src/modules/payments/payments.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { expireHold } from './expire-hold';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 jest.setTimeout(90_000);
@@ -162,8 +163,7 @@ run('Paid tickets', () => {
     const o = await http.post(`/v1/events/${eventId}/orders`).set(B4).send({ items: [{ ticketTypeId: ttB, quantity: 1 }] }).expect(201);
     const p = await http.post(`/v1/orders/${o.body.id}/pay`).set(B4).send({ provider: 'MOCK' }).expect(200);
     // Expire only this hold: a sweep with a future clock would also expire other suites' holds running in parallel
-    await prisma.order.update({ where: { id: o.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-    await svc.sweep();
+    await expireHold(prisma, svc, o.body.id);
     expect((await http.get(`/v1/orders/${o.body.id}`).set(B4)).body.status).toBe('EXPIRED');
     expect(await tt(ttB)).toMatchObject({ held: 0, sold: 0 });
     await http.post(`/v1/orders/${o.body.id}/pay`).set(B4).send({ provider: 'MOCK' }).expect(409);

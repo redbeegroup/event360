@@ -17,30 +17,38 @@ import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { EventSeatsService } from '../src/modules/seating/event-seats.service';
 import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
+import { normalizeMyanmarPhone } from '../src/modules/auth/phone';
+import { expireHold } from './expire-hold';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
 
 /**
- * Lock-order tests: a transaction that holds row locks (taken by `lock`) until `release()`, so other transactions
- * queue on those rows in a known order. `queued` waits until a backend (other than `except`) is blocked by any of
- * `blockers` and returns its pid.
+ * Lock-order tests. `lockGate` opens a transaction that holds row locks (taken by `lock`) until `release()`;
+ * `done` settles when it ends (errors swallowed: a failed gate must not leave an unhandled rejection).
+ * `queued` waits until a backend (other than `except`) is blocked by any of `blockers` and returns its pid.
  */
 async function lockGate(prisma: PrismaService, lock: (tx: Prisma.TransactionClient) => Promise<unknown>) {
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
+  let ready!: () => void;
+  const locked = new Promise<void>((r) => (ready = r));
   let pid = 0;
-  await new Promise<void>((ready) => {
-    void prisma.$transaction(
-      async (tx) => {
-        pid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
-        await lock(tx);
-        ready();
-        await gate;
-      },
-      { timeout: 30_000 },
-    );
-  });
-  return { pid, release };
+  const tx = prisma.$transaction(
+    async (t) => {
+      pid = (await t.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
+      await lock(t);
+      ready();
+      await gate;
+    },
+    { timeout: 30_000 },
+  );
+  try {
+    await Promise.race([locked, tx.then(() => Promise.reject(new Error('the gate ended before locking')))]);
+  } catch (e) {
+    release();
+    throw e;
+  }
+  return { pid, release, done: tx.catch(() => undefined) };
 }
 async function queued(prisma: PrismaService, blockers: number[], except: number[] = []): Promise<number> {
   for (let i = 0; i < 200; i++) {
@@ -50,6 +58,34 @@ async function queued(prisma: PrismaService, blockers: number[], except: number[
     await new Promise((r) => setTimeout(r, 25));
   }
   throw new Error('nothing queued behind the gate');
+}
+/**
+ * Holds the gate's locks, starts `first` and waits until it queues behind the gate, then starts `second` and waits
+ * until it queues behind the gate or `first`; then always releases the gate and returns both results.
+ */
+async function gated<A, B>(
+  prisma: PrismaService,
+  lock: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  first: () => Promise<A>,
+  second: () => Promise<B>,
+): Promise<[A, B]> {
+  const gate = await lockGate(prisma, lock);
+  let a: Promise<A> | undefined;
+  let b: Promise<B> | undefined;
+  try {
+    a = first();
+    const aPid = await queued(prisma, [gate.pid]);
+    b = second();
+    await queued(prisma, [gate.pid, aPid], [aPid]);
+  } catch (e) {
+    void a?.catch(() => undefined);
+    void b?.catch(() => undefined);
+    throw e;
+  } finally {
+    gate.release();
+    await gate.done;
+  }
+  return Promise.all([a, b]);
 }
 
 /** Like Promise.allSettled over `tasks`, with at most `limit` running at once. */
@@ -814,8 +850,7 @@ run('Seated checkout', () => {
     const B = await consumer();
     const o = await order(B, ev.id, { items: [{ ticketTypeId: extra, quantity: 1 }] }).expect(201);
     const url = await payWithMock(B, o.body.id);
-    await prisma.order.update({ where: { id: o.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-    await svc.sweep();
+    await expireHold(prisma, svc, o.body.id);
     await seating.setAssignments(orgId, ev.id, rules(extra));
     await mockPay(url);
     const late = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
@@ -829,8 +864,7 @@ run('Seated checkout', () => {
     const B = await consumer();
     const r = await order(B, ev.id, { seats: ['A:1:3', 'A:1:4'] }).expect(201);
     expect(await ttRow(ev.std)).toMatchObject({ held: 2 });
-    await prisma.order.update({ where: { id: r.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-    await svc.sweep();
+    await expireHold(prisma, svc, r.body.id);
     expect((await http.get(`/v1/orders/${r.body.id}`).set(B).expect(200)).body.status).toBe('EXPIRED');
     for (const k of ['A:1:3', 'A:1:4']) expect(await seat(ev.id, k)).toMatchObject({ status: 'AVAILABLE', orderId: null, heldUntil: null });
     expect(await ttRow(ev.std)).toMatchObject({ quota: 50, held: 0, sold: 0 });
@@ -845,8 +879,7 @@ run('Seated checkout', () => {
     const ev = await seatedEvent('Late');
     const [B1, B2, B3] = [await consumer(), await consumer(), await consumer()];
     const expire = async (id: string) => {
-      await prisma.order.update({ where: { id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-      await svc.sweep();
+      await expireHold(prisma, svc, id);
     };
     // Seats still free: the late payment re-claims them
     const ok = await order(B3, ev.id, { seats: ['A:5:1', 'A:5:2'] }).expect(201);
@@ -907,8 +940,7 @@ run('Seated checkout', () => {
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'CHECKOUT_HOLD', ticketTypeId: ev.std }); // a hold keeps its type
     expect(await ttRow(ev.std)).toMatchObject({ quota: 3, held: 3, sold: 0 });
     expect(await ttRow(ev.vip)).toMatchObject({ quota: 12, held: 0 });
-    await prisma.order.update({ where: { id: r.body.id }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-    await svc.sweep();
+    await expireHold(prisma, svc, r.body.id);
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.vip, orderId: null });
     expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'AVAILABLE', ticketTypeId: ev.vip });
     expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'UNSOLD', ticketTypeId: null, orderId: null, heldUntil: null });
@@ -1003,13 +1035,12 @@ run('Seated checkout', () => {
     // Each takes the Floor row before the promo row, so the order finishes and the release follows. (With the
     // promo row taken first, the release would hold it while waiting for Floor, which the order holds while
     // waiting for the promo row: a deadlock.)
-    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.floor}::uuid FOR UPDATE`);
-    const placing = order(B2, ev.id, { items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).then((r) => r);
-    const orderPid = await queued(prisma, [gate.pid]);
-    const cancelling = http.post(`/v1/orders/${held.body.id}/cancel`).set(B1).then((r) => r);
-    await queued(prisma, [gate.pid, orderPid], [orderPid]);
-    gate.release();
-    const [o, c] = await Promise.all([placing, cancelling]);
+    const [o, c] = await gated(
+      prisma,
+      (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.floor}::uuid FOR UPDATE`,
+      () => order(B2, ev.id, { items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).then((r) => r),
+      () => http.post(`/v1/orders/${held.body.id}/cancel`).set(B1).then((r) => r),
+    );
     expect(o.status).toBe(201);
     expect(c.status).toBe(200);
     expect(await ttRow(ev.floor)).toMatchObject({ held: 1, sold: 0 });
@@ -1027,15 +1058,8 @@ run('Seated checkout', () => {
     // Two new orders, then a new order and a release, queue on the lower type's row held by a gate. Taking the
     // rows in item order, the second one would hold `hi` while waiting for `lo`, and the first would get `lo` and
     // wait for `hi`: a deadlock. In id order both wait for `lo` first.
-    const race = async (first: () => Promise<request.Response>, second: () => Promise<request.Response>) => {
-      const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${lo}::uuid FOR UPDATE`);
-      const a = first();
-      const aPid = await queued(prisma, [gate.pid]);
-      const b = second();
-      await queued(prisma, [gate.pid, aPid], [aPid]);
-      gate.release();
-      return Promise.all([a, b]);
-    };
+    const race = (first: () => Promise<request.Response>, second: () => Promise<request.Response>) =>
+      gated(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${lo}::uuid FOR UPDATE`, first, second);
     const [o1, o2] = await race(
       () => order(B1, ev.id, items(lo, hi)).then((r) => r),
       () => order(B2, ev.id, items(hi, lo)).then((r) => r),
@@ -1047,6 +1071,43 @@ run('Seated checkout', () => {
     );
     expect([o3.status, c.status]).toEqual([201, 200]);
     for (const id of [lo, hi]) expect(await ttRow(id)).toMatchObject({ held: 3, sold: 0 });
+  });
+
+  it('two payments for one order settle it once, on time and after the hold expired', async () => {
+    const ev = await seatedEvent('TwoPayments');
+    const owner = await prisma.user.findFirstOrThrow({ where: { email: `own-sc-${tag}@e2e.test` } });
+    const code = `TWO${tag}`.toUpperCase();
+    const pc = await prisma.promoCode.create({ data: { eventId: ev.id, code, kind: 'PERCENT', value: 1000, createdById: owner.id } });
+    const used = async () => (await prisma.promoCode.findUniqueOrThrow({ where: { id: pc.id } })).used;
+    for (const [late, seatKey] of [[false, 'A:2:1'], [true, 'A:3:1']] as const) {
+      const B = await consumer();
+      const r = await order(B, ev.id, { seats: [seatKey], items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).expect(201);
+      await payWithMock(B, r.body.id);
+      const p1 = await prisma.payment.findFirstOrThrow({ where: { orderId: r.body.id } });
+      // a second payment for the same order (another provider, or the buyer paying twice)
+      const p2 = await prisma.payment.create({ data: { orderId: r.body.id, provider: 'MOCK', amountMmk: p1.amountMmk, status: 'PENDING' } });
+      const usedAtOrder = await used();
+      if (late) await expireHold(prisma, svc, r.body.id);
+      const floorSold = (await ttRow(ev.floor)).sold;
+      const stdSold = (await ttRow(ev.std)).sold;
+      // Both callbacks arrive together: the gate holds the order row, the first settle queues on it, then the second
+      await gated(
+        prisma,
+        (tx) => tx.$queryRaw`SELECT id FROM orders WHERE id = ${r.body.id}::uuid FOR UPDATE`,
+        () => svc.settle(p1.id),
+        () => svc.settle(p2.id),
+      );
+      const o = await prisma.order.findUniqueOrThrow({ where: { id: r.body.id }, include: { tickets: true } });
+      expect(o).toMatchObject({ status: 'PAID', needsReview: true });
+      expect(o.reviewNote).toMatch(/^Paid twice: extra payment /);
+      expect(o.tickets).toHaveLength(2);
+      expect(await used()).toBe(usedAtOrder);
+      expect(await ttRow(ev.floor)).toMatchObject({ sold: floorSold + 1, held: 0 });
+      expect(await ttRow(ev.std)).toMatchObject({ sold: stdSold + 1, held: 0 });
+      expect(await seat(ev.id, seatKey)).toMatchObject({ status: 'SOLD', orderId: r.body.id });
+      expect(await prisma.ledgerEntry.count({ where: { refType: 'order', refId: r.body.id } })).toBe(3);
+      expect(await prisma.payment.count({ where: { orderId: r.body.id, status: 'SUCCEEDED' } })).toBe(2);
+    }
   });
 });
 
@@ -1192,6 +1253,26 @@ run('Guest seats', () => {
     // comps do not count toward the per-person limit: the guest can still buy up to maxPerOrder (2)
     await http.post(`/v1/events/${ev.id}/orders`).set(G).send({ seats: ['A:2:1', 'A:2:2'] }).expect(201);
     await http.post(`/v1/events/${ev.id}/orders`).set(G).send({ seats: ['A:2:3'] }).expect(409);
+  });
+
+  it("issuing a comp and the guest's own checkout do not deadlock", async () => {
+    const ev = await guestEvent('CompLock');
+    await hold(ev.id, ['A:1:1']).expect(201);
+    const phone = newPhone();
+    const G = await login(phone);
+    const guest = await prisma.user.findUniqueOrThrow({ where: { phone: normalizeMyanmarPhone(phone)! } });
+    // The gate holds the guest's user row: the guest's checkout queues on it first, then the comp. The comp must
+    // not lock the event row before the user row, or the checkout (holding the user row) would wait for the event
+    // while the comp (holding the event) waits for the user row: a deadlock.
+    const [o, c] = await gated(
+      prisma,
+      (tx) => tx.$queryRaw`SELECT id FROM users WHERE id = ${guest.id}::uuid FOR UPDATE`,
+      () => http.post(`/v1/events/${ev.id}/orders`).set(G).send({ seats: ['A:2:1'] }).then((r) => r),
+      () => comps(ev.id, ['A:1:1'], phone).then((r) => r),
+    );
+    expect([o.status, c.status]).toEqual([201, 201]);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'SOLD' });
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'CHECKOUT_HOLD' });
   });
 
   it('comps excluded from sales, revenue and milestones', async () => {
@@ -1571,13 +1652,12 @@ run('Seat everywhere', () => {
     // A gate holds the promo row: the new order queues on it first, then the cancel. The cancel must not take
     // the seat and the Std counter row before the promo row, or it would hold them while the order (which got
     // the promo row) waits for the Std row in its recount: a deadlock.
-    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM promo_codes WHERE id = ${pc.id}::uuid FOR UPDATE`);
-    const placing = order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code }).then((r) => r);
-    const orderPid = await queued(prisma, [gate.pid]);
-    const cancelling = http.post(`/v1/me/tickets/${t.id}/cancel`).set(B1).then((r) => r);
-    await queued(prisma, [gate.pid, orderPid], [orderPid]);
-    gate.release();
-    const [o, c] = await Promise.all([placing, cancelling]);
+    const [o, c] = await gated(
+      prisma,
+      (tx) => tx.$queryRaw`SELECT id FROM promo_codes WHERE id = ${pc.id}::uuid FOR UPDATE`,
+      () => order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code }).then((r) => r),
+      () => http.post(`/v1/me/tickets/${t.id}/cancel`).set(B1).then((r) => r),
+    );
     expect([o.status, c.status]).toEqual([201, 200]);
     expect(await promoUsed(pc.id)).toBe(1);
     expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'AVAILABLE' });
@@ -1643,8 +1723,7 @@ run('Seat everywhere', () => {
   async function payLate(B: Record<string, string>, orderId: string) {
     const pay = await http.post(`/v1/orders/${orderId}/pay`).set(B).send({ provider: 'MOCK' }).expect(200);
     const url = new URL(pay.body.payment.action.url);
-    await prisma.order.update({ where: { id: orderId }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
-    await app.get(PaymentsService).sweep();
+    await expireHold(prisma, app.get(PaymentsService), orderId);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('EXPIRED');
     return () => http.post(`${url.pathname}/pay`).type('form').send({ t: url.searchParams.get('t')! }).expect(201);
   }

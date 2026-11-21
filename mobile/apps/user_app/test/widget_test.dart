@@ -717,6 +717,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Code applied: 2,000 MMK off'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data, '8,000 MMK');
+    expect(tester.getRect(find.byKey(const Key('sheetTotal'))).width, closeTo(tester.getSize(find.byKey(const Key('sheetTotal'))).width, 0.5)); // not shrunk
     // Changing the quantity drops the applied code (must be re-checked)
     await tester.tap(find.byIcon(Icons.remove));
     await tester.pump();
@@ -916,6 +917,8 @@ void main() {
     expect(find.text('Code applied: 8,000 MMK off'), findsOneWidget);
     expect(find.text('32,000 MMK'), findsOneWidget); // discounted total
     expect(find.text('40,000 MMK'), findsOneWidget); // struck-through original
+    // there is room on a phone: the total is not shrunk to fit
+    expect(tester.getRect(find.byKey(const Key('seatTotal'))).width, closeTo(tester.getSize(find.byKey(const Key('seatTotal'))).width, 0.5));
     await tester.tap(find.byKey(const Key('seatContinue')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
@@ -973,51 +976,81 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a code used up at order time is shown in Myanmar; other order errors keep the API message', (tester) async {
+  testWidgets('a code used up at order time is shown in Myanmar and drops the discount; other order errors keep the API message', (tester) async {
+    const usedUpMy = 'ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ';
+    String total() => tester.widget<Text>(find.byKey(const Key('seatTotal'))).data!;
+    Future<void> tapContinue() async {
+      await tester.tap(find.byKey(const Key('seatContinue')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
     await openPicker(tester, lang: 'my');
     await phoneWidth(tester);
     await zoomIntoStalls(tester);
     await tapSeat(tester, 1, 1);
+    final full = total();
     await applyPromo(tester, 'SAVE20');
-    pickerApi.nextOrderError = ApiException(400, 'This code has been used up', reasonCode: 'USED_UP');
-    await tester.tap(find.byKey(const Key('seatContinue')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
-    expect(find.text('This code has been used up'), findsNothing);
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsOneWidget); // applied
+    expect(total(), isNot(full));
+    // Any other error keeps the API message and the discount
     pickerApi.nextOrderError = ApiException(409, 'Sales for Stalls have closed');
-    await tester.tap(find.byKey(const Key('seatContinue')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tapContinue();
     expect(find.text('Sales for Stalls have closed'), findsOneWidget);
-    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsNothing);
-    // the same code running out while the order is saved (409) maps the same way
-    pickerApi.nextOrderError = ApiException(409, 'This code has been used up', reasonCode: 'USED_UP');
-    await tester.tap(find.byKey(const Key('seatContinue')));
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsOneWidget);
+    // Used up at order time (400): our Myanmar text, and the code is no longer applied
+    pickerApi.nextOrderError = ApiException(400, 'This code has been used up', reasonCode: 'USED_UP');
+    await tapContinue();
+    expect(find.text(usedUpMy), findsOneWidget);
+    expect(find.text('This code has been used up'), findsNothing);
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsNothing);
+    expect(total(), full);
+    // Applied again, then used up while the order is saved (409): the same
+    await tester.tap(find.byKey(const Key('promoApply')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsOneWidget);
+    pickerApi.nextOrderError = ApiException(409, 'This code has been used up', reasonCode: 'USED_UP');
+    await tapContinue();
+    expect(find.text(usedUpMy), findsOneWidget);
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsNothing);
+    expect(total(), full);
+    // Continuing now buys at full price without the code
+    await tapContinue();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(pickerApi.seatPromoCodes, [null]);
     await tester.pumpWidget(const SizedBox());
   }, variant: phoneWidths);
 
-  testWidgets('ticket sheet: a code used up at order time is shown in Myanmar', (tester) async {
+  testWidgets('ticket sheet: a code used up at order time is shown in Myanmar and drops the discount', (tester) async {
     final (api, _) = await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
     await phoneWidth(tester);
+    String total() => tester.widget<Text>(find.byKey(const Key('sheetTotal'))).data!;
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/e2');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('getTickets')));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
+    final full = total();
     await tester.enterText(find.byKey(const Key('promoField')), 'save20');
     await tester.tap(find.byKey(const Key('promoApply')));
     await tester.pumpAndSettle();
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsOneWidget);
+    expect(total(), isNot(full));
     api.nextOrderError = ApiException(400, 'This code has been used up', reasonCode: 'USED_UP');
     await tester.tap(find.byKey(const Key('sheetSubmit')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('ဤကုဒ်ကို အသုံးပြုမှု ပြည့်သွားပါပြီ'), findsOneWidget);
     expect(find.text('This code has been used up'), findsNothing);
+    expect(find.textContaining('ကုဒ်သုံးပြီး'), findsNothing);
+    expect(total(), full);
+    // Submitting now orders at full price without the code
+    await tester.tap(find.byKey(const Key('sheetSubmit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(api.registered, ['e2:tt-e2:2']);
     await tester.pumpWidget(const SizedBox());
   }, variant: phoneWidths);
 

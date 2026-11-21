@@ -18,3 +18,25 @@ class TotalAmounts extends StatelessWidget {
     ]);
   }
 }
+
+/// A total row: [label] on the left, the amounts on the right. The amounts take the room they need (up to 70% of
+/// the row) and only shrink when even that is too little; the label takes the rest and wraps if it must.
+class TotalRow extends StatelessWidget {
+  const TotalRow({super.key, required this.label, required this.total, this.original, this.totalKey});
+  final Widget label;
+  final String total;
+  final String? original;
+  final Key? totalKey;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, c) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Flexible(child: label),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: c.maxWidth * 0.7),
+            child: TotalAmounts(total: total, original: original, totalKey: totalKey),
+          ),
+        ]),
+      );
+}

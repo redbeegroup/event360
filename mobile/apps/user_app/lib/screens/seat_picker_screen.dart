@@ -447,9 +447,18 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         });
         _seatsChanged();
         await _load(force: true); // the map may look unchanged to us, but those seats are gone
+      } else if (e.reasonCode != null) {
+        // The promo code was rejected at order time (e.g. used up meanwhile): it is no longer applied, and its
+        // reason shows under the code in our own (Myanmar) text. Continue now buys at full price.
+        _promoDebounce?.cancel();
+        _promoSeq++;
+        setState(() {
+          _promo = PromoCheck(valid: false, reasonCode: e.reasonCode, discountMmk: 0, totalMmk: _total);
+          _promoError = null;
+          _promoChecking = false;
+        });
       } else {
-        // A promo code rejected at order time (e.g. used up meanwhile) carries a reasonCode: show our own text
-        setState(() => _error = e.reasonCode != null ? promoReasonText(t, e.reasonCode) : e.message);
+        setState(() => _error = e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -713,17 +722,12 @@ class _BottomBar extends StatelessWidget {
                 ),
             ],
             const SizedBox(height: 6),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium)),
-              const SizedBox(width: 8),
-              Flexible(
-                child: TotalAmounts(
-                  original: promo?.valid == true ? t.mmk(formatAmount(totalMmk, lang)) : null,
-                  total: t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)),
-                  totalKey: const Key('seatTotal'),
-                ),
-              ),
-            ]),
+            TotalRow(
+              label: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium),
+              original: promo?.valid == true ? t.mmk(formatAmount(totalMmk, lang)) : null,
+              total: t.mmk(formatAmount(promo?.valid == true ? promo!.totalMmk : totalMmk, lang)),
+              totalKey: const Key('seatTotal'),
+            ),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
