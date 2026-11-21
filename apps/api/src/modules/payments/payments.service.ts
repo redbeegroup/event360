@@ -38,6 +38,11 @@ export interface OrderItemInput {
 /** 409 for a seated checkout: the app refreshes the map and keeps the buyer's other seats. */
 const seatsTaken = (takenSeats: string[]) => new ConflictException({ message: 'Some seats were just taken', takenSeats });
 type IssueItem = { ticketTypeId: string; quantity: number; seatKeys?: string[] };
+/**
+ * Rows sorted by ticket type id: every path that updates several ticket_types rows in one transaction takes them
+ * in this order (the same as PostgreSQL's uuid order, which recountTicketTypes uses), so they cannot deadlock.
+ */
+const byTypeId = <T>(rows: T[], id: (r: T) => string): T[] => [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
 
 @Injectable()
 export class PaymentsService implements OnModuleInit, OnModuleDestroy {
@@ -190,7 +195,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         const moved = now2.filter((x) => x.ticketTypeId !== seatType.get(x.seatKey)).map((x) => x.seatKey);
         if (moved.length) throw seatsTaken(moved);
       }
-      for (const { tt, quantity, seatKeys } of lines) {
+      // Standing counter rows in id order (see byTypeId); the order items keep the buyer's order
+      for (const { tt, quantity, seatKeys } of byTypeId(lines, (l) => l.tt.id)) {
         const held = await tx.ticket.count({ where: { holderUserId: userId, ticketTypeId: tt.id, isComplimentary: false, status: { in: ['VALID', 'CHECKED_IN'] } } });
         const pending = await tx.orderItem.aggregate({
           _sum: { quantity: true },
@@ -416,7 +422,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       if (seatedIn) await shareLockEvent(tx, seatedIn.eventId);
       const n = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING_PAYMENT' }, data: { status: to } });
       if (n.count !== 1) return false;
-      const items = await tx.orderItem.findMany({ where: { orderId } });
+      const items = byTypeId(await tx.orderItem.findMany({ where: { orderId } }), (i) => i.ticketTypeId);
       for (const i of items) {
         if (i.seatKeys.length) continue;
         await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0) WHERE id = ${i.ticketTypeId}::uuid`;
@@ -519,7 +525,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
       let issued = false;
       const fromHold = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID', paidAt: new Date() } });
-      const quantityItems = order.items.filter((i) => !i.seatKeys.length);
+      const quantityItems = byTypeId(order.items.filter((i) => !i.seatKeys.length), (i) => i.ticketTypeId);
       if (fromHold.count === 1) {
         for (const i of quantityItems) await tx.$executeRaw`UPDATE ticket_types SET held = GREATEST(held - ${i.quantity}, 0), sold = sold + ${i.quantity} WHERE id = ${i.ticketTypeId}::uuid`;
         issued = true; // held seats become SOLD as their tickets are issued
@@ -629,7 +635,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticket.updateMany({ where: { id: { in: live.map((t) => t.id) } }, data: { status: 'REFUNDED' } });
       const perType = new Map<string, number>();
       for (const t of live) if (!t.seatKey) perType.set(t.ticketTypeId, (perType.get(t.ticketTypeId) ?? 0) + 1);
-      for (const [id, q] of perType) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
+      for (const [id, q] of byTypeId([...perType], ([k]) => k)) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - ${q}, 0) WHERE id = ${id}::uuid`;
       if (seatedIn?.typeIds.length) {
         // Refunded seats go back on sale; seated counters follow event_seats
         const back = await refundSeats(tx, orderId);

@@ -8,9 +8,10 @@ import type { EventSeat } from '@prisma/client';
  * back on sale left or joined) afterwards.
  *
  * Checkouts run in parallel with each other. Lock order, the same in every path, so they cannot deadlock:
- * user row (createOrder only) → event row (shared, never upgraded) → seat rows (claims lock them in seat_key
- * order; the other functions only touch seats the order already owns) → seated ticket_types rows (in id order,
- * in the recount, the last step before commit).
+ * user row (createOrder only) → event row (shared, never upgraded) → standing ticket_types rows (in id order) →
+ * promo_codes row (orders with a code) → seat rows (claims lock them in seat_key order; the other functions only
+ * touch seats the order already owns) → seated ticket_types rows (in id order, in the recount, the last step
+ * before commit).
  */
 type Tx = Prisma.TransactionClient;
 

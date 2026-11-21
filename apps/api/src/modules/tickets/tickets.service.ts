@@ -154,12 +154,14 @@ export class TicketsService {
         data: { status: 'VOID', qrVersion: { increment: 1 } },
       });
       if (n.count !== 1) throw new ConflictException('This ticket changed meanwhile; please refresh');
+      // Lock order as in checkout: standing ticket_types row, then the promo code (its use may be given back
+      // below), then seats and the seated counter rows
+      if (!t.seatKey) await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
+      if (t.order.promoCodeId) await tx.$queryRaw`SELECT id FROM promo_codes WHERE id = ${t.order.promoCodeId}::uuid FOR UPDATE`;
       if (t.seatKey) {
         // Back on sale under the current rules (another type, or UNSOLD, if they changed since the sale)
         const back = await returnSeatsToSale(tx, Prisma.sql`ticket_id = ${ticketId}::uuid AND status = 'SOLD'`);
         await this.moduleRef.get(EventSeatsService, { strict: false }).recountTicketTypes(tx, e.id, back.typeIds, [...new Set([t.ticketTypeId, ...back.typeIds])]);
-      } else {
-        await tx.$executeRaw`UPDATE ticket_types SET sold = GREATEST(sold - 1, 0) WHERE id = ${t.ticketTypeId}::uuid`;
       }
       // Serialise cancels within one order so the last one to commit sees every VOID and cancels the order
       await tx.$queryRaw`SELECT id FROM orders WHERE id = ${t.orderId}::uuid FOR UPDATE`;

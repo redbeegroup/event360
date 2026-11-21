@@ -2,6 +2,7 @@
  * Reserved seating over HTTP against a real PostgreSQL. Skipped when DATABASE_URL is not set.
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import { randomBytes, randomInt } from 'crypto';
 import { readFileSync } from 'fs';
@@ -18,6 +19,38 @@ import { SeatMapsService } from '../src/modules/seating/seat-maps.service';
 import { expandSeats } from '../src/modules/seating/layout';
 
 const run = process.env.DATABASE_URL ? describe : describe.skip;
+
+/**
+ * Lock-order tests: a transaction that holds row locks (taken by `lock`) until `release()`, so other transactions
+ * queue on those rows in a known order. `queued` waits until a backend (other than `except`) is blocked by any of
+ * `blockers` and returns its pid.
+ */
+async function lockGate(prisma: PrismaService, lock: (tx: Prisma.TransactionClient) => Promise<unknown>) {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let pid = 0;
+  await new Promise<void>((ready) => {
+    void prisma.$transaction(
+      async (tx) => {
+        pid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
+        await lock(tx);
+        ready();
+        await gate;
+      },
+      { timeout: 30_000 },
+    );
+  });
+  return { pid, release };
+}
+async function queued(prisma: PrismaService, blockers: number[], except: number[] = []): Promise<number> {
+  for (let i = 0; i < 200; i++) {
+    const rows = await prisma.$queryRaw<{ pid: number }[]>`
+      SELECT pid FROM pg_stat_activity WHERE pg_blocking_pids(pid) && ${blockers}::int[] AND NOT (pid = ANY(${except}::int[]))`;
+    if (rows.length) return rows[0].pid;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error('nothing queued behind the gate');
+}
 
 /** Like Promise.allSettled over `tasks`, with at most `limit` running at once. */
 async function settledWithLimit<T>(limit: number, tasks: (() => Promise<T>)[]): Promise<PromiseSettledResult<T>[]> {
@@ -970,40 +1003,50 @@ run('Seated checkout', () => {
     // Each takes the Floor row before the promo row, so the order finishes and the release follows. (With the
     // promo row taken first, the release would hold it while waiting for Floor, which the order holds while
     // waiting for the promo row: a deadlock.)
-    let release!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    let gatePid = 0;
-    const locked = new Promise<void>((ready) => {
-      void prisma.$transaction(
-        async (tx) => {
-          gatePid = (await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`)[0].pid;
-          await tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.floor}::uuid FOR UPDATE`;
-          ready();
-          await gate;
-        },
-        { timeout: 30_000 },
-      );
-    });
-    await locked;
-    const waiting = async (blockers: number[], except: number[]) => {
-      for (let i = 0; i < 200; i++) {
-        const rows = await prisma.$queryRaw<{ pid: number }[]>`
-          SELECT pid FROM pg_stat_activity WHERE pg_blocking_pids(pid) && ${blockers}::int[] AND NOT (pid = ANY(${except}::int[]))`;
-        if (rows.length) return rows[0].pid;
-        await new Promise((r) => setTimeout(r, 25));
-      }
-      throw new Error('nothing queued on the Floor row');
-    };
+    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.floor}::uuid FOR UPDATE`);
     const placing = order(B2, ev.id, { items: [{ ticketTypeId: ev.floor, quantity: 1 }], promoCode: code }).then((r) => r);
-    const orderPid = await waiting([gatePid], []);
+    const orderPid = await queued(prisma, [gate.pid]);
     const cancelling = http.post(`/v1/orders/${held.body.id}/cancel`).set(B1).then((r) => r);
-    await waiting([gatePid, orderPid], [orderPid]);
-    release();
+    await queued(prisma, [gate.pid, orderPid], [orderPid]);
+    gate.release();
     const [o, c] = await Promise.all([placing, cancelling]);
     expect(o.status).toBe(201);
     expect(c.status).toBe(200);
     expect(await ttRow(ev.floor)).toMatchObject({ held: 1, sold: 0 });
     expect((await prisma.promoCode.findFirstOrThrow({ where: { eventId: ev.id, code } })).used).toBe(1);
+  });
+
+  it('orders and releases listing two standing types in opposite orders do not deadlock', async () => {
+    const ev = await seatedEvent('TypeOrder');
+    const other = (await http.post(`${base(ev.id)}/ticket-types`).set(O).send({ name: 'Lawn', priceMmk: 3_000, quota: 100, maxPerOrder: 4 }).expect(201)).body.id as string;
+    const [lo, hi] = [ev.floor, other].sort();
+    const items = (...ids: string[]) => ({ items: ids.map((ticketTypeId) => ({ ticketTypeId, quantity: 1 })) });
+    const [B1, B2, B3] = [await consumer(), await consumer(), await consumer()];
+    const held = await order(B3, ev.id, items(hi, lo)).expect(201); // its items are stored hi first
+
+    // Two new orders, then a new order and a release, queue on the lower type's row held by a gate. Taking the
+    // rows in item order, the second one would hold `hi` while waiting for `lo`, and the first would get `lo` and
+    // wait for `hi`: a deadlock. In id order both wait for `lo` first.
+    const race = async (first: () => Promise<request.Response>, second: () => Promise<request.Response>) => {
+      const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${lo}::uuid FOR UPDATE`);
+      const a = first();
+      const aPid = await queued(prisma, [gate.pid]);
+      const b = second();
+      await queued(prisma, [gate.pid, aPid], [aPid]);
+      gate.release();
+      return Promise.all([a, b]);
+    };
+    const [o1, o2] = await race(
+      () => order(B1, ev.id, items(lo, hi)).then((r) => r),
+      () => order(B2, ev.id, items(hi, lo)).then((r) => r),
+    );
+    expect([o1.status, o2.status]).toEqual([201, 201]);
+    const [o3, c] = await race(
+      () => order(B1, ev.id, items(lo, hi)).then((r) => r),
+      () => http.post(`/v1/orders/${held.body.id}/cancel`).set(B3).then((r) => r),
+    );
+    expect([o3.status, c.status]).toEqual([201, 200]);
+    for (const id of [lo, hi]) expect(await ttRow(id)).toMatchObject({ held: 3, sold: 0 });
   });
 });
 
@@ -1517,6 +1560,28 @@ run('Seat everywhere', () => {
     expect(await promoUsed(pc.id)).toBe(0);
     await order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code }).expect(201);
     expect(await promoUsed(pc.id)).toBe(1);
+  });
+
+  it('cancelling a promo ticket and a new order with the same code do not deadlock', async () => {
+    const ev = await seatedEvent('CancelPromoLock');
+    const pc = await promo(ev.id, 10_000, null);
+    const [B1, B2] = [await login(), await login()];
+    await order(B1, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    const t = (await mine(B1)).find((x) => x.seatKey === 'A:2:1');
+    // A gate holds the promo row: the new order queues on it first, then the cancel. The cancel must not take
+    // the seat and the Std counter row before the promo row, or it would hold them while the order (which got
+    // the promo row) waits for the Std row in its recount: a deadlock.
+    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM promo_codes WHERE id = ${pc.id}::uuid FOR UPDATE`);
+    const placing = order(B2, ev.id, { seats: ['A:2:2'], promoCode: pc.code }).then((r) => r);
+    const orderPid = await queued(prisma, [gate.pid]);
+    const cancelling = http.post(`/v1/me/tickets/${t.id}/cancel`).set(B1).then((r) => r);
+    await queued(prisma, [gate.pid, orderPid], [orderPid]);
+    gate.release();
+    const [o, c] = await Promise.all([placing, cancelling]);
+    expect([o.status, c.status]).toEqual([201, 200]);
+    expect(await promoUsed(pc.id)).toBe(1);
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'AVAILABLE' });
+    expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'SOLD' });
   });
 
   it('partial cancel keeps the use', async () => {
