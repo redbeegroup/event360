@@ -78,7 +78,18 @@ export default async function EventPage({ params }: P) {
     })),
   };
 
-  const minPrice = e.isFree ? t.free : e.minPriceMmk != null ? fmtMmk(e.minPriceMmk, lang) : null;
+  const mixedFree = !e.isFree && e.minPriceMmk === 0;
+  const minPrice = e.isFree || mixedFree ? t.free : e.minPriceMmk != null ? fmtMmk(e.minPriceMmk, lang) : null;
+  const lowestPaid = mixedFree ? Math.min(...e.ticketTypes.filter((tt) => tt.priceMmk > 0).map((tt) => tt.priceMmk)) : null;
+  // Seated events: dot colours match the seat-map legend (the API's resolved colour, else the type's own, else the same palette by price order).
+  const PALETTE = ['#f2b632', '#1f8a70', '#3b6fd8', '#c2410c', '#7c3aed', '#0891b2', '#be185d', '#4d7c0f'];
+  const hex = (c: string | null | undefined) => (c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : null);
+  const byPrice = [...e.ticketTypes].sort((a, b) => a.priceMmk - b.priceMmk || a.id.localeCompare(b.id));
+  const dot = (id: string) => {
+    if (!seatMap) return null;
+    const own = seatMap.types.find((x) => x.id === id)?.color;
+    return hex(own) ?? hex(e.ticketTypes.find((x) => x.id === id)?.color) ?? PALETTE[Math.max(0, byPrice.findIndex((x) => x.id === id)) % PALETTE.length];
+  };
   const venueLine = e.venue ? e.venue.city : null;
 
   return (
@@ -110,13 +121,15 @@ export default async function EventPage({ params }: P) {
               {minPrice && (
                 <div className="from">
                   <span>{t.ticketsFrom}</span>
-                  <span className={`price-big${e.isFree ? ' free' : ''}`}>{minPrice}</span>
+                  <span className={`price-big${e.isFree || mixedFree ? ' free' : ''}`}>{minPrice}</span>
+                  {lowestPaid != null && Number.isFinite(lowestPaid) && <span className="paid-from">{t.paidFrom(fmtMmk(lowestPaid, lang))}</span>}
                 </div>
               )}
               <div className="tt-list">
                 {e.ticketTypes.map((tt) => (
                   <div className="tt" key={tt.id}>
-                    <div>
+                    {dot(tt.id) && <span className="tt-dot" style={{ background: dot(tt.id)! }} aria-hidden="true" />}
+                    <div className="tt-main">
                       <div className="name">{pick(lang, tt.name, tt.nameMy)}</div>
                       <div className="left">{tt.remaining > 0 ? t.left(tt.remaining) : t.soldOut}</div>
                       {tt.nextPrice && tt.priceMmk > 0 && (

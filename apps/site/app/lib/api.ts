@@ -10,6 +10,7 @@ export interface TicketType {
   basePriceMmk?: number;
   nextPrice?: { priceMmk: number; startsAt: string } | null;
   remaining: number;
+  color?: string | null;
 }
 
 export interface EventCard {

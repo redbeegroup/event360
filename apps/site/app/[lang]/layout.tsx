@@ -51,8 +51,8 @@ export default async function LangLayout({ children, params }: { children: React
               <input id="hq" name="q" type="search" maxLength={100} placeholder={t.searchEvents} />
             </form>
             <nav className="site-nav" aria-label="Main">
-              <Link href={L('/events')}>{t.nav.events}</Link>
-              <a href={PORTAL_URL}>{t.nav.organizers}</a>
+              <Link className="nav-wide" href={L('/events')}>{t.nav.events}</Link>
+              <a className="nav-wide" href={PORTAL_URL}>{t.nav.organizers}</a>
               <LangSwitch lang={lang} />
               <a className="btn btn-night" href={APP_URL}>{t.nav.getApp}</a>
             </nav>

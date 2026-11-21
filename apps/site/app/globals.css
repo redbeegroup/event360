@@ -81,10 +81,11 @@ p { margin: 0; }
 .site-nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .site-nav .btn-night { color: #fff; padding: 0 20px; min-height: 44px; }
 .site-nav .btn-night:hover { text-decoration: none; background: var(--night-2); color: #fff; }
-@media (max-width: 640px) {
-  .site-header .wrap { gap: 0 12px; }
+@media (max-width: 920px) {
+  .site-header .wrap { gap: 0 12px; flex-wrap: wrap; }
+  .site-nav { flex: 1; justify-content: flex-end; gap: 0 14px; }
+  .site-nav .nav-wide { display: none; }
   .header-search { order: 3; flex-basis: 100%; max-width: none; margin-bottom: 4px; }
-  .site-nav { gap: 0 14px; }
 }
 
 .site-footer { background: var(--night); color: #d9dbf5; margin-top: 72px; padding: 48px 0 32px; }
@@ -231,7 +232,8 @@ a.ticket:hover h3 { text-decoration: underline; text-underline-offset: 3px; }
 .prose { white-space: pre-line; max-width: 68ch; color: var(--ink-2); }
 .notice { border-radius: var(--radius); padding: 12px 16px; background: #fff4d6; color: var(--amber-ink); font-weight: 600; }
 
-.ticket-box { padding: 24px; border-radius: var(--radius-lg); background: var(--card); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(21, 23, 46, 0.08); display: grid; gap: 16px; }
+.ticket-box { padding: 24px; border-radius: var(--radius-lg); background: var(--card); border: 1px solid var(--line); display: grid; gap: 16px; }
+@media (min-width: 921px) { .ticket-box { box-shadow: 0 8px 28px rgba(21, 23, 46, 0.08); } }
 .ticket-box .from { display: grid; gap: 2px; }
 .ticket-box .from span:first-child { font-size: 0.875rem; color: var(--muted); }
 .price-big { font: 800 1.875rem/1.2 var(--display); }
@@ -239,6 +241,9 @@ a.ticket:hover h3 { text-decoration: underline; text-underline-offset: 3px; }
 .tt-list { display: grid; margin: 0; }
 .tt { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .tt:last-child { border-bottom: 1px solid var(--line); }
+.tt-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 0.55em; }
+.tt-main { flex: 1; min-width: 0; }
+.paid-from { font-size: 0.875rem; color: var(--muted); }
 .tt .name { font-weight: 600; }
 .tt .price { font-weight: 700; white-space: nowrap; }
 .tt .price.free { color: var(--jade); }

@@ -360,3 +360,5 @@
 "site.ticketsFrom","Tickets from","လက်မှတ်ဈေး စတင်","site"
 "site.by","By","စီစဉ်သူ","site"
 "site.searchEvents","Search events","ပွဲ ရှာမည်","site"
+"site.freeAvailable","Free tickets available","အခမဲ့လက်မှတ် ရနိုင်သည်","site"
+"site.paidFrom","Paid tickets from {price}","ငွေပေးလက်မှတ် {price} မှ စ","site"

@@ -6,6 +6,7 @@ export function priceLabel(e: EventCard, lang: Lang) {
   const t = dict(lang);
   if (e.soldOut) return { text: t.soldOut, cls: 'out' };
   if (e.isFree) return { text: t.free, cls: 'free' };
+  if (e.minPriceMmk === 0) return { text: t.freeAvailable, cls: 'free' };
   return { text: e.minPriceMmk != null ? t.from(fmtMmk(e.minPriceMmk, lang)) : '', cls: '' };
 }
 
