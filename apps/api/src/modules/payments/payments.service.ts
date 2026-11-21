@@ -162,7 +162,8 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     if (promoCode?.trim()) {
       const p = await this.prisma.promoCode.findUnique({ where: { eventId_code: { eventId, code: normalizeCode(promoCode) } } });
       const r = applyPromo(p, lines.map(({ tt, quantity }) => ({ ticketTypeId: tt.id, unitPriceMmk: tt.priceMmk, quantity })), now);
-      if (!r.ok) throw new BadRequestException(r.reason);
+      // Old clients read `message`; the apps map `reasonCode` to their own (Myanmar) text
+      if (!r.ok) throw new BadRequestException({ message: r.reason, reasonCode: r.reasonCode });
       promo = p;
       discount = r.discountMmk;
     }
@@ -537,6 +538,10 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
             taken.push({ id: i.ticketTypeId, q: i.quantity });
           }
         }
+        // Expiry gave the promo use back; the order is PAID either way (tickets or refund review), so take it again,
+        // even past max_uses: the code was valid when the order was made. Same place as createOrder: after the
+        // standing ticket_types rows, before the seats.
+        if (order.promoCodeId) await tx.$executeRaw`UPDATE promo_codes SET used = used + 1 WHERE id = ${order.promoCodeId}::uuid`;
         let seatsOk = taken.length === quantityItems.length;
         let claimed: string[] = [];
         const seatKeys = order.items.flatMap((i) => i.seatKeys);

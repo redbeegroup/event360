@@ -1174,6 +1174,26 @@ run('Guest seats', () => {
     await comps(ev.id, [first.seatKey], newPhone()).expect(201);
   });
 
+  it('a revoked comp seat takes the current rule', async () => {
+    const ev = await guestEvent('RevokeRules');
+    await hold(ev.id, ['A:1:1', 'A:2:1'], 'Sponsor').expect(201);
+    await comps(ev.id, ['A:1:1', 'A:2:1'], newPhone(), { label: 'Speaker' }).expect(201);
+    // Row 1 moves to a new type, row 2 loses its rule
+    const vip = (await http.post(`${base(ev.id)}/ticket-types`).set(O).send({ name: 'VIP', priceMmk: 30_000, quota: 1, maxPerOrder: 2 }).expect(201)).body.id as string;
+    await http.put(`${seating(ev.id)}/assignments`).set(O).send({ rules: [{ sectionKey: 'A', rowLabel: '1', ticketTypeId: vip }] }).expect(200);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'SOLD', ticketTypeId: ev.std }); // a comp keeps its type
+    const list = (await http.get(`${seating(ev.id)}/guests`).set(O).expect(200)).body as { id: string; seatKey: string }[];
+    for (const g of list) await http.post(`${seating(ev.id)}/comps/${g.id}/revoke`).set(O).expect(200);
+    expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'GUEST_HOLD', holdLabel: 'Speaker', ticketTypeId: vip, ticketId: null, orderId: null });
+    expect(await seat(ev.id, 'A:2:1')).toMatchObject({ status: 'GUEST_HOLD', holdLabel: 'Speaker', ticketTypeId: null });
+    // Std has no seats left; VIP sells the other 4 seats of row 1
+    expect(await ttRow(ev.std)).toMatchObject({ quota: 0, held: 0, sold: 0 });
+    expect(await ttRow(vip)).toMatchObject({ quota: 4, held: 0, sold: 0 });
+    // the seat can be issued again under its new type
+    await comps(ev.id, ['A:1:1'], newPhone()).expect(201);
+    expect((await prisma.ticket.findFirstOrThrow({ where: { seatKey: 'A:1:1', status: 'VALID', ticketType: { eventId: ev.id } } })).ticketTypeId).toBe(vip);
+  });
+
   it('cannot revoke a guest who already checked in; blank names and labels are rejected; comp orders have no paidAt', async () => {
     const ev = await guestEvent('Checked');
     await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
@@ -1476,6 +1496,65 @@ run('Seat everywhere', () => {
     expect(await promoUsed(pc.id)).toBe(1);
     await http.post(`/v1/admin/finance/orders/${o.body.id}/refund`).set(A).send({ reason: 'Buyer request' }).expect(200);
     expect(await promoUsed(pc.id)).toBe(1);
+  });
+
+  it('a promo code rejected at order time gives its reason code', async () => {
+    const ev = await seatedEvent('PromoReason');
+    const pc = await promo(ev.id, 10_000, 1);
+    await order(await login(), ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    const r = await order(await login(), ev.id, { seats: ['A:2:2'], promoCode: pc.code }).expect(400);
+    expect(r.body).toEqual({ message: 'This code has been used up', reasonCode: 'USED_UP' });
+    expect(await seat(ev.id, 'A:2:2')).toMatchObject({ status: 'AVAILABLE' });
+  });
+
+  /** Pay late: the hold expires (a sweep gives the use back), then the mock payment arrives. */
+  async function payLate(B: Record<string, string>, orderId: string) {
+    const pay = await http.post(`/v1/orders/${orderId}/pay`).set(B).send({ provider: 'MOCK' }).expect(200);
+    const url = new URL(pay.body.payment.action.url);
+    await prisma.order.update({ where: { id: orderId }, data: { holdExpiresAt: new Date(Date.now() - 1000) } });
+    await app.get(PaymentsService).sweep();
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('EXPIRED');
+    return () => http.post(`${url.pathname}/pay`).type('form').send({ t: url.searchParams.get('t')! }).expect(201);
+  }
+
+  it('a late payment takes the promo use again', async () => {
+    const ev = await seatedEvent('LatePromo');
+    const pc = await promo(ev.id, 5_000, 5);
+    const B = await login();
+    const o = await order(B, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    expect(await promoUsed(pc.id)).toBe(1);
+    const pay = await payLate(B, o.body.id);
+    expect(await promoUsed(pc.id)).toBe(0);
+    await pay();
+    const row = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
+    expect(row).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(row.tickets).toHaveLength(1);
+    expect(await promoUsed(pc.id)).toBe(1);
+  });
+
+  it('a late payment counts the use even past the limit, also when it sold out', async () => {
+    const ev = await seatedEvent('LatePromoLimit');
+    const pc = await promo(ev.id, 5_000, 1);
+    const [B1, B2] = [await login(), await login()];
+    const o = await order(B1, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    const pay = await payLate(B1, o.body.id);
+    expect(await promoUsed(pc.id)).toBe(0);
+    // Someone else uses the last use and takes the seat meanwhile
+    await order(B2, ev.id, { seats: ['A:2:1'], promoCode: pc.code }).expect(201);
+    expect(await promoUsed(pc.id)).toBe(1);
+    await pay();
+    const row = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id }, include: { tickets: true } });
+    expect(row).toMatchObject({ status: 'PAID', needsReview: true, reviewNote: 'Paid after the hold expired and the tickets sold out: refund the buyer' });
+    expect(row.tickets).toHaveLength(0);
+    expect(await promoUsed(pc.id)).toBe(2);
+    // and when the seat is still free: tickets are issued, the use still counts above the limit
+    const o2 = await order(B1, ev.id, { seats: ['A:2:3'], promoCode: (await promo(ev.id, 5_000, 1)).code }).expect(201);
+    const pc2 = (await prisma.order.findUniqueOrThrow({ where: { id: o2.body.id } })).promoCodeId!;
+    const pay2 = await payLate(B1, o2.body.id);
+    await prisma.promoCode.update({ where: { id: pc2 }, data: { used: 1 } }); // used up meanwhile
+    await pay2();
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: o2.body.id } })).toMatchObject({ status: 'PAID', needsReview: false });
+    expect(await promoUsed(pc2)).toBe(2);
   });
 
   it('cannot cancel paid ticket', async () => {

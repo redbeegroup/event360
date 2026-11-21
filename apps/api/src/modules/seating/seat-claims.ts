@@ -66,6 +66,14 @@ export interface ReturnedSeats {
 }
 
 /**
+ * The ticket type the event's current assignment rules give a seat: a row rule wins over a whole-section rule,
+ * NULL with no rule. A scalar subquery over the seat row aliased `seat` (an event_seats row) in the outer statement.
+ */
+export const CURRENT_RULE_TYPE = Prisma.sql`(SELECT r.ticket_type_id FROM event_sections r
+  WHERE r.event_id = seat.event_id AND r.section_key = seat.section_key AND (r.row_label = seat.row_label OR r.row_label IS NULL)
+  ORDER BY r.row_label IS NULL LIMIT 1)`;
+
+/**
  * Seats matching `where` (a condition on event_seats columns; include the expected status) go back on sale under
  * the event's current assignment rules, which may have changed while they were held or sold: a row rule wins over
  * a whole-section rule, and with no rule the seat is UNSOLD with no type. Locks the seats in seat_key order.
@@ -76,10 +84,7 @@ export interface ReturnedSeats {
 export async function returnSeatsToSale(tx: Tx, where: Prisma.Sql): Promise<ReturnedSeats> {
   const rows = await tx.$queryRaw<{ seat_key: string; old_type: string | null; new_type: string | null }[]>`
     WITH s AS (
-      SELECT seat.id, seat.seat_key, seat.ticket_type_id AS old_type,
-        (SELECT r.ticket_type_id FROM event_sections r
-         WHERE r.event_id = seat.event_id AND r.section_key = seat.section_key AND (r.row_label = seat.row_label OR r.row_label IS NULL)
-         ORDER BY r.row_label IS NULL LIMIT 1) AS new_type
+      SELECT seat.id, seat.seat_key, seat.ticket_type_id AS old_type, ${CURRENT_RULE_TYPE} AS new_type
       FROM event_seats seat
       WHERE ${where}
       ORDER BY seat.seat_key

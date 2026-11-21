@@ -6,7 +6,7 @@ import { NotifyService } from '../notifications/notify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketTokenService } from '../tickets/ticket-token.service';
 import { EventSeatsService } from './event-seats.service';
-import { returnSeatsToSale } from './seat-claims';
+import { CURRENT_RULE_TYPE, returnSeatsToSale } from './seat-claims';
 import { PdfTicket, renderTicketsPdf } from './ticket-pdf';
 
 type Tx = Prisma.TransactionClient;
@@ -169,7 +169,7 @@ export class GuestsService {
     return e;
   }
 
-  /** The ticket becomes VOID (its QR dies with it) and the seat goes back to GUEST_HOLD under the comp's label. */
+  /** The ticket becomes VOID (its QR dies with it) and the seat goes back to GUEST_HOLD under the comp's label, as the type the current rules give it. */
   async revoke(orgId: string, eventId: string, ticketId: string) {
     await this.prisma.$transaction(async (tx) => {
       await this.lockedEvent(tx, orgId, eventId);
@@ -180,10 +180,20 @@ export class GuestsService {
       // Conditional: a gate check-in that committed meanwhile must win
       const n = await tx.ticket.updateMany({ where: { id: t.id, status: 'VALID' }, data: { status: 'VOID', qrVersion: { increment: 1 } } });
       if (n.count !== 1) throw new ConflictException('This guest has already checked in');
-      await tx.eventSeat.updateMany({ where: { ticketId: t.id }, data: { status: 'GUEST_HOLD', holdLabel: t.compLabel, ticketId: null, orderId: null, heldUntil: null } });
+      // Back to GUEST_HOLD under the comp's label, as whatever type the current rules give the seat (rules may have changed)
+      const back = await tx.$queryRaw<{ old_type: string | null; new_type: string | null }[]>`
+        WITH s AS (
+          SELECT seat.id, seat.ticket_type_id AS old_type, ${CURRENT_RULE_TYPE} AS new_type
+          FROM event_seats seat WHERE seat.ticket_id = ${t.id}::uuid
+          FOR UPDATE OF seat
+        )
+        UPDATE event_seats e SET status = 'GUEST_HOLD', hold_label = ${t.compLabel}, ticket_type_id = s.new_type, ticket_id = NULL, order_id = NULL, held_until = NULL
+        FROM s WHERE e.id = s.id
+        RETURNING s.old_type::text AS old_type, s.new_type::text AS new_type`;
       const live = await tx.ticket.count({ where: { orderId: t.orderId, status: { not: 'VOID' } } });
       if (!live) await tx.order.update({ where: { id: t.orderId }, data: { status: 'CANCELLED' } });
-      await this.seats.recountTicketTypes(tx, eventId, [t.ticketTypeId]);
+      const types = new Set([t.ticketTypeId, ...back.flatMap((r) => [r.old_type, r.new_type])].filter((x): x is string => !!x));
+      await this.seats.recountTicketTypes(tx, eventId, [...types]);
     });
     return { ok: true };
   }
