@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
+import { StatTile } from '../../components/StatTile';
 import { api } from '../../lib/api';
 import { fmtDate, t } from '../../lib/i18n';
 import { resolveErrorAction } from '../actions';
@@ -84,36 +86,20 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
 
   return (
     <>
-      <h1>{tr.opsTitle}</h1>
-      <p className="muted">
-        {tr.opsHint} {st.release && <>· {tr.opsRelease}: <code>{st.release.slice(0, 7)}</code></>}
-      </p>
+      <PageHeader
+        title={tr.opsTitle}
+        subtitle={<>{tr.opsHint} {st.release && <>· {tr.opsRelease}: <code>{st.release.slice(0, 7)}</code></>}</>}
+      />
 
-      <div className="grid" style={{ marginBottom: 20 }}>
-        <div className="card">
-          <div className="muted">{tr.opsSystems}</div>
-          <h2 style={{ margin: '4px 0' }}>
-            {st.checks.length === 0 ? tr.opsNoChecks : down.length === 0 ? tr.opsAllOk : `${down.length} ${tr.opsDown}`}
-          </h2>
-        </div>
-        <div className="card">
-          <div className="muted">{tr.opsLastBackup}</div>
-          <h2 style={{ margin: '4px 0' }}>{lastDaily ? fmtDate(lastDaily.at, tr.lang) : tr.opsNoBackups}</h2>
-          {lastDaily && <small className="muted">{size(lastDaily.size)}</small>}
-        </div>
-        <div className="card">
-          <div className="muted">{tr.opsRestoreTest}</div>
-          <h2 style={{ margin: '4px 0' }}>{!rt ? tr.opsNotYet : rt.ok ? tr.opsPassed : tr.opsFailed}</h2>
-          {rt?.testedAt && <small className="muted">{fmtDate(rt.testedAt, tr.lang)}</small>}
-        </div>
-        <div className="card">
-          <div className="muted">{tr.opsOpenErrors}</div>
-          <h2 style={{ margin: '4px 0' }}>{st.openErrors}</h2>
-        </div>
+      <div className="stat-grid">
+        <StatTile label={tr.opsSystems} value={st.checks.length === 0 ? tr.opsNoChecks : down.length === 0 ? tr.opsAllOk : `${down.length} ${tr.opsDown}`} />
+        <StatTile label={tr.opsLastBackup} value={lastDaily ? fmtDate(lastDaily.at, tr.lang) : tr.opsNoBackups} unit={lastDaily ? size(lastDaily.size) : undefined} />
+        <StatTile label={tr.opsRestoreTest} value={!rt ? tr.opsNotYet : rt.ok ? tr.opsPassed : tr.opsFailed} unit={rt?.testedAt ? fmtDate(rt.testedAt, tr.lang) : undefined} />
+        <StatTile label={tr.opsOpenErrors} value={st.openErrors} />
       </div>
 
       <h2>{tr.opsChecks}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         {st.checks.length === 0 ? (
           <p className="muted">{tr.opsNoChecks}</p>
         ) : (
@@ -135,7 +121,7 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
       </div>
 
       <h2>{tr.opsIncidents}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         {st.incidents.length === 0 ? (
           <p className="muted">{tr.opsNoIncidents}</p>
         ) : (
@@ -165,7 +151,8 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
             {rt.ok ? ` · ${rt.tables} ${tr.opsTables}, ${Object.values(rt.rows ?? {}).reduce((a, b) => a + b, 0).toLocaleString()} ${tr.opsRows}, ${rt.durationSec}s` : ` · ${rt.error}`}
           </p>
         )}
-        <div className="table-wrap">
+      </div>
+      <div className="table-card">
           <table>
             <thead><tr><th>{tr.opsBackupFile}</th><th>{tr.opsSize}</th><th>{tr.time}</th></tr></thead>
             <tbody>
@@ -179,11 +166,10 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
               {st.backups.daily.length === 0 && <tr><td colSpan={3} className="muted">{tr.opsNoBackups}</td></tr>}
             </tbody>
           </table>
-        </div>
       </div>
 
       <h2 id="errors">{tr.opsErrors}</h2>
-      <nav className="row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+      <nav className="row" style={{ marginBottom: 12 }}>
         <Link href={link({ source })} className={`btn ${resolved ? 'secondary' : ''}`}>{tr.opsOpen}</Link>
         <Link href={link({ status: 'resolved', source })} className={`btn ${resolved ? '' : 'secondary'}`}>{tr.opsResolved}</Link>
         <span className="muted" style={{ alignSelf: 'center' }}>·</span>
@@ -192,7 +178,7 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
           <Link key={s} href={link({ status: resolved ? 'resolved' : undefined, source: s })} className={`btn ${source === s ? '' : 'secondary'}`}>{s}</Link>
         ))}
       </nav>
-      <div className="card table-wrap">
+      <div className="table-card">
         {errors.length === 0 ? (
           <p className="muted">{resolved ? tr.nothingYet : tr.opsNoErrors}</p>
         ) : (
@@ -207,7 +193,7 @@ export default async function OpsPage({ searchParams }: { searchParams: Promise<
                       <summary><strong>{e.message.slice(0, 160)}</strong></summary>
                       {e.path && <div className="muted"><code>{e.path}</code></div>}
                       <div className="muted">{tr.opsFirstSeen}: {fmtDate(e.firstSeen, tr.lang)}{e.lastRelease ? ` · ${tr.opsRelease} ${e.lastRelease.slice(0, 7)}` : ''}</div>
-                      {e.stack && <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 300, overflow: 'auto' }}>{e.stack}</pre>}
+                      {e.stack && <pre className="stack">{e.stack}</pre>}
                     </details>
                   </td>
                   <td>{e.count.toLocaleString()}</td>

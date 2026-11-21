@@ -1,8 +1,10 @@
-import Link from 'next/link';
 import { ApiError, api } from '../../../../../lib/api';
+import { EventHeader } from '../../../../../components/EventHeader';
 import { SeatMapPreview } from '../../../../../components/SeatMapPreview';
+import { StatTile } from '../../../../../components/StatTile';
 import { fmtMmk, t } from '../../../../../lib/i18n';
 import type { Layout } from '../../../../../lib/seat-layout';
+import type { EventDto } from '../../../../../lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +43,7 @@ function Bars({ points, title, fmt, tableLabel, xLabel, lang }: { points: { x: s
   return (
     <figure className="chart">
       <figcaption>{title}</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title} style={{ width: "100%", height: "auto" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title} style={{ width: '100%', height: 'auto' }}>
         {ticks.map((v) => {
           const y = T + plotH - (v / max) * plotH;
           return (
@@ -113,7 +115,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ orgI
   const [tr, d, ev, waitlist, seating] = await Promise.all([
     t(),
     api<Dashboard>(`/organizations/${orgId}/events/${id}/dashboard`),
-    api<{ title: string; titleMy: string | null }>(`/organizations/${orgId}/events/${id}`),
+    api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<WaitlistCounts>(`/organizations/${orgId}/events/${id}/waitlist`).catch((err) => {
       if (err instanceof ApiError) return null;
       throw err; // keep Next's redirect (401 -> /login) working
@@ -125,25 +127,22 @@ export default async function DashboardPage({ params }: { params: Promise<{ orgI
   ]);
   const n = nf(tr.lang);
   const dayLabel = (iso: string) => new Intl.DateTimeFormat(tr.lang === 'my' ? 'my-MM' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
-  const tiles: [string, string][] = [
-    [tr.dashViews, n.format(d.totals.views)],
-    [tr.dashOrders, n.format(d.totals.orders)],
-    [tr.dashTickets, `${n.format(d.totals.ticketsSold)} / ${n.format(d.totals.capacity)}`],
-    [tr.dashRevenue, fmtMmk(d.totals.revenueMmk, tr.lang)],
-    [tr.dashDiscount, fmtMmk(d.totals.discountMmk, tr.lang)],
-    [tr.dashCheckedIn, n.format(d.totals.checkedIn)],
-    [tr.dashConversion, d.totals.conversion == null ? '—' : `${d.totals.conversion}%`],
-    ...(waitlist ? ([[tr.dashWaitlist, n.format(waitlist.total)]] as [string, string][]) : []),
+  const tiles: { label: string; value: string; unit?: string }[] = [
+    { label: tr.dashViews, value: n.format(d.totals.views) },
+    { label: tr.dashOrders, value: n.format(d.totals.orders) },
+    { label: tr.dashTickets, value: n.format(d.totals.ticketsSold), unit: `/ ${n.format(d.totals.capacity)}` },
+    { label: tr.dashRevenue, value: fmtMmk(d.totals.revenueMmk, tr.lang) },
+    { label: tr.dashDiscount, value: fmtMmk(d.totals.discountMmk, tr.lang) },
+    { label: tr.dashCheckedIn, value: n.format(d.totals.checkedIn) },
+    { label: tr.dashConversion, value: d.totals.conversion == null ? '—' : `${d.totals.conversion}%` },
+    ...(waitlist ? [{ label: tr.dashWaitlist, value: n.format(waitlist.total) }] : []),
   ];
   const daily = (k: 'orders' | 'revenueMmk' | 'views') => d.daily.map((r) => ({ x: r.day, y: r[k], label: dayLabel(r.day) }));
   return (
     <>
-      <p><Link href={`/organizer/${orgId}/events/${id}`}>← {tr.backToEvent}</Link></p>
-      <h1>{tr.dashboard}: {tr.lang === 'my' && ev.titleMy ? ev.titleMy : ev.title}</h1>
-      <div className="tiles">
-        {tiles.map(([k, v]) => (
-          <div key={k} className="tile"><div className="muted">{k}</div><div className="tile-v">{v}</div></div>
-        ))}
+      <EventHeader orgId={orgId} event={ev} active="dashboard" />
+      <div className="stat-grid">
+        {tiles.map((x) => <StatTile key={x.label} label={x.label} value={x.value} unit={x.unit} />)}
       </div>
       {seating?.layout && (
         <SeatMapPreview

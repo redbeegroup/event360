@@ -1,5 +1,6 @@
 import { acceptInviteAction } from '../../actions';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
 import { api, ApiError } from '../../lib/api';
 import { t } from '../../lib/i18n';
 
@@ -25,7 +26,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   }
   return (
     <div className="auth-box card">
-      <h1>{tr.acceptInvite}</h1>
+      <PageHeader title={tr.acceptInvite} />
       {error && <div className="error">{error}</div>}
       {info && (
         <>
@@ -35,7 +36,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             {info.orgRole && <> ({tr.roles[info.orgRole] ?? info.orgRole})</>}
           </p>
           <p className="muted">{info.email}</p>
-          <ActionForm action={acceptInviteAction} submitLabel={tr.acceptInvite}>
+          <ActionForm action={acceptInviteAction} submitLabel={tr.acceptInvite} variant="gold">
             <input type="hidden" name="token" value={token} />
             {info.existingAccount ? (
               <>

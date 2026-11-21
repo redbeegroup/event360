@@ -4,10 +4,10 @@ import { ReactNode, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '../actions';
 
-function SubmitButton({ label, variant }: { label: string; variant?: 'secondary' | 'danger' }) {
+function SubmitButton({ label, variant }: { label: string; variant?: 'secondary' | 'danger' | 'gold' }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className={variant} disabled={pending} aria-busy={pending}>
+    <button type="submit" className={variant === 'gold' ? 'btn-gold' : variant} disabled={pending} aria-busy={pending}>
       {pending ? '…' : label}
     </button>
   );
@@ -28,7 +28,8 @@ export function ActionForm({
   action: (state: FormState, fd: FormData) => Promise<FormState>;
   submitLabel: string;
   children?: ReactNode;
-  variant?: 'secondary' | 'danger';
+  /** gold = the page's single main action; omitted = navy filled. */
+  variant?: 'secondary' | 'danger' | 'gold';
   confirm?: string;
   errorText?: Record<string, string>;
   okText?: Record<string, string>;
@@ -48,7 +49,7 @@ export function ActionForm({
       {state.error && <div className="error">{errorText?.[state.error] ?? state.error}</div>}
       {state.problems?.length ? (
         <div className="error">
-          <ul style={{ margin: 0, paddingLeft: 18 }}>{state.problems.map((p) => <li key={p}>{p}</li>)}</ul>
+          <ul className="fine-list">{state.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </div>
       ) : null}
       {state.ok && <div className="ok">{okText?.[state.ok] ?? state.ok}</div>}

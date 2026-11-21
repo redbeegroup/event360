@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
+import { PageHeader } from '../../../../components/PageHeader';
 import { api } from '../../../../lib/api';
 import { t } from '../../../../lib/i18n';
 import type { CategoryDto } from '../../../../lib/types';
@@ -13,10 +14,9 @@ export default async function NewEventPage({ params }: { params: Promise<{ orgId
   const [tr, categories] = await Promise.all([t(), api<CategoryDto[]>('/categories', { auth: false })]);
   return (
     <>
-      <p><Link href={`/organizer/${orgId}`}>← {tr.events}</Link></p>
-      <h1>{tr.newEvent}</h1>
+      <PageHeader breadcrumb={<Link href={`/organizer/${orgId}`}>← {tr.events}</Link>} title={tr.newEvent} />
       <div className="card">
-        <ActionForm action={createEventAction} submitLabel={tr.create}>
+        <ActionForm action={createEventAction} submitLabel={tr.create} variant="gold">
           <input type="hidden" name="orgId" value={orgId} />
           <EventFields tr={tr} categories={categories} />
         </ActionForm>

@@ -74,7 +74,7 @@ export function PrintTickets({ event, tickets, labels, backHref, auto }: { event
       <div className="no-print">
         <p><Link href={backHref}>← {labels.back}</Link></p>
         <div className="row" style={{ marginBottom: 12 }}>
-          <button type="button" onClick={() => window.print()}>{labels.print}</button>
+          <button type="button" className="btn-gold" onClick={() => window.print()}>{labels.print}</button>
           <span className="muted">{labels.hint}</span>
         </div>
       </div>

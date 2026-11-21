@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../components/ActionForm';
+import { PageHeader } from '../../../components/PageHeader';
 import { api } from '../../../lib/api';
 import { fmtDate, t } from '../../../lib/i18n';
 import { adminInviteMemberAction, setKycAction } from '../../actions';
@@ -25,15 +26,15 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ id: 
   const o = await api<OrgDetail>(`/admin/organizations/${id}`);
   return (
     <>
-      <p><Link href="/admin/organizations">← {tr.organizations}</Link></p>
-      <h1>{o.name}</h1>
+      <PageHeader
+        breadcrumb={<Link href="/admin/organizations">← {tr.organizations}</Link>}
+        title={o.name}
+        badge={<span className={`badge ${o.kycStatus}`}>{tr.kycStatus[o.kycStatus]}</span>}
+        subtitle={`${o.contactEmail ?? ''} · ${o.contactPhone ?? '—'} · ${o._count.events} ${tr.events}`}
+      />
       <div className="card">
-        <p className="muted">{o.contactEmail} · {o.contactPhone ?? '—'} · {o._count.events} {tr.events}</p>
         {o.description && <p>{o.description}</p>}
-        <p>
-          <span className={`badge ${o.kycStatus}`}>{tr.kycStatus[o.kycStatus]}</span>{' '}
-          <span className="muted">{o.kycStatus === 'APPROVED' ? tr.verifiedNote : tr.unverifiedNote}</span>
-        </p>
+        <p className="muted">{o.kycStatus === 'APPROVED' ? tr.verifiedNote : tr.unverifiedNote}</p>
         {o.kycNote && <p className="muted">{tr.note}: {o.kycNote}</p>}
         <div className="row">
           <ActionForm action={setKycAction} submitLabel={tr.verify}>
@@ -49,7 +50,7 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <h2>{tr.members}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         <table>
           <tbody>
             {o.members.map((m) => (
@@ -61,23 +62,26 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ id: 
             ))}
           </tbody>
         </table>
-        {o.invitations.length > 0 && (
-          <>
-            <h2>{tr.pendingInvites}</h2>
-            <ul>
+      </div>
+      {o.invitations.length > 0 && (
+        <>
+          <h2>{tr.pendingInvites}</h2>
+          <div className="card">
+            <ul className="fine-list">
               {o.invitations.map((i) => (
                 <li key={i.id}>{i.email} — {tr.roles[i.orgRole]} ({fmtDate(i.expiresAt, tr.lang)})</li>
               ))}
             </ul>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       <h2>{tr.inviteMember}</h2>
       <div className="card">
         <ActionForm
           action={adminInviteMemberAction}
           submitLabel={tr.inviteMember}
+          variant="gold"
           inviteLabels={{ text: tr.inviteLink, copy: tr.copy }}
         >
           <input type="hidden" name="orgId" value={o.id} />

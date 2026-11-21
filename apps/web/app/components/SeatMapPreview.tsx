@@ -28,18 +28,18 @@ export function SeatMapPreview({ layout, seats, href, lang, title, labels }: Sea
   const names = [labels.available, labels.checkout, labels.guest, labels.sold, labels.unsold];
   const n = new Intl.NumberFormat(lang === 'my' ? 'my-MM' : 'en-US');
   return (
-    <Link href={href} className="card seat-preview" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', color: 'inherit', textDecoration: 'none' }}>
-      <div style={{ flex: '1 1 320px', maxWidth: 450, minWidth: 0 }}>
+    <Link href={href} className="card seat-preview">
+      <div className="seat-preview-map">
         <SeatMapView layout={layout} seatTypes={seatTypes} colors={COLORS} zoomable={false} showAttrs={false} lang={lang} ariaLabel={title} />
       </div>
-      <div style={{ flex: '0 0 auto' }}>
+      <div>
         <h2 style={{ marginTop: 0 }}>{title}</h2>
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px' }}>
+        <ul className="seat-preview-legend">
           {names.map((nm, i) => (
-            <li key={nm} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-              <span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS[i], border: i === 4 ? '1px solid #b9b5c9' : 'none' }} />
+            <li key={nm}>
+              <span aria-hidden className={i === 4 ? 'seat-dot hollow' : 'seat-dot'} style={{ background: COLORS[i] }} />
               <span>{nm}</span>
-              <strong style={{ marginLeft: 'auto', paddingLeft: 16 }}>{n.format(counts[i])}</strong>
+              <strong>{n.format(counts[i])}</strong>
             </li>
           ))}
         </ul>

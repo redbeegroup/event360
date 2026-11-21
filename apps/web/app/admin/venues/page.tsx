@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { createSeatMapAction } from '../actions';
@@ -20,8 +21,8 @@ export default async function VenuesPage() {
   const maps = await api<SeatMapRow[]>('/admin/seat-maps');
   return (
     <>
-      <h1>{tr.smVenues}</h1>
-      <div className="card table-wrap">
+      <PageHeader title={tr.smVenues} />
+      <div className="table-card">
         {maps.length === 0 ? (
           <p className="muted">{tr.smNoVenues}</p>
         ) : (
@@ -48,7 +49,7 @@ export default async function VenuesPage() {
 
       <h2>{tr.smNewVenue}</h2>
       <div className="card">
-        <ActionForm action={createSeatMapAction} submitLabel={tr.create}>
+        <ActionForm action={createSeatMapAction} submitLabel={tr.create} variant="gold">
           <div className="grid">
             <div className="field"><label>{tr.smVenueName}</label><input name="venueName" required maxLength={200} /></div>
             <div className="field"><label>{tr.smVenueNameMy}</label><input name="venueNameMy" maxLength={200} /></div>

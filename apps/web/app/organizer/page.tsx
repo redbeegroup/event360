@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { PageHeader } from '../components/PageHeader';
 import { getMe } from '../lib/api';
 import { t } from '../lib/i18n';
 
@@ -10,7 +11,7 @@ export default async function OrganizerHome() {
   if (me.organizations.length === 1) redirect(`/organizer/${me.organizations[0].id}`);
   return (
     <>
-      <h1>{tr.chooseOrg}</h1>
+      <PageHeader title={tr.chooseOrg} />
       {me.organizations.length === 0 && <p className="muted">{tr.noOrgs}</p>}
       {me.organizations.map((o) => (
         <div className="card" key={o.id}>

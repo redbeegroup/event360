@@ -353,16 +353,16 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
           {problems.length > 0 && (
             <div className="error" data-testid="problems">
               <strong>{L.smProblems}</strong>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul>
+              <ul className="fine-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
             </div>
           )}
           {result?.error && <div className="error">{result.error}</div>}
           {result?.problems?.length ? (
-            <div className="error"><ul style={{ margin: 0, paddingLeft: 18 }}>{result.problems.map((p) => <li key={p}>{p}</li>)}</ul></div>
+            <div className="error"><ul className="fine-list">{result.problems.map((p) => <li key={p}>{p}</li>)}</ul></div>
           ) : null}
           {result?.ok && <div className="ok">{okText[result.ok] ?? result.ok}</div>}
           <div className="row" style={{ margin: '8px 0' }}>
-            <button type="button" onClick={save} disabled={pending || problems.length > 0}>{L.smSaveDraft}</button>
+            <button type="button" className="btn-gold" onClick={save} disabled={pending || problems.length > 0}>{L.smSaveDraft}</button>
             {onPublish && <button type="button" className="secondary" onClick={publish} disabled={pending || problems.length > 0}>{L.smPublish}</button>}
           </div>
           <div className="row" style={{ margin: '8px 0' }}>
@@ -373,7 +373,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
             <button type="button" className="secondary" disabled={!selected.size} onClick={clearMarks}>{L.smClearMarks}</button>
             <button type="button" className="secondary" disabled={!selected.size} onClick={() => setSelected(new Set())}>{L.smClearSelection}</button>
           </div>
-          <div className="row muted" style={{ fontSize: 13 }}>
+          <div className="row muted small">
             <span style={{ color: '#d97706' }}>● {L.smRestricted}</span>
             <span style={{ color: '#1d6fd8' }}>● {L.smWheelchair}</span>
           </div>
@@ -385,7 +385,7 @@ export function SeatMapEditor({ initial, onSave, onImport, onPublish, labels: L,
         <div className="card">
           <div className="field">
             <label>{L.smJsonBox}</label>
-            <textarea data-testid="layout-json" rows={8} value={json} onChange={(e) => setJson(e.target.value)} style={{ fontFamily: 'ui-monospace, monospace', width: '100%' }} />
+            <textarea data-testid="layout-json" rows={8} value={json} onChange={(e) => setJson(e.target.value)} className="mono-area" />
           </div>
           <div className="row">
             <button type="button" className="secondary" onClick={doExport}>{L.smExportJson}</button>

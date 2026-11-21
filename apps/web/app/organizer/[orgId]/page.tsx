@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
 import { api, getMe } from '../../lib/api';
 import { fmtDate, pick, t } from '../../lib/i18n';
 import type { EventDto } from '../../lib/types';
@@ -23,32 +24,21 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
     api<EventDto[]>(`/organizations/${orgId}/events`),
   ]);
   const myRole = me.organizations.find((o) => o.id === orgId)?.role;
-  const canSeePayouts = myRole === 'ORG_OWNER' || myRole === 'ORG_FINANCE';
   const canEdit = myRole === 'ORG_OWNER' || myRole === 'ORG_MANAGER' || me.platformRoles.includes('PLATFORM_ADMIN');
   return (
     <>
-      <h1>{org.name}</h1>
-      <p>
-        <span className={`badge ${org.kycStatus}`}>{tr.kycStatus[org.kycStatus]}</span>{' '}
-        <span className="muted">{org.kycStatus === 'APPROVED' ? tr.verifiedNote : tr.unverifiedNote}</span>
-      </p>
+      <PageHeader
+        title={org.name}
+        badge={<span className={`badge ${org.kycStatus}`}>{tr.kycStatus[org.kycStatus]}</span>}
+        subtitle={org.kycStatus === 'APPROVED' ? tr.verifiedNote : tr.unverifiedNote}
+        actions={canEdit && <Link className="btn btn-gold" href={`/organizer/${orgId}/events/new`}>{tr.newEvent}</Link>}
+      />
 
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>{tr.events}</h2>
-        {(canEdit || canSeePayouts) && (
-          <div className="row">
-            {canSeePayouts && <Link className="btn secondary" href={`/organizer/${orgId}/payouts`}>{tr.pyNav}</Link>}
-            {canEdit && (<>
-            <Link className="btn secondary" href={`/organizer/${orgId}/profile`}>{tr.profile}</Link>
-            <Link className="btn" href={`/organizer/${orgId}/events/new`}>{tr.newEvent}</Link>
-            </>)}
-          </div>
-        )}
-      </div>
-      <div className="card table-wrap">
-        {events.length === 0 ? (
-          <p className="muted">{tr.noEvents}</p>
-        ) : (
+      <h2>{tr.events}</h2>
+      {events.length === 0 ? (
+        <div className="card"><p className="muted">{tr.noEvents}</p></div>
+      ) : (
+        <div className="table-card">
           <table>
             <thead>
               <tr><th>{tr.title}</th><th>{tr.startsAt}</th><th>{tr.status}</th><th>{tr.sold}</th></tr>
@@ -64,12 +54,12 @@ export default async function OrgEventsPage({ params }: { params: Promise<{ orgI
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       <h2>{tr.team}</h2>
       <div className="card">
-        <ul>
+        <ul className="fine-list">
           {org.members.map((m) => (
             <li key={m.user.id}>{m.user.displayName ?? m.user.email} — {tr.roles[m.role]}</li>
           ))}

@@ -245,8 +245,8 @@ export function SeatsManager({
       <div className="seats-grid">
         <div className="seats-map">
           {mode === 'guests' && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-              <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={areaMode} onChange={(e) => setAreaMode(e.target.checked)} />
+            <label className="check">
+              <input type="checkbox" checked={areaMode} onChange={(e) => setAreaMode(e.target.checked)} />
               <span>{L.stSelectArea}</span>
             </label>
           )}
@@ -349,6 +349,7 @@ export function SeatsManager({
               </div>
               <button
                 type="button"
+                className="btn-gold"
                 disabled={!canIssue}
                 onClick={() =>
                   run(
@@ -371,7 +372,7 @@ export function SeatsManager({
       </div>
 
       <h2>{L.stCounts}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         <table>
           <thead>
             <tr><th>{L.name}</th><th>{L.stAvailable}</th><th>{L.stCheckout}</th><th>{L.stGuestHeld}</th><th>{L.stSold}</th><th>{L.stComps}</th></tr>
@@ -391,35 +392,34 @@ export function SeatsManager({
       </div>
 
       <h2>{L.stGuestList}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         {guests.length === 0 ? (
           <p className="muted">{L.stNoGuests}</p>
         ) : (
           <>
-            <div className="row" style={{ marginBottom: 10 }}>
+            <div className="card-pad row">
               <a className="btn" href={printHref} target="_blank" rel="noreferrer">
                 {pickedLive.length ? fill(L.stPrintSel, pickedLive.length) : L.stPrint}
               </a>
               <a className="btn secondary" href={pdfHref}>{pickedLive.length ? fill(L.stPdfSel, pickedLive.length) : L.stPdfAll}</a>
-              <span className="muted" style={{ fontSize: 13 }}>{L.stPdfNote}</span>
+              <span className="muted small">{L.stPdfNote}</span>
             </div>
             <table>
               <thead>
                 <tr>
                   <th>
-                    <input type="checkbox" aria-label={L.stSelectAll} style={{ width: 'auto' }} checked={live.length > 0 && pickedLive.length === live.length} onChange={(e) => setPicked(e.target.checked ? new Set(live.map((g) => g.id)) : new Set())} />
+                    <input type="checkbox" aria-label={L.stSelectAll} checked={live.length > 0 && pickedLive.length === live.length} onChange={(e) => setPicked(e.target.checked ? new Set(live.map((g) => g.id)) : new Set())} />
                   </th>
                   <th>{L.stGuestName}</th><th>{L.phone}</th><th>{L.stSeat}</th><th>{L.stCompLabel}</th><th>{L.status}</th><th />
                 </tr>
               </thead>
               <tbody>
                 {guests.map((g) => (
-                  <tr key={g.id} style={{ opacity: g.status === 'VALID' || g.status === 'CHECKED_IN' ? 1 : 0.55 }}>
+                  <tr key={g.id} className={g.status === 'VALID' || g.status === 'CHECKED_IN' ? undefined : 'dim'}>
                     <td>
                       {g.status === 'VALID' && (
                         <input
                           type="checkbox"
-                          style={{ width: 'auto' }}
                           aria-label={g.guestName ?? g.id}
                           checked={picked.has(g.id)}
                           onChange={(e) => setPicked((cur) => { const n = new Set(cur); if (e.target.checked) n.add(g.id); else n.delete(g.id); return n; })}

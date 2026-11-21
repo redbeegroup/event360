@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PageHeader } from '../../../../../../components/PageHeader';
 import { PrintTickets, type PrintLabels, type PrintTicket } from '../../../../../../components/PrintTickets';
 import { api, ApiError } from '../../../../../../lib/api';
 import { fmtDate, t } from '../../../../../../lib/i18n';
@@ -27,7 +28,7 @@ export default async function PrintPage({
   if (!data) {
     return (
       <>
-        <p><Link href={back}>← {tr.stBackSeats}</Link></p>
+        <PageHeader breadcrumb={<Link href={back}>← {tr.stBackSeats}</Link>} title={tr.stTitle} />
         <div className="card"><p className="muted">{tr.stNothingPrint}</p></div>
       </>
     );

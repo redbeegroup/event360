@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { createOrgAction } from '../actions';
@@ -18,8 +19,8 @@ export default async function OrganizationsPage() {
   const orgs = await api<Org[]>('/admin/organizations');
   return (
     <>
-      <h1>{tr.organizations}</h1>
-      <div className="card table-wrap">
+      <PageHeader title={tr.organizations} />
+      <div className="table-card">
         <table>
           <thead>
             <tr><th>{tr.name}</th><th>{tr.kyc}</th><th>{tr.events}</th><th>{tr.members}</th></tr>
@@ -42,6 +43,7 @@ export default async function OrganizationsPage() {
         <ActionForm
           action={createOrgAction}
           submitLabel={tr.create}
+          variant="gold"
           inviteLabels={{ text: tr.inviteLink, copy: tr.copy }}
         >
           <div className="grid">

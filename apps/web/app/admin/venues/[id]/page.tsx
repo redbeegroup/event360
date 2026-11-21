@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../components/ActionForm';
+import { PageHeader } from '../../../components/PageHeader';
 import { SeatMapEditor } from '../../../components/SeatMapEditor';
 import { api } from '../../../lib/api';
 import { fmtDate, t } from '../../../lib/i18n';
@@ -35,8 +36,11 @@ export default async function VenuePage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <p><Link href="/admin/venues">← {tr.smBack}</Link></p>
-      <h1>{m.venueName}</h1>
+      <PageHeader
+        breadcrumb={<Link href="/admin/venues">← {tr.smBack}</Link>}
+        title={m.venueName}
+        subtitle={m.city}
+      />
 
       <details className="card">
         <summary>{tr.smEditVenue}</summary>
@@ -51,12 +55,12 @@ export default async function VenuePage({ params }: { params: Promise<{ id: stri
             <div className="field"><label>{tr.smLongitude}</label><input name="longitude" type="number" step="any" defaultValue={m.longitude ?? ''} /></div>
             <div className="field"><label>{tr.smMapUrl}</label><input name="mapUrl" defaultValue={m.mapUrl ?? ''} /></div>
           </div>
-          <div className="field"><label><input type="checkbox" name="isActive" defaultChecked={m.isActive} /> {tr.smActive}</label></div>
+          <label className="check"><input type="checkbox" name="isActive" defaultChecked={m.isActive} /> {tr.smActive}</label>
         </ActionForm>
       </details>
 
       <h2>{tr.smVersions}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         <table>
           <thead><tr><th>{tr.smVersion}</th><th>{tr.status}</th><th>{tr.smSeats}</th></tr></thead>
           <tbody>

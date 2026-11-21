@@ -42,7 +42,7 @@ export function ListEditor({
       <input type="hidden" name="items" value={JSON.stringify(serialized)} />
       {rows.length === 0 && <p className="muted">{labels.empty}</p>}
       {rows.map((row, i) => (
-        <div key={i} className="card" style={{ padding: 12, background: 'var(--bg)' }}>
+        <div key={i} className="card inset">
           <div className="grid">
             {fields.map((f) => (
               <div className="field" key={f.name} style={f.type === 'textarea' ? { gridColumn: '1 / -1' } : undefined}>
@@ -53,7 +53,7 @@ export function ListEditor({
                   <>
                     {row[f.previewKey ?? '_url'] && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={row[f.previewKey ?? '_url']} alt="" style={{ height: 64, borderRadius: 8, display: 'block', marginBottom: 6 }} />
+                      <img src={row[f.previewKey ?? '_url']} alt="" className="thumb" style={{ marginBottom: 6 }} />
                     )}
                     <input type="file" name={`file_${i}_${f.name}`} accept="image/jpeg,image/png,image/webp" />
                   </>

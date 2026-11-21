@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
+import { EventHeader } from '../../../../components/EventHeader';
+import { StatTile } from '../../../../components/StatTile';
 import { ApiError, api, getMe } from '../../../../lib/api';
 import { ListEditor } from '../../../../components/ListEditor';
 import { AttendanceLive, CrewCodeForm, type CrewLabels } from '../../../../components/CrewCheckin';
@@ -136,18 +138,19 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     </>
   );
   const closed = ['CANCELLED', 'COMPLETED'].includes(e.status);
+  // One gold button per page: "Submit for review" while the event is a draft, otherwise the main "Save".
+  const awaitingSubmit = ['DRAFT', 'REJECTED'].includes(e.status);
   const seatedList = attendees.some((a) => a.seatLabel);
   const okText = { saved: tr.saved, rereview: tr.reReview, mapSaved: tr.stMapSaved, mapCleared: tr.stMapCleared };
   return (
     <>
-      <p><Link href={`/organizer/${orgId}`}>← {tr.events}</Link></p>
-      <h1>{pick(tr.lang, e.title, e.titleMy)} <span className={`badge ${e.status}`}>{tr.statuses[e.status]}</span></h1>
+      <EventHeader orgId={orgId} event={e} active="edit" />
       {e.status === 'REJECTED' && e.rejectionReason && <div className="error">{tr.rejectionReason}: {e.rejectionReason}</div>}
 
       {['DRAFT', 'REJECTED'].includes(e.status) && (
         <div className="card">
           <p className="muted">{tr.submitHint}</p>
-          <ActionForm action={submitEventAction} submitLabel={tr.submit} okText={okText}>{hidden}</ActionForm>
+          <ActionForm action={submitEventAction} submitLabel={tr.submit} variant="gold" okText={okText}>{hidden}</ActionForm>
         </div>
       )}
 
@@ -176,7 +179,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
             )}
             {e.seating && (
               <p style={{ marginTop: 12 }}>
-                <Link className="btn secondary" href={`/organizer/${orgId}/events/${id}/seats`}>{tr.stOpenSeats}</Link>
+                <Link className="btn btn-outline" href={`/organizer/${orgId}/events/${id}/seats`}>{tr.stOpenSeats}</Link>
               </p>
             )}
           </div>
@@ -184,7 +187,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       )}
 
       <h2>{tr.ticketTypes}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         <table>
           <thead>
             <tr><th>{tr.name}</th><th>{tr.price}</th><th>{tr.sold}</th><th>{tr.quota}</th><th>{tr.maxPerOrder}</th><th /></tr>
@@ -195,7 +198,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 <td>{pick(tr.lang, tt.name, tt.nameMy)}</td>
                 <td>
                   {tt.priceMmk === 0 ? tr.free : fmtMmk(tt.priceMmk, tr.lang)}
-                  {tt.nextPrice && <div className="muted" style={{ fontSize: 12 }}>{tr.risesTo(fmtMmk(tt.nextPrice.priceMmk, tr.lang), fmtDate(tt.nextPrice.startsAt, tr.lang))}</div>}
+                  {tt.nextPrice && <div className="muted small">{tr.risesTo(fmtMmk(tt.nextPrice.priceMmk, tr.lang), fmtDate(tt.nextPrice.startsAt, tr.lang))}</div>}
                 </td>
                 <td>{tt.sold ?? 0}</td>
                 <td>{tt.quota}</td>
@@ -212,9 +215,11 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
             ))}
           </tbody>
         </table>
-        {!closed && paidTypes.length > 0 && (
-          <>
-            <h2>{tr.priceStepsTitle}</h2>
+      </div>
+      {!closed && paidTypes.length > 0 && (
+        <>
+          <h2>{tr.priceStepsTitle}</h2>
+          <div className="card">
             <p className="muted">{tr.priceStepsHint}</p>
             {paidTypes.map((tt) => {
               const nowMs = Date.now();
@@ -222,7 +227,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
               const inEffect = steps.filter((x) => new Date(x.startsAt).getTime() <= nowMs);
               const future = steps.filter((x) => new Date(x.startsAt).getTime() > nowMs);
               return (
-                <div key={tt.id} className="card" style={{ background: 'var(--bg)' }}>
+                <div key={tt.id} className="card inset">
                   <h3>{tr.priceStepsFor(pick(tr.lang, tt.name, tt.nameMy))}</h3>
                   <p className="muted">
                     {tr.priceBase}: {fmtMmk(tt.basePriceMmk ?? tt.priceMmk, tr.lang)}
@@ -243,11 +248,13 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 </div>
               );
             })}
-          </>
-        )}
-        {!closed && (
-          <>
-            <h2>{tr.addTicketType}</h2>
+          </div>
+        </>
+      )}
+      {!closed && (
+        <>
+          <h2>{tr.addTicketType}</h2>
+          <div className="card">
             <p className="muted">{tr.paidFeeNote}</p>
             <ActionForm action={addTicketTypeAction} submitLabel={tr.addTicketType} okText={okText}>
               {hidden}
@@ -259,9 +266,9 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 <div className="field"><label>{tr.maxPerOrder}</label><input name="maxPerOrder" type="number" min={1} max={50} defaultValue={4} required /></div>
               </div>
             </ActionForm>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       {ann && e.publishedAt && !['CANCELLED', 'COMPLETED'].includes(e.status) && (
         <>
@@ -281,40 +288,42 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 <div className="field"><label>{tr.announceBody} ({tr.myLabel})</label><textarea name="bodyMy" lang="my" maxLength={500} rows={3} /></div>
               </ActionForm>
             )}
-            {ann.items.length > 0 && (
-              <table style={{ marginTop: 12 }}>
+          </div>
+          {ann.items.length > 0 && (
+            <div className="table-card">
+              <table>
                 <thead><tr><th>{tr.sentAt}</th><th>{tr.announceHeading}</th><th>{tr.announceRecipients}</th></tr></thead>
                 <tbody>
                   {ann.items.map((a) => (
                     <tr key={a.id}>
                       <td>{fmtDate(a.createdAt, tr.lang)}</td>
-                      <td><strong>{pick(tr.lang, a.title, a.titleMy)}</strong><div className="muted" style={{ fontSize: 13 }}>{a.body}</div></td>
+                      <td><strong>{pick(tr.lang, a.title, a.titleMy)}</strong><div className="muted small">{a.body}</div></td>
                       <td>{a.recipients}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
 
       {promos && hasPaid && (
         <>
           <h2>{tr.promoTitle}</h2>
-          <div className="card table-wrap">
-            <p className="muted">{tr.promoHint}</p>
-            {promos.length > 0 && (
+          <p className="muted">{tr.promoHint}</p>
+          {promos.length > 0 && (
+            <div className="table-card">
               <table>
                 <thead><tr><th>{tr.promoCode}</th><th>{tr.promoKind}</th><th>{tr.promoUsed}</th><th>{tr.promoDiscountGiven}</th><th>{tr.promoEnds}</th><th /></tr></thead>
                 <tbody>
                   {promos.map((p) => (
-                    <tr key={p.id} style={{ opacity: p.isActive ? 1 : 0.55 }}>
+                    <tr key={p.id} className={p.isActive ? undefined : 'dim'}>
                       <td><code>{p.code}</code> {!p.isActive && <span className="badge DRAFT">{tr.promoInactive}</span>}</td>
                       <td>
                         {p.kind === 'PERCENT' ? `${p.value}%` : fmtMmk(p.value, tr.lang)}
                         {p.ticketTypeIds.length > 0 && (
-                          <div className="muted" style={{ fontSize: 12 }}>{e.ticketTypes.filter((tt) => p.ticketTypeIds.includes(tt.id)).map((tt) => tt.name).join(', ')}</div>
+                          <div className="muted small">{e.ticketTypes.filter((tt) => p.ticketTypeIds.includes(tt.id)).map((tt) => tt.name).join(', ')}</div>
                         )}
                       </td>
                       <td>{p.used}{p.maxUses ? ` / ${p.maxUses}` : ''}</td>
@@ -338,8 +347,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                   ))}
                 </tbody>
               </table>
-            )}
-            {codes !== null && !closed && (
+            </div>
+          )}
+          {codes !== null && !closed && (
+            <div className="card">
               <ActionForm action={createPromoAction} submitLabel={tr.promoCreate} okText={okText}>
                 <input type="hidden" name="orgId" value={orgId} />
                 <input type="hidden" name="eventId" value={id} />
@@ -365,8 +376,8 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                   </div>
                 )}
               </ActionForm>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
 
@@ -388,7 +399,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 />
               </ActionForm>
             ) : (
-              <ul>{e.groupDiscounts?.map((g) => <li key={g.minQuantity}>{g.minQuantity}+ → {g.percentBp / 100}%</li>)}</ul>
+              <ul className="fine-list">{e.groupDiscounts?.map((g) => <li key={g.minQuantity}>{g.minQuantity}+ → {g.percentBp / 100}%</li>)}</ul>
             )}
           </div>
         </>
@@ -397,7 +408,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {waitlist && (
         <>
           <h2>{tr.waitlistTitle}</h2>
-          <div className="card table-wrap" data-testid="waitlist-counts">
+          <div className="table-card" data-testid="waitlist-counts">
             <p className="muted">{tr.waitlistHint}</p>
             {waitlist.total === 0 ? (
               <p className="muted">{tr.waitlistNobody}</p>
@@ -418,15 +429,15 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
       {sales && hasPaid && (
         <>
           <h2>{tr.salesTitle}</h2>
-          <div className="card table-wrap">
-            <div className="grid">
-              <div><div className="muted">{tr.paidOrders}</div><strong>{sales.paidOrders}</strong></div>
-              <div><div className="muted">{tr.gross}</div><strong>{fmtMmk(sales.grossMmk, tr.lang)}</strong></div>
-              <div><div className="muted">{tr.commission}</div><strong>{fmtMmk(sales.commissionMmk, tr.lang)}</strong></div>
-              <div><div className="muted">{tr.net}</div><strong>{fmtMmk(sales.netMmk, tr.lang)}</strong></div>
-              <div><div className="muted">{tr.refunded}</div><strong>{sales.refundedOrders} · {fmtMmk(sales.refundedMmk, tr.lang)}</strong></div>
-            </div>
-            <table style={{ marginTop: 12 }}>
+          <div className="stat-grid">
+            <StatTile label={tr.paidOrders} value={sales.paidOrders} />
+            <StatTile label={tr.gross} value={fmtMmk(sales.grossMmk, tr.lang)} />
+            <StatTile label={tr.commission} value={fmtMmk(sales.commissionMmk, tr.lang)} />
+            <StatTile label={tr.net} value={fmtMmk(sales.netMmk, tr.lang)} />
+            <StatTile label={tr.refunded} value={`${sales.refundedOrders} · ${fmtMmk(sales.refundedMmk, tr.lang)}`} />
+          </div>
+          <div className="table-card">
+            <table>
               <thead><tr><th>{tr.name}</th><th>{tr.price}</th><th>{tr.sold}</th><th>{tr.held}</th><th>{tr.offered}</th><th>{tr.quota}</th><th>{tr.revenue}</th></tr></thead>
               <tbody>
                 {sales.ticketTypes.filter((x) => x.priceMmk > 0).map((x) => (
@@ -434,7 +445,9 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                 ))}
               </tbody>
             </table>
-            <h3>{tr.recentOrders}</h3>
+          </div>
+          <h3>{tr.recentOrders}</h3>
+          <div className="table-card">
             {sales.recent.length === 0 ? (
               <p className="muted">{tr.nothingYet}</p>
             ) : (
@@ -535,7 +548,7 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
 
           <h2>{tr.save}</h2>
           <div className="card">
-            <ActionForm action={updateEventAction} submitLabel={tr.save} okText={okText}>
+            <ActionForm action={updateEventAction} submitLabel={tr.save} variant={awaitingSubmit ? undefined : 'gold'} okText={okText}>
               {hidden}
               <EventFields tr={tr} categories={categories} event={e} />
             </ActionForm>
@@ -557,12 +570,11 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
           {codes && (
             <>
               <h3>{tr.crewCodes}</h3>
-              <div className="card">
-                {codes.length === 0 ? (
-                  <p className="muted">{tr.noCodes}</p>
-                ) : (
-                  <div className="table-wrap">
-                    <table>
+              {codes.length === 0 ? (
+                <div className="card"><p className="muted">{tr.noCodes}</p></div>
+              ) : (
+                <div className="table-card">
+                  <table>
                       <thead><tr><th>{tr.crewCodeLabel}</th><th>{tr.crewGate}</th><th>{tr.devices}</th><th>{tr.expires}</th><th>{tr.status}</th><th /></tr></thead>
                       <tbody>
                         {codes.map((c) => (
@@ -583,9 +595,10 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
                           </tr>
                         ))}
                       </tbody>
-                    </table>
-                  </div>
-                )}
+                  </table>
+                </div>
+              )}
+              <div className="card">
                 <CrewCodeForm action={createCrewCodeAction} hidden={{ orgId, eventId: id }} labels={crewLabels} crewAppUrl={crewAppUrl} lang={tr.lang} />
               </div>
             </>
@@ -600,15 +613,14 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
         </section>
       )}
 
-      <h2>{tr.attendees} ({attendees.length})</h2>
-      <p className="row" style={{ gap: 8 }}>
-        <Link className="btn secondary" href={`/organizer/${orgId}/events/${id}/dashboard`}>{tr.dashboard}</Link>
-        {attendees.length > 0 && <a className="btn secondary" href={`/organizer/${orgId}/events/${id}/attendees.csv`}>{tr.downloadAttendees}</a>}
-      </p>
-      <div className="card table-wrap">
-        {attendees.length === 0 ? (
-          <p className="muted">{tr.noAttendees}</p>
-        ) : (
+      <div className="section-head">
+        <h2>{tr.attendees} ({attendees.length})</h2>
+        {attendees.length > 0 && <a className="btn btn-outline" href={`/organizer/${orgId}/events/${id}/attendees.csv`}>{tr.downloadAttendees}</a>}
+      </div>
+      {attendees.length === 0 ? (
+        <div className="card"><p className="muted">{tr.noAttendees}</p></div>
+      ) : (
+        <div className="table-card">
           <table>
             <thead><tr><th>{tr.name}</th><th>{tr.phone}</th><th>{tr.ticketTypes}</th>{seatedList && <th>{tr.stSeat}</th>}<th>{tr.registeredAt}</th><th>{tr.status}</th></tr></thead>
             <tbody>
@@ -627,8 +639,8 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {!closed && (
         <div className="card">

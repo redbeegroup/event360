@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../components/ActionForm';
+import { PageHeader } from '../../../components/PageHeader';
 import { api } from '../../../lib/api';
 import { t } from '../../../lib/i18n';
 import { saveProfileAction } from '../../actions';
@@ -25,17 +26,15 @@ export default async function ProfilePage({ params }: { params: Promise<{ orgId:
   const [tr, p] = await Promise.all([t(), api<Profile>(`/organizations/${orgId}/profile`)]);
   return (
     <>
-      <p><Link href={`/organizer/${orgId}`}>← {p.name}</Link></p>
-      <h1>{tr.profile}</h1>
-      <p className="muted">{tr.profileHint}</p>
+      <PageHeader breadcrumb={<Link href={`/organizer/${orgId}`}>← {p.name}</Link>} title={tr.profile} subtitle={tr.profileHint} />
       <div className="card">
-        <ActionForm action={saveProfileAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
+        <ActionForm action={saveProfileAction} submitLabel={tr.save} variant="gold" okText={{ saved: tr.saved }}>
           <input type="hidden" name="orgId" value={orgId} />
           <div className="field">
             <label>{tr.logo}</label>
             {p.logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.logoUrl} alt="" style={{ height: 72, borderRadius: 12, display: 'block', marginBottom: 6 }} />
+              <img src={p.logoUrl} alt="" className="thumb logo" style={{ marginBottom: 6 }} />
             )}
             <input name="logo" type="file" accept="image/jpeg,image/png,image/webp" />
           </div>
@@ -48,8 +47,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ orgId:
             <div className="field"><label>{tr.phone}</label><input name="contactPhone" defaultValue={p.contactPhone ?? ''} /></div>
           </div>
           <div className="field">
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'inherit' }}>
-              <input type="checkbox" name="showContact" defaultChecked={p.showContact} style={{ width: 'auto' }} /> {tr.showContact}
+            <label className="check">
+              <input type="checkbox" name="showContact" defaultChecked={p.showContact} /> {tr.showContact}
             </label>
           </div>
         </ActionForm>

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { PageHeader } from '../../../components/PageHeader';
+import { StatTile } from '../../../components/StatTile';
 import { api, getMe } from '../../../lib/api';
 import { fmtDate, fmtMmk, t } from '../../../lib/i18n';
 
@@ -26,28 +28,28 @@ export default async function PayoutsPage({ params, searchParams }: { params: Pr
   const owing = s.owedMmk < 0;
   return (
     <>
-      <p><Link href={`/organizer/${orgId}`}>← {tr.back}</Link></p>
-      <h1>{tr.pyTitle}</h1>
-      <p className="muted">{tr.pyIntro}</p>
+      <PageHeader
+        breadcrumb={<Link href={`/organizer/${orgId}`}>← {tr.back}</Link>}
+        title={tr.pyTitle}
+        subtitle={tr.pyIntro}
+        actions={<a className="btn btn-outline" href={`/organizer/${orgId}/payouts/summary.csv`}>{tr.downloadCsv}</a>}
+      />
 
       {sp.csvError && <div className="error" data-testid="csv-error">{tr.pyCsvError}</div>}
 
-      <div className="grid">
-        <div className="card"><div className="muted">{tr.pyEarned}</div><h2 style={{ margin: '4px 0' }} data-testid="earned">{money(s.earnedMmk)}</h2></div>
-        <div className="card"><div className="muted">{tr.pyPaidOut}</div><h2 style={{ margin: '4px 0' }} data-testid="paid-out">{money(s.paidOutMmk)}</h2></div>
-        <div className="card">
-          {!owing && <div className="muted">{tr.pyOwed}</div>}
-          <h2 style={{ margin: '4px 0' }} data-testid="owed" className={owing ? 'error-text' : undefined}>
-            {owing ? tr.pyYouOwe.replace('{amount}', money(-s.owedMmk)) : money(s.owedMmk)}
-          </h2>
-        </div>
+      <div className="stat-grid">
+        <StatTile label={tr.pyEarned} value={money(s.earnedMmk)} testId="earned" />
+        <StatTile label={tr.pyPaidOut} value={money(s.paidOutMmk)} testId="paid-out" />
+        <StatTile
+          label={owing ? '' : tr.pyOwed}
+          value={owing ? tr.pyYouOwe.replace('{amount}', money(-s.owedMmk)) : money(s.owedMmk)}
+          testId="owed"
+          tone={owing ? 'danger' : undefined}
+        />
       </div>
 
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>{tr.pyPerEvent}</h2>
-        <a className="btn secondary" href={`/organizer/${orgId}/payouts/summary.csv`}>{tr.downloadCsv}</a>
-      </div>
-      <div className="card table-wrap">
+      <h2>{tr.pyPerEvent}</h2>
+      <div className="table-card">
         {s.events.length === 0 ? (
           <p className="muted">{tr.nothingYet}</p>
         ) : (
@@ -71,7 +73,7 @@ export default async function PayoutsPage({ params, searchParams }: { params: Pr
       </div>
 
       <h2>{tr.pyHistory}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         {s.payouts.length === 0 ? (
           <p className="muted">{tr.pyNone}</p>
         ) : (
@@ -80,14 +82,14 @@ export default async function PayoutsPage({ params, searchParams }: { params: Pr
             <tbody>
               {s.payouts.map((p) => (
                 <tr key={p.id}>
-                  <td style={p.voidedAt ? { textDecoration: 'line-through' } : undefined}>{fmtDate(p.paidAt, tr.lang)}</td>
-                  <td style={p.voidedAt ? { textDecoration: 'line-through' } : undefined}>{money(p.amountMmk)}</td>
-                  <td style={p.voidedAt ? { textDecoration: 'line-through' } : undefined}>{String((tr as Record<string, unknown>)[`pyMethod${p.method}`] ?? p.method)}</td>
-                  <td style={p.voidedAt ? { textDecoration: 'line-through' } : undefined}>{p.reference ?? ''}</td>
+                  <td className={p.voidedAt ? 'struck' : undefined}>{fmtDate(p.paidAt, tr.lang)}</td>
+                  <td className={p.voidedAt ? 'struck' : undefined}>{money(p.amountMmk)}</td>
+                  <td className={p.voidedAt ? 'struck' : undefined}>{String((tr as Record<string, unknown>)[`pyMethod${p.method}`] ?? p.method)}</td>
+                  <td className={p.voidedAt ? 'struck' : undefined}>{p.reference ?? ''}</td>
                   <td>
-                    <span style={p.voidedAt ? { textDecoration: 'line-through' } : undefined}>{p.note ?? ''}</span>
+                    <span className={p.voidedAt ? 'struck' : undefined}>{p.note ?? ''}</span>
                     {p.voidedAt && (
-                      <div className="error-text" style={{ fontSize: 12 }}>
+                      <div className="error-text small">
                         <span className="badge REJECTED">{tr.pyVoided}</span> {fmtDate(p.voidedAt, tr.lang)} · {tr.pyVoidedReason}: {p.voidReason}
                       </div>
                     )}

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
+import { StatTile } from '../../components/StatTile';
 import { RecordPayout, VoidPayout, type PayoutLabels } from '../../components/PayoutAdmin';
 import { api } from '../../lib/api';
 import { fmtDate, fmtMmk, t, toLocalInput } from '../../lib/i18n';
@@ -92,17 +94,17 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     <tr key={o.id}>
       <td>
         <code>{o.id.slice(0, 8)}</code>
-        <div className="muted" style={{ fontSize: 12 }}>{fmtDate(o.createdAt, tr.lang)}</div>
+        <div className="muted small">{fmtDate(o.createdAt, tr.lang)}</div>
       </td>
-      <td>{o.event}<div className="muted" style={{ fontSize: 12 }}>{o.organization}</div></td>
-      <td>{o.buyer.name ?? ''}<div className="muted" style={{ fontSize: 12 }}>{o.buyer.phone}</div></td>
-      <td>{fmtMmk(o.totalMmk, tr.lang)}<div className="muted" style={{ fontSize: 12 }}>{tr.commission}: {fmtMmk(o.commissionMmk, tr.lang)}</div></td>
+      <td>{o.event}<div className="muted small">{o.organization}</div></td>
+      <td>{o.buyer.name ?? ''}<div className="muted small">{o.buyer.phone}</div></td>
+      <td>{fmtMmk(o.totalMmk, tr.lang)}<div className="muted small">{tr.commission}: {fmtMmk(o.commissionMmk, tr.lang)}</div></td>
       <td>
         <span className={`badge ${badge(o.status)}`}>{o.status}</span> <span className="muted">{o.tickets}🎟</span>
-        {o.reviewNote && <div className="error-text" style={{ fontSize: 12 }}>{o.reviewNote}</div>}
-        <div className="muted" style={{ fontSize: 12 }}>{o.payments.map((p) => `${p.provider} ${p.status.toLowerCase()}`).join(' · ')}</div>
+        {o.reviewNote && <div className="error-text small">{o.reviewNote}</div>}
+        <div className="muted small">{o.payments.map((p) => `${p.provider} ${p.status.toLowerCase()}`).join(' · ')}</div>
         {o.refunds.map((r) => (
-          <div key={r.id} style={{ fontSize: 12 }}>
+          <div key={r.id} className="small">
             {tr.refund}: <span className={`badge ${badge(r.status)}`}>{r.status}</span> {r.reference ?? r.error ?? ''}
           </div>
         ))}
@@ -118,25 +120,31 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     </tr>
   );
   const table = (rows: OrderRow[]) => (
-    <table>
+    <div className="table-card"><table>
       <thead><tr><th>{tr.orders}</th><th>{tr.event}</th><th>{tr.buyer}</th><th>{tr.total}</th><th>{tr.status}</th><th /></tr></thead>
       <tbody>{rows.map(orderRow)}</tbody>
-    </table>
+    </table></div>
   );
 
   return (
     <>
-      <h1>{tr.finance}</h1>
+      <PageHeader title={tr.finance} />
       {sp.csvError && <div className="error">{tr.pyCsvError}</div>}
 
+      <div className="stat-grid">
+        <StatTile label={tr.reviewQueue} value={review.length} />
+        <StatTile label={tr.refunds} value={new Set(openRefunds.map((r) => r.id)).size} />
+        <StatTile label={tr.owed} value={fmtMmk(balances.reduce((n, b) => n + b.owedMmk, 0), tr.lang)} />
+      </div>
+
       <h2>{tr.reviewQueue} ({review.length})</h2>
-      <div className="card table-wrap">{review.length ? table(review) : <p className="muted">{tr.reviewEmpty}</p>}</div>
+      {review.length ? table(review) : <div className="card"><p className="muted">{tr.reviewEmpty}</p></div>}
 
       {openRefunds.length > 0 && (
         <>
           <h2>{tr.refunds}</h2>
-          <div className="card table-wrap">
-            <p className="muted">{tr.refundManualHint}</p>
+          <p className="muted">{tr.refundManualHint}</p>
+          <div className="table-card">
             <table>
               <thead><tr><th>{tr.orders}</th><th>{tr.buyer}</th><th>{tr.total}</th><th>{tr.status}</th><th /></tr></thead>
               <tbody>
@@ -166,8 +174,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       )}
 
       <h2>{tr.orders}</h2>
-      <div className="card table-wrap">
-        <form className="row" method="get" style={{ marginBottom: 12, gap: 8 }}>
+      <div className="card">
+        <form className="row" method="get">
           <input name="q" defaultValue={sp.q ?? ''} placeholder={tr.searchHint} style={{ flex: 1, minWidth: 200 }} />
           <select name="status" defaultValue={sp.status ?? ''}>
             <option value="">{tr.allStatuses}</option>
@@ -175,16 +183,16 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           </select>
           <button type="submit" className="secondary">{tr.search}</button>
         </form>
-        {orders.length ? table(orders) : <p className="muted">{tr.nothingYet}</p>}
       </div>
+      {orders.length ? table(orders) : <div className="card"><p className="muted">{tr.nothingYet}</p></div>}
 
       <h2>{tr.balances}</h2>
-      <div className="card table-wrap">
-        <p className="muted">{tr.balancesHint}</p>
-        {balances.length === 0 ? (
-          <p className="muted">{tr.nothingYet}</p>
-        ) : (
-          <>
+      <p className="muted">{tr.balancesHint}</p>
+      {balances.length === 0 ? (
+        <div className="card"><p className="muted">{tr.nothingYet}</p></div>
+      ) : (
+        <>
+          <div className="table-card">
             <table>
               <thead><tr><th>{tr.organization}</th><th>{tr.paidOrders}</th><th>{tr.gross}</th><th>{tr.refunded}</th><th>{tr.commission}</th><th>{tr.pyPaidOutCol}</th><th>{tr.owed}</th></tr></thead>
               <tbody>
@@ -201,32 +209,35 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                 ))}
               </tbody>
             </table>
-            <p><a className="btn secondary" href="/admin/finance/balances.csv">{tr.downloadCsv}</a></p>
-            <h2>{tr.pyPayoutsFor}</h2>
-            {balances.map((b) => (
-              <div className="card" key={b.organizationId} data-testid={`payouts-${b.organizationId}`}>
-                <div className="row" style={{ justifyContent: 'space-between' }}>
+          </div>
+          <p><a className="btn btn-outline" href="/admin/finance/balances.csv">{tr.downloadCsv}</a></p>
+          <h2>{tr.pyPayoutsFor}</h2>
+          {balances.map((b) => (
+            <div key={b.organizationId} data-testid={`payouts-${b.organizationId}`}>
+              <div className="card">
+                <div className="card-head">
                   <strong>{b.organization}</strong>
                   <span>{tr.owed}: <strong>{fmtMmk(b.owedMmk, tr.lang)}</strong></span>
                 </div>
                 <RecordPayout orgId={b.organizationId} orgName={b.organization} owedMmk={b.owedMmk} defaultPaidAt={nowLocal} action={recordPayoutAction} labels={pl} errorText={payoutErrors} />
-                {(payoutsOf.get(b.organizationId) ?? []).length === 0 ? (
-                  <p className="muted">{tr.pyNone}</p>
-                ) : (
+                {(payoutsOf.get(b.organizationId) ?? []).length === 0 && <p className="muted">{tr.pyNone}</p>}
+              </div>
+              {(payoutsOf.get(b.organizationId) ?? []).length > 0 && (
+                <div className="table-card">
                   <table>
                     <thead><tr><th>{tr.pyDate}</th><th>{tr.pyAmount}</th><th>{tr.pyMethod}</th><th>{tr.pyReference}</th><th /></tr></thead>
                     <tbody>
                       {payoutsOf.get(b.organizationId)!.map((p) => {
-                        const strike = p.voidedAt ? { textDecoration: 'line-through' } : undefined;
+                        const strike = p.voidedAt ? 'struck' : undefined;
                         return (
                           <tr key={p.id}>
-                            <td style={strike}>{fmtDate(p.paidAt, tr.lang)}</td>
-                            <td style={strike}>{fmtMmk(p.amountMmk, tr.lang)}</td>
-                            <td style={strike}>{methods[p.method] ?? p.method}</td>
-                            <td><span style={strike}>{p.reference ?? ''}</span>{p.note && <div className="muted" style={{ fontSize: 12 }}>{p.note}</div>}</td>
+                            <td className={strike}>{fmtDate(p.paidAt, tr.lang)}</td>
+                            <td className={strike}>{fmtMmk(p.amountMmk, tr.lang)}</td>
+                            <td className={strike}>{methods[p.method] ?? p.method}</td>
+                            <td><span className={strike}>{p.reference ?? ''}</span>{p.note && <div className="muted small">{p.note}</div>}</td>
                             <td style={{ minWidth: 220 }}>
                               {p.voidedAt ? (
-                                <span className="error-text" style={{ fontSize: 12 }}><span className="badge REJECTED">{tr.pyVoided}</span> {p.voidReason}</span>
+                                <span className="error-text small"><span className="badge REJECTED">{tr.pyVoided}</span> {p.voidReason}</span>
                               ) : (
                                 <VoidPayout id={p.id} action={voidPayoutAction} labels={pl} errorText={payoutErrors} />
                               )}
@@ -236,17 +247,17 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
                       })}
                     </tbody>
                   </table>
-                )}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
 
       <h2>{tr.feeTitle}</h2>
       <div className="card">
         <p className="muted">{tr.feeHint}</p>
-        <ActionForm action={saveFeeAction} submitLabel={tr.save} okText={okText}>
+        <ActionForm action={saveFeeAction} submitLabel={tr.save} variant="gold" okText={okText}>
           <div className="grid">
             <div className="field"><label>{tr.feePercent} (%)</label><input name="percent" type="number" min={0} max={50} step={0.01} defaultValue={fee.percentBp / 100} required /></div>
             <div className="field"><label>{tr.feeFixed}</label><input name="fixedMmk" type="number" min={0} step={1} defaultValue={fee.fixedMmk} /></div>

@@ -5,6 +5,7 @@ import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormState } from '../actions';
 import type { AttendanceStats } from '../organizer/actions';
+import { StatTile } from './StatTile';
 
 export interface CrewLabels {
   label: string;
@@ -73,7 +74,7 @@ export function CrewCodeForm({
                 {labels.expires}: {new Date(String(state.data?.expiresAt)).toLocaleString(lang === 'my' ? 'my-MM' : 'en-GB', { timeZone: 'Asia/Yangon' })}
               </p>
               <button type="button" className="secondary" onClick={() => navigator.clipboard?.writeText(code)}>{labels.copy}</button>{' '}
-              {link && <a className="button secondary" href={link} target="_blank" rel="noreferrer">{labels.openCrewApp}</a>}
+              {link && <a className="btn btn-outline" href={link} target="_blank" rel="noreferrer">{labels.openCrewApp}</a>}
             </div>
           </div>
         </div>
@@ -125,21 +126,21 @@ export function AttendanceLive({
   const time = (d: string | Date) => new Date(d).toLocaleTimeString(lang === 'my' ? 'my-MM' : 'en-GB', { timeZone: 'Asia/Yangon', hour: '2-digit', minute: '2-digit' });
   return (
     <div>
-      <div className="stat-row">
-        <div className="stat"><div className="stat-num">{s.checkedIn}</div><div className="muted">{labels.checkedIn}</div></div>
-        <div className="stat"><div className="stat-num">{s.registered}</div><div className="muted">{labels.registered}</div></div>
-        <div className="stat"><div className="stat-num">{pct}%</div><div className="muted">&nbsp;</div></div>
+      <div className="stat-grid">
+        <StatTile label={labels.checkedIn} value={s.checkedIn} />
+        <StatTile label={labels.registered} value={s.registered} />
+        <StatTile label="" value={`${pct}%`} />
       </div>
       <div className="progress" aria-label={`${pct}%`}><div style={{ width: `${pct}%` }} /></div>
       <div className="grid" style={{ marginTop: 12 }}>
-        <table>
+        <div className="table-card"><table>
           <tbody>
             {s.byTicketType.map((t) => (
               <tr key={t.id}><td>{name(t)}</td><td style={{ textAlign: 'right' }}>{t.checkedIn} / {t.registered}</td></tr>
             ))}
           </tbody>
-        </table>
-        <table>
+        </table></div>
+        <div className="table-card"><table>
           <thead><tr><th>{labels.byGate}</th><th /></tr></thead>
           <tbody>
             {s.byGate.length === 0 && <tr><td className="muted" colSpan={2}>{labels.noScans}</td></tr>}
@@ -147,13 +148,13 @@ export function AttendanceLive({
               <tr key={g.gate ?? '-'}><td>{g.gate ?? labels.noGate}</td><td style={{ textAlign: 'right' }}>{g.checkedIn}</td></tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
       <h3>{labels.recent}</h3>
       {s.recent.length === 0 ? (
         <p className="muted">{labels.noScans}</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-card">
           <table>
             <tbody>
               {s.recent.map((r) => (
@@ -175,7 +176,7 @@ export function AttendanceLive({
           </table>
         </div>
       )}
-      <p className="muted" style={{ fontSize: 12 }}>{labels.updated} {time(at)}</p>
+      <p className="muted small">{labels.updated} {time(at)}</p>
     </div>
   );
 }

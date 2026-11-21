@@ -86,9 +86,9 @@ function Player({ url, onClose, closeLabel, watermark }: { url: string; onClose:
     v.src = url;
   }, [url]);
   return (
-    <div className="card" style={{ position: 'relative', marginTop: 8 }}>
-      <video ref={ref} controls autoPlay muted playsInline style={{ width: '100%', maxHeight: 420, background: '#000', borderRadius: 8 }} />
-      <span style={{ position: 'absolute', top: 18, right: 24, color: 'rgba(255,255,255,.6)', fontSize: 12, pointerEvents: 'none' }}>{watermark}</span>
+    <div className="card player">
+      <video ref={ref} controls autoPlay muted playsInline />
+      <span className="player-mark">{watermark}</span>
       <button type="button" className="secondary" onClick={onClose} style={{ marginTop: 8 }}>{closeLabel}</button>
     </div>
   );
@@ -248,7 +248,7 @@ export function LiveStudio({ orgId, eventId, initial, labels, lang }: { orgId: s
       })}
 
       <h3>{labels.recordings}</h3>
-      <div className="card table-wrap">
+      <div className="table-card">
         {ov.recordings.length === 0 ? (
           <p className="muted">{labels.noRecordings}</p>
         ) : (
@@ -279,8 +279,8 @@ export function LiveStudio({ orgId, eventId, initial, labels, lang }: { orgId: s
             </tbody>
           </table>
         )}
-        {preview && ov.recordings.some((r) => r.id === preview.id) && <Player url={preview.url} watermark={preview.watermark} closeLabel={labels.close} onClose={() => setPreview(null)} />}
       </div>
+      {preview && ov.recordings.some((r) => r.id === preview.id) && <Player url={preview.url} watermark={preview.watermark} closeLabel={labels.close} onClose={() => setPreview(null)} />}
 
       <h3>{labels.upload}</h3>
       <form

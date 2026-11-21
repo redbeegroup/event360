@@ -1,7 +1,7 @@
-import Link from 'next/link';
+import { EventHeader } from '../../../../../components/EventHeader';
 import { SeatsManager, type Counts, type GuestRow, type SeatRow, type TypeRow } from '../../../../../components/SeatsManager';
 import { api } from '../../../../../lib/api';
-import { pick, t } from '../../../../../lib/i18n';
+import { t } from '../../../../../lib/i18n';
 import type { Layout } from '../../../../../lib/seat-layout';
 import type { EventDto } from '../../../../../lib/types';
 import type { SeatRule } from '../../../../actions';
@@ -36,9 +36,8 @@ export default async function SeatsPage({ params, searchParams }: { params: Prom
 
   return (
     <>
-      <p><Link href={`/organizer/${orgId}/events/${id}`}>← {tr.backToEvent}</Link></p>
+      <EventHeader orgId={orgId} event={e} active="seats" seats />
       {pdf === 'failed' && <div className="error" role="alert">{tr.stPdfFailed}</div>}
-      <h1>{tr.stTitle} · {pick(tr.lang, e.title, e.titleMy)}</h1>
       {!ov.layout ? (
         <div className="card"><p className="muted">{tr.stNoMap}</p></div>
       ) : types.length === 0 ? (

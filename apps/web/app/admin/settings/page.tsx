@@ -1,4 +1,5 @@
 import { ActionForm } from '../../components/ActionForm';
+import { PageHeader } from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { fmtDate, t } from '../../lib/i18n';
 import { saveEmailSettingsAction, savePaymentSettingsAction, savePushSettingsAction, saveSmsSettingsAction, sendTestEmailAction, sendTestPushAction, sendTestSmsAction } from '../actions';
@@ -77,7 +78,7 @@ export default async function SettingsPage() {
   const preview = sms.otpTemplate.replaceAll('{code}', '482913').replaceAll('{minutes}', '5');
   return (
     <>
-      <h1>{tr.settings}</h1>
+      <PageHeader title={tr.settings} />
       <h2>{tr.smsTitle}</h2>
       <div className="card">
         <p className="muted">{tr.smsHint}</p>
@@ -95,7 +96,7 @@ export default async function SettingsPage() {
           </p>
         )}
         {!sms.canStoreSecrets && <div className="error">{tr.smsNoKey}</div>}
-        <ActionForm action={saveSmsSettingsAction} submitLabel={tr.save} okText={{ saved: tr.saved }}>
+        <ActionForm action={saveSmsSettingsAction} submitLabel={tr.save} variant="gold" okText={{ saved: tr.saved }}>
           <div className="grid">
             <div className="field">
               <label>{tr.smsApiKey}</label>
@@ -211,7 +212,7 @@ export default async function SettingsPage() {
         const configured = Object.values(p.plain).every(Boolean) && Object.values(p.secrets).every((s) => s.set);
         return (
           <div className="card" key={p.provider} id={`pay-${p.provider}`}>
-            <h3 style={{ marginTop: 0 }}>
+            <h3 className="card-title">
               {p.provider === 'kbzpay' ? 'KBZPay' : 'WavePay'}{' '}
               <span className={`badge ${p.enabled && configured ? 'PUBLISHED' : 'SUBMITTED'}`}>
                 {p.enabled && configured ? tr.providerOn : configured ? tr.providerOff : tr.providerNotConfigured}
@@ -251,7 +252,7 @@ export default async function SettingsPage() {
       })}
 
       <h2>{tr.smsLog}</h2>
-      <div className="card table-wrap">
+      <div className="table-card">
         {log.length === 0 ? (
           <p className="muted">{tr.nothingYet}</p>
         ) : (
