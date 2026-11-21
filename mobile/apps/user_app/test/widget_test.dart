@@ -99,6 +99,7 @@ class FakeApi extends Event360Api {
   final seatPromoCodes = <String?>[];
   final promoSeatChecks = <List<String>>[];
   int? promoError; // checkPromo throws this status
+  Completer<void>? promoGate; // checkPromo waits for this
   List<String>? takenOnNextOrder; // the next seated order fails with 409 naming these seats
   ApiException? nextOrderError; // the next order (seated or not) fails with this
   int stallsPrice = 20000; // the seat map's Stalls price (a poll can change it)
@@ -186,6 +187,7 @@ class FakeApi extends Event360Api {
   Future<PromoCheck> checkPromo(String eventId, String code, Map<String, int> quantities, {List<String> seats = const []}) async {
     if (seats.isNotEmpty) {
       promoSeatChecks.add(seats);
+      if (promoGate != null) await promoGate!.future;
       if (promoError != null) throw ApiException(promoError, 'Too many attempts, try again in a minute');
       final sub = 20000 * seats.length;
       return code.toUpperCase() == 'SAVE20'
@@ -1036,6 +1038,30 @@ void main() {
     expect(find.text('Group discount −4,000 MMK'), findsOneWidget);
     expect(find.text('36,000 MMK'), findsOneWidget);
     expect(find.text('40,000 MMK'), findsOneWidget); // struck-through original
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seat picker bar: no discount line while a code is being checked, then the answer shows', (tester) async {
+    await openPicker(tester, setup: (a) {
+      a.groupTiers = [
+        {'minQuantity': 2, 'percentBp': 1000}
+      ];
+      a.promoGate = Completer<void>();
+    });
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tapSeat(tester, 1, 2);
+    expect(find.text('Group discount −4,000 MMK'), findsOneWidget); // no code yet: the group discount shows
+    await applyPromo(tester, 'save20'); // the check is now pending
+    expect(find.byKey(const Key('promoCheckingNote')), findsOneWidget);
+    expect(find.byKey(const Key('groupDiscountLine')), findsNothing);
+    expect(find.byKey(const Key('groupDiscountHint')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const Key('seatTotal'))).data, '40,000 MMK'); // plain total, no strike-through
+    expect(tester.widget<FilledButton>(find.byKey(const Key('seatContinue'))).onPressed, isNull);
+    pickerApi.promoGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('promoCheckingNote')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const Key('seatTotal'))).data, isNot('40,000 MMK'));
     await tester.pumpWidget(const SizedBox());
   });
 

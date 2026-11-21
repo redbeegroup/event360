@@ -244,3 +244,4 @@
 "groupSave","Save discounts","လျှော့စျေးများ သိမ်းမည်","portal"
 "addTier","Add tier","အဆင့် ထည့်မည်","portal"
 "tierBad","Each tier needs 2 to 100 tickets and a discount of 1% to 90%.","အဆင့်တိုင်းတွင် လက်မှတ် ၂ မှ ၁၀၀ နှင့် လျှော့စျေး ၁% မှ ၉၀% လိုအပ်သည်။","portal"
+"promoChecking","Checking your code…","သင့်ကုဒ်ကို စစ်ဆေးနေသည်…","user_app"

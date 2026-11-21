@@ -458,7 +458,14 @@ export async function setPriceStepsAction(_: FormState, fd: FormData): Promise<F
       const price = String(r.priceMmk ?? '').trim();
       if (!at && !price) continue;
       if (!at || !price || !Number.isInteger(Number(price)) || Number(price) <= 0) return { error: 'badStep' };
-      const iso = fromLocalInput(at);
+      let iso: string;
+      try {
+        iso = fromLocalInput(at);
+      } catch {
+        return { error: 'badStep' }; // not a valid date
+      }
+      const inEffect = steps.some((x) => new Date(x.startsAt).getTime() === new Date(iso).getTime());
+      if (!inEffect && new Date(iso).getTime() <= now) return { error: 'badStep' }; // steps can only start in the future
       if (steps.some((x) => new Date(x.startsAt).getTime() === new Date(iso).getTime())) continue; // came into effect while editing
       steps.push({ startsAt: iso, priceMmk: Number(price) });
     }
@@ -467,6 +474,8 @@ export async function setPriceStepsAction(_: FormState, fd: FormData): Promise<F
     return { ok: 'saved' };
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return { error: 'conflict' };
+    // The API's English text never reaches the user: a rejected step list reads as the bilingual "bad step" message
+    if (e instanceof ApiError && e.status === 400) return { error: 'badStep' };
     return err(e);
   }
 }
@@ -491,6 +500,7 @@ export async function setGroupDiscountsAction(_: FormState, fd: FormData): Promi
     revalidatePath(`/organizer/${orgId}/events/${id}`);
     return { ok: 'saved' };
   } catch (e) {
+    if (e instanceof ApiError && e.status === 400) return { error: 'badTier' }; // never the API's English text
     return err(e);
   }
 }

@@ -311,6 +311,9 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     m.showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
   }
 
+  /// A code is entered for the chosen seats and its answer is not in yet (or the check failed): Continue stays off.
+  bool get _codePending => _promoCode.isNotEmpty && _selected.isNotEmpty && (_promoChecking || _promo == null);
+
   /// Seats of paid types: the only ones a group discount counts.
   int get _paidSeats => _selected.where((i) => _typeOf[i] != null && _data!.types[_typeOf[i]!].priceMmk > 0).length;
   int get _total => _selected.fold(0, (sum, i) => sum + (_typeOf[i] == null ? 0 : _data!.types[_typeOf[i]!].priceMmk));
@@ -553,17 +556,21 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
           selected: _selected,
           lang: lang,
           totalMmk: _total,
-          view: resolveDiscount(
-            tiers: event?.groupDiscounts ?? const [],
-            paidQty: _paidSeats,
-            paidSubtotalMmk: _total,
-            totalMmk: _total,
-            promo: _promo,
-          ),
+          // While a code's check is pending no discount is shown (not even the group one): the total is the plain total
+          view: _codePending
+              ? DiscountView(source: null, discountMmk: 0, totalMmk: _total, promoLost: false, nextTier: null)
+              : resolveDiscount(
+                  tiers: event?.groupDiscounts ?? const [],
+                  paidQty: _paidSeats,
+                  paidSubtotalMmk: _total,
+                  totalMmk: _total,
+                  promo: _promo,
+                ),
+          checkingCode: _codePending && _promoError == null,
           notice: _notice,
           error: _error,
           busy: _busy,
-          canContinue: event != null && !(_promoCode.isNotEmpty && (_promoChecking || _promo == null) && _selected.isNotEmpty),
+          canContinue: event != null && !_codePending,
           onRemove: (i) {
             setState(() => _selected = [for (final s in _selected) if (s != i) s]);
             _seatsChanged();
@@ -636,6 +643,7 @@ class _BottomBar extends StatelessWidget {
     required this.lang,
     required this.totalMmk,
     required this.view,
+    required this.checkingCode,
     required this.notice,
     required this.error,
     required this.busy,
@@ -657,6 +665,7 @@ class _BottomBar extends StatelessWidget {
   final String lang;
   final int totalMmk;
   final DiscountView view;
+  final bool checkingCode;
   final String? notice;
   final String? error;
   final bool busy;
@@ -738,7 +747,8 @@ class _BottomBar extends StatelessWidget {
                       : Text(promoReasonText(t, promo!.reasonCode), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
                 ),
             ],
-            if (selected.isNotEmpty) DiscountLines(view: view, lang: lang),
+            if (checkingCode) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t.promoChecking, key: const Key('promoCheckingNote'), style: theme.textTheme.bodySmall)),
+            if (selected.isNotEmpty && !checkingCode) DiscountLines(view: view, lang: lang),
             const SizedBox(height: 6),
             TotalRow(
               label: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium),

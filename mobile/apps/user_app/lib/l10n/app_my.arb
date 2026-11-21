@@ -135,6 +135,7 @@
   "groupDiscountLine": "အုပ်စုလျှော့စျေး −{amount}",
   "groupDiscountHint": "လက်မှတ် {n} စောင်နှင့်အထက် ဝယ်လျှင် {percent}% ချွေတာနိုင်သည်",
   "promoLostToGroup": "သင့်ကုဒ်ကို မသုံးပါ — အုပ်စုလျှော့စျေးက ပိုများသည်",
+  "promoChecking": "သင့်ကုဒ်ကို စစ်ဆေးနေသည်…",
   "promoApplied": "ကုဒ်သုံးပြီး — {amount} လျှော့",
   "discount": "လျှော့စျေး",
   "transferTicket": "တစ်ယောက်ယောက်ထံ ပို့မည်",

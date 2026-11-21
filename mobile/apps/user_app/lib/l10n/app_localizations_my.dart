@@ -455,6 +455,9 @@ class L10nMy extends L10n {
       'သင့်ကုဒ်ကို မသုံးပါ — အုပ်စုလျှော့စျေးက ပိုများသည်';
 
   @override
+  String get promoChecking => 'သင့်ကုဒ်ကို စစ်ဆေးနေသည်…';
+
+  @override
   String promoApplied(String amount) {
     return 'ကုဒ်သုံးပြီး — $amount လျှော့';
   }

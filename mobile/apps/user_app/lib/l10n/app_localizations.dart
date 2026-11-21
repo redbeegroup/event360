@@ -907,6 +907,12 @@ abstract class L10n {
   /// **'Your code isn\'t applied — the group discount is bigger'**
   String get promoLostToGroup;
 
+  /// No description provided for @promoChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking your code…'**
+  String get promoChecking;
+
   /// No description provided for @promoApplied.
   ///
   /// In en, this message translates to:

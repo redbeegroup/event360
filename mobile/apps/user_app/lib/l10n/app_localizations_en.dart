@@ -454,6 +454,9 @@ class L10nEn extends L10n {
       'Your code isn\'t applied — the group discount is bigger';
 
   @override
+  String get promoChecking => 'Checking your code…';
+
+  @override
   String promoApplied(String amount) {
     return 'Code applied: $amount off';
   }

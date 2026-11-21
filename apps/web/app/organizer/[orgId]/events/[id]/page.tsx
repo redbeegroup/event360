@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../../components/ActionForm';
-import { api } from '../../../../lib/api';
+import { api, getMe } from '../../../../lib/api';
 import { ListEditor } from '../../../../components/ListEditor';
 import { AttendanceLive, CrewCodeForm, type CrewLabels } from '../../../../components/CrewCheckin';
 import { LiveStudio } from '../../../../components/LiveStudio';
@@ -93,7 +93,7 @@ interface Sales {
 
 export default async function EventEditPage({ params }: { params: Promise<{ orgId: string; id: string }> }) {
   const { orgId, id } = await params;
-  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos, seatMaps] = await Promise.all([
+  const [tr, e, categories, attendees, attendance, codes, streaming, sales, ann, promos, seatMaps, me] = await Promise.all([
     t(),
     api<EventDto>(`/organizations/${orgId}/events/${id}`),
     api<CategoryDto[]>('/categories', { auth: false }),
@@ -105,7 +105,11 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
     api<Announcements>(`/organizations/${orgId}/events/${id}/announcements`).catch(() => null),
     api<Promo[]>(`/organizations/${orgId}/events/${id}/promo-codes`).catch(() => null),
     api<SeatMapOption[]>('/seat-maps').catch(() => null),
+    getMe(),
   ]);
+  // Same roles the API allows for PUT /group-discounts (ORG_EDITORS, or a platform admin)
+  const myRole = me.organizations.find((o) => o.id === orgId)?.role;
+  const canEditTiers = myRole === 'ORG_OWNER' || myRole === 'ORG_MANAGER' || me.platformRoles.includes('PLATFORM_ADMIN');
   const paidTypes = e.ticketTypes.filter((tt) => tt.priceMmk > 0);
   const hasPaid = e.ticketTypes.some((tt) => tt.priceMmk > 0);
   const crewAppUrl = process.env.CREW_APP_URL ?? '';
@@ -357,12 +361,12 @@ export default async function EventEditPage({ params }: { params: Promise<{ orgI
         </>
       )}
 
-      {hasPaid && (e.groupDiscounts?.length || (codes !== null && !closed)) && (
+      {hasPaid && (e.groupDiscounts?.length || (canEditTiers && !closed)) && (
         <>
           <h2>{tr.groupTitle}</h2>
           <div className="card">
             <p className="muted">{tr.groupHint}</p>
-            {codes !== null && !closed ? (
+            {canEditTiers && !closed ? (
               <ActionForm action={setGroupDiscountsAction} submitLabel={tr.groupSave} okText={okText} errorText={{ badTier: tr.tierBad }}>
                 {hidden}
                 <ListEditor
