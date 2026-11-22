@@ -19,11 +19,15 @@ class SeatMapPainter extends CustomPainter {
     this.reserved = const {},
     this.lang = 'en',
     this.scale = 1,
-    this.ink = const Color(0xFF3A3550),
-    this.stageColor = const Color(0xFFCFCBE0),
-    this.takenColor = const Color(0xFFBDBDBD),
+    this.ink = defaultInk,
+    this.stageColor = defaultStageColor,
+    this.takenColor = defaultTakenColor,
     this.highlightSection,
   });
+
+  static const Color defaultInk = Color(0xFF3A3550);
+  static const Color defaultStageColor = Color(0xFFCFCBE0);
+  static const Color defaultTakenColor = Color(0xFFBDBDBD);
 
   final SeatLayout layout;
 

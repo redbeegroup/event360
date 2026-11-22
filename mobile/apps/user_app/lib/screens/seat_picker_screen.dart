@@ -16,9 +16,6 @@ import '../widgets/discount_lines.dart';
 import '../widgets/total_amounts.dart';
 import '../widgets/waitlist_offer.dart';
 
-/// Seats are tappable from this zoom (screen px per layout unit); below it a tap on a section zooms into it.
-const double kSeatTapScale = 1.6;
-
 /// The API accepts at most this many seats in one order.
 const int kMaxSeatsPerOrder = 20;
 
@@ -37,9 +34,8 @@ class SeatPickerScreen extends ConsumerStatefulWidget {
   ConsumerState<SeatPickerScreen> createState() => _SeatPickerScreenState();
 }
 
-class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  final _controller = TransformationController();
-  late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
+class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with WidgetsBindingObserver {
+  final _map = SeatMapViewController();
   static String _newSalt() => List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 
   /// Retries of the same seats reuse an order; renewed after each order so picking them again (say after
@@ -73,19 +69,13 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   bool _loadFailed = false;
   String? _notice; // e.g. "just taken"
   String? _error;
-  Size _viewport = Size.zero;
-  double _fit = 0.3;
-  double _scale = 0.3;
-  bool _placed = false;
+  double _scale = 0.3; // the map's zoom, for the "zoom in to pick seats" hint
   bool _reloadQueued = false;
-  Animation<Matrix4>? _zoomAnim;
-  VoidCallback? _zoomTick;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller.addListener(_onTransform);
     _load();
     _startPolling();
   }
@@ -96,11 +86,6 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     _poll?.cancel();
     _promoDebounce?.cancel();
     _promoCtl.dispose();
-    if (_zoomTick != null) _zoomAnim?.removeListener(_zoomTick!);
-    _anim.dispose();
-    _controller
-      ..removeListener(_onTransform)
-      ..dispose();
     super.dispose();
   }
 
@@ -120,11 +105,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
     _poll = Timer.periodic(widget.pollInterval, (_) => _load());
   }
 
-  /// Screen px per layout unit. (Not getMaxScaleOnAxis: it includes the z axis, which stays 1.)
-  double get _zoom => _controller.value.entry(0, 0);
-
-  void _onTransform() {
-    final s = _zoom;
+  void _onScale(double s) {
     if ((s - _scale).abs() > 0.02 && mounted) setState(() => _scale = s);
   }
 
@@ -368,60 +349,6 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   int get _paidSeats => _selected.where((i) => _typeOf[i] != null && _data!.types[_typeOf[i]!].priceMmk > 0).length;
   int get _total => _selected.fold(0, (sum, i) => sum + (_typeOf[i] == null ? 0 : _data!.types[_typeOf[i]!].priceMmk));
 
-  // ───── Zoom ─────
-
-  void _place(Size viewport) {
-    final l = _layout;
-    if (l == null) return;
-    final fit = min(viewport.width / l.width, viewport.height / l.height);
-    if (_placed && viewport == _viewport) return;
-    _viewport = viewport;
-    _fit = fit;
-    if (!_placed) {
-      _placed = true;
-      final dx = (viewport.width - l.width * fit) / 2;
-      final dy = (viewport.height - l.height * fit) / 2;
-      _scale = fit; // before the controller notifies, so the listener doesn't setState during build
-      _controller.value = Matrix4.diagonal3Values(fit, fit, 1)..setTranslationRaw(dx, dy, 0);
-    }
-  }
-
-  /// Zooms to fit [r], but never below the zoom where seats are tappable; when [r] is too big for that
-  /// (a large section) it centres on [focus] (the tap) instead.
-  void _zoomTo(Rect r, {Offset? focus}) {
-    if (_viewport == Size.zero) return;
-    const pad = 24.0;
-    final fitScale = min(_viewport.width / (r.width + pad * 2), _viewport.height / (r.height + pad * 2));
-    const minTappable = kSeatTapScale + 0.2;
-    final s = fitScale.clamp(minTappable, 6.0);
-    var c = r.center;
-    if (fitScale < minTappable && focus != null) {
-      // keep the whole viewport inside the section where possible
-      final halfW = _viewport.width / s / 2, halfH = _viewport.height / s / 2;
-      c = Offset(focus.dx.clamp(r.left + min(halfW, r.width / 2), r.right - min(halfW, r.width / 2)), focus.dy.clamp(r.top + min(halfH, r.height / 2), r.bottom - min(halfH, r.height / 2)));
-    }
-    final end = Matrix4.diagonal3Values(s, s, 1)..setTranslationRaw(_viewport.width / 2 - c.dx * s, _viewport.height / 2 - c.dy * s, 0);
-    final tween = Matrix4Tween(begin: _controller.value, end: end).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    // One listener at a time: a new zoom replaces the running one
-    if (_zoomTick != null) _zoomAnim?.removeListener(_zoomTick!);
-    _zoomAnim = tween;
-    _zoomTick = () => _controller.value = tween.value;
-    tween.addListener(_zoomTick!);
-    _anim.forward(from: 0);
-  }
-
-  void _onTap(Offset p) {
-    final l = _layout;
-    if (l == null) return;
-    if (_zoom >= kSeatTapScale) {
-      final seat = l.seatAt(p);
-      if (seat != null) _toggle(seat);
-    } else {
-      final sec = l.sectionAt(p);
-      if (sec != null) _zoomTo(sec.bounds, focus: p);
-    }
-  }
-
   // ───── Actions ─────
 
   Future<void> _best() async {
@@ -443,7 +370,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
       _error = null;
     });
     _seatsChanged();
-    _zoomTo(picked.map((s) => Rect.fromCircle(center: s.pos, radius: kSeatRadius)).reduce((a, b) => a.expandToInclude(b)).inflate(40));
+    _map.zoomTo(picked.map((s) => Rect.fromCircle(center: s.pos, radius: kSeatRadius)).reduce((a, b) => a.expandToInclude(b)).inflate(40));
   }
 
   List<int> _availableByType() {
@@ -562,37 +489,21 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         if (offer != null) OfferCountdown(entry: offer, onExpired: () => ref.invalidate(waitlistProvider)),
         _Legend(types: d.types, lang: lang, reserved: _reserved.isNotEmpty),
         Expanded(
-          child: LayoutBuilder(builder: (context, c) {
-            _place(Size(c.maxWidth, c.maxHeight));
-            return Stack(children: [
+          child: Stack(children: [
               Positioned.fill(
                 child: ColoredBox(
                   color: theme.colorScheme.surfaceContainerLow,
-                  child: InteractiveViewer(
-                    transformationController: _controller,
-                    constrained: false,
-                    minScale: _fit,
-                    maxScale: max(6, _fit),
-                    boundaryMargin: const EdgeInsets.all(120),
-                    child: GestureDetector(
-                      key: const Key('seatMap'),
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp: (details) => _onTap(details.localPosition),
-                      child: CustomPaint(
-                        size: Size(l.width, l.height),
-                        painter: SeatMapPainter(
-                          layout: l,
-                          states: _states,
-                          colors: _colors,
-                          selected: _selected.toSet(),
-                          reserved: _reserved,
-                          lang: lang,
-                          scale: _scale,
-                          ink: theme.colorScheme.onSurface,
-                          highlightSection: null,
-                        ),
-                      ),
-                    ),
+                  child: SeatMapView(
+                    layout: l,
+                    states: _states,
+                    colors: _colors,
+                    selected: _selected.toSet(),
+                    reserved: _reserved,
+                    lang: lang,
+                    controller: _map,
+                    ink: theme.colorScheme.onSurface,
+                    onScaleChanged: _onScale,
+                    onSeatTap: (i) => _toggle(l.seats[i]),
                   ),
                 ),
               ),
@@ -614,8 +525,7 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
                     ),
                   ),
                 ),
-            ]);
-          }),
+            ]),
         ),
         _BottomBar(
           layout: l,

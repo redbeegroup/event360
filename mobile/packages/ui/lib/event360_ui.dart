@@ -6,6 +6,7 @@ import 'src/tokens.dart';
 
 export 'src/seat_layout.dart';
 export 'src/seat_map_painter.dart';
+export 'src/seat_map_view.dart';
 export 'src/tokens.dart';
 export 'src/widgets.dart';
 
