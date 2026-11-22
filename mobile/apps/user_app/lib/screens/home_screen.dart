@@ -186,8 +186,14 @@ class HomeScreen extends ConsumerWidget {
             Expanded(
               child: Text(title, style: Theme.of(context).textTheme.titleLarge),
             ),
+            // Flexible: at large text sizes the label wraps or ellipsizes instead of pushing the row wider than the screen
             if (onSeeAll != null)
-              TextButton(onPressed: onSeeAll, child: Text(t.seeAll)),
+              Flexible(
+                child: TextButton(
+                  onPressed: onSeeAll,
+                  child: Text(t.seeAll, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
+              ),
           ],
         ),
       ),
@@ -358,7 +364,11 @@ class _CategoryChip extends StatelessWidget {
                 shape: StadiumBorder(
                   side: selected
                       ? BorderSide.none
-                      : BorderSide(color: scheme.outlineVariant),
+                      : BorderSide(
+                          color: theme.brightness == Brightness.dark
+                              ? E360DarkColors.chipLine
+                              : scheme.outlineVariant,
+                        ),
                 ),
               ),
               child: Text(

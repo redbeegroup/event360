@@ -1039,6 +1039,12 @@ abstract class L10n {
   /// **'Standing tickets'**
   String get standingTickets;
 
+  /// No description provided for @chooseTicketKind.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose ticket type'**
+  String get chooseTicketKind;
+
   /// No description provided for @tapSeatHint.
   ///
   /// In en, this message translates to:

@@ -19,6 +19,7 @@ import 'package:user_app/widgets/event_card.dart';
 import 'package:user_app/widgets/event_row.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
+import 'package:user_app/screens/seat_picker_screen.dart';
 import 'package:user_app/screens/ticket_screen.dart';
 import 'package:user_app/screens/watch_screen.dart';
 
@@ -738,6 +739,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(tester.getSize(find.byType(DiscoverSearchPill)).height, greaterThanOrEqualTo(56));
+  });
+
+  testWidgets('Discover has no overflow at text scale 2.0 in EN and MY on a 390x844 phone', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    for (final lang in ['en', 'my']) {
+      await pumpApp(tester, lang: lang);
+      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang top');
+      await tester.fling(find.byType(Scrollable).first, const Offset(0, -3000), 3000);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang scrolled');
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   testWidgets('home category chip strip is at least 44 dp and grows with large Myanmar text without overflow', (tester) async {
@@ -2363,17 +2379,114 @@ void main() {
     }
   }, variant: phoneWidths);
 
-  testWidgets('an event with seats and standing types shows exactly one gold button, in the bar', (tester) async {
+  testWidgets('an event with seats and standing types shows exactly one gold button, in the bar, and no standing link in the page', (tester) async {
     await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/both');
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('chooseSeats')), findsOneWidget);
-    final standing = find.byKey(const Key('getTickets'));
-    expect(standing, findsOneWidget); // "Standing tickets", outlined, in the Tickets section
+    expect(find.byKey(const Key('chooseSeats')), findsNothing);
+    final bar = find.byKey(const Key('getTickets'));
+    expect(bar, findsOneWidget);
+    expect(find.descendant(of: find.byType(PrimaryActionBar), matching: find.byKey(const Key('getTickets'))), findsOneWidget);
+    expect(find.text('Standing tickets'), findsNothing); // the old in-page link is gone
     expect(goldButtons(tester), hasLength(1));
     expect(goldButtons(tester, within: find.byType(PrimaryActionBar)), hasLength(1));
-    expect(goldButtons(tester, within: standing), isEmpty);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('mixed event: the gold button opens a chooser with both kinds and their starting prices', (tester) async {
+    for (final lang in ['en', 'my']) {
+      await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+      GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/both');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('getTickets')));
+      await tester.pumpAndSettle();
+      final seats = find.byKey(const Key('kindSeats'));
+      final standing = find.byKey(const Key('kindStanding'));
+      expect(seats, findsOneWidget, reason: lang);
+      expect(standing, findsOneWidget, reason: lang);
+      expect(tester.takeException(), isNull, reason: lang);
+      expect(goldButtons(tester, within: find.byType(BottomSheet)), isEmpty, reason: lang); // the bar stays the only gold button
+      if (lang == 'en') {
+        expect(find.descendant(of: seats, matching: find.text('Choose seats')), findsOneWidget);
+        expect(find.descendant(of: seats, matching: find.text('From 20,000 MMK')), findsOneWidget);
+        expect(find.descendant(of: standing, matching: find.text('Standing tickets')), findsOneWidget);
+        expect(find.descendant(of: standing, matching: find.text('From 8,000 MMK')), findsOneWidget);
+      }
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('mixed event chooser: seats row goes to the seat map, standing row opens the quantity picker', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/both');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('kindStanding')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('kindStanding')), findsNothing); // chooser closed
+    expect(find.byKey(const Key('sheetSubmit')), findsOneWidget);
+    expect(find.byKey(const Key('qty-tt-stand')), findsOneWidget);
+    expect(find.byKey(const Key('qty-tt-seat')), findsNothing); // seated types are not in the quantity picker
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('kindSeats')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('kindSeats')), findsNothing);
+    expect(find.byType(SeatPickerScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seats-only event still goes straight to the seat map', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/seated');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chooseSeats')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('kindSeats')), findsNothing);
+    expect(find.byType(SeatPickerScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('ticket picker with the keyboard open does not overflow and keeps promo and total reachable', (tester) async {
+    for (final lang in ['en', 'my']) {
+      await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+      GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('getTickets')));
+      await tester.pumpAndSettle();
+      final plus = find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.add)).first;
+      await tester.ensureVisible(plus);
+      await tester.pumpAndSettle();
+      await tester.tap(plus);
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('sheetAddPromo')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('sheetAddPromo')));
+      await tester.pumpAndSettle();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300 * 3);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang keyboard open');
+      // The promo field and the total scroll into reach above the keyboard
+      await tester.ensureVisible(find.byKey(const Key('promoField')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('promoField')));
+      await tester.enterText(find.byKey(const Key('promoField')), 'WELCOME');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang promo');
+      expect(tester.getRect(find.byKey(const Key('promoField'))).bottom, lessThanOrEqualTo(844 - 300), reason: '$lang promo above the keyboard');
+      await tester.ensureVisible(find.byKey(const Key('sheetTotal')));
+      await tester.pumpAndSettle();
+      final total = tester.getRect(find.byKey(const Key('sheetTotal')));
+      expect(total.bottom, lessThanOrEqualTo(844 - 300), reason: '$lang total above the keyboard');
+      expect(total.top, greaterThanOrEqualTo(0), reason: lang);
+      tester.view.resetViewInsets();
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   testWidgets('with the ticket picker open, exactly one gold button is visible in the sheet', (tester) async {

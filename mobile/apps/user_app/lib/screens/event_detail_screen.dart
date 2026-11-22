@@ -278,17 +278,6 @@ class _Detail extends ConsumerWidget {
               ),
               if (!payable && e.ticketTypes.any((tt) => !tt.isFree))
                 Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.paidSoon, style: theme.textTheme.bodySmall)),
-              // Seats AND standing tickets on sale: the gold bar button takes the seats, standing tickets sit here
-              if (canChooseSeats && canRegister)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: OutlinedButton(
-                    key: const Key('getTickets'),
-                    style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
-                    onPressed: () => _startRegister(context, ref, payable),
-                    child: Text(t.standingTickets),
-                  ),
-                ),
             ]),
             _WatchSection(eventId: e.id, lang: lang),
             if (e.gallery.isNotEmpty)
@@ -435,7 +424,21 @@ class _Detail extends ConsumerWidget {
               ]),
               action: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
-                child: canChooseSeats
+                child: canChooseSeats && canRegister
+                    // Seats AND standing tickets on sale: the button asks which kind first
+                    ? FilledButton(
+                        key: const Key('getTickets'),
+                        style: E360Buttons.gold,
+                        onPressed: () => _chooseKind(
+                          context,
+                          ref,
+                          payable,
+                          seatsFrom: _fromLabel(t, lang, e.ticketTypes.where((tt) => tt.seated && sellable(tt))),
+                          standingFrom: _fromLabel(t, lang, e.ticketTypes.where((tt) => !tt.seated && sellable(tt))),
+                        ),
+                        child: Text(t.getTickets, textAlign: TextAlign.center),
+                      )
+                    : canChooseSeats
                     ? FilledButton(
                         key: const Key('chooseSeats'),
                         style: E360Buttons.gold,
@@ -458,6 +461,67 @@ class _Detail extends ConsumerWidget {
               ),
             )
           : null,
+    );
+  }
+
+  /// "From 5,000 MMK", or "Free" when the cheapest of [types] is free.
+  static String _fromLabel(L10n t, String lang, Iterable<TicketType> types) {
+    final lo = types.map((x) => x.priceMmk).fold<int?>(null, (m, p) => m == null || p < m ? p : m);
+    if (lo == null || lo == 0) return t.free;
+    return t.fromPrice(t.mmk(formatAmount(lo, lang)));
+  }
+
+  /// Small sheet for events with seats and standing tickets: "Choose seats" → seat map, "Standing tickets" → quantity picker.
+  void _chooseKind(BuildContext context, WidgetRef ref, bool payable, {required String seatsFrom, required String standingFrom}) {
+    final theme = Theme.of(context);
+    final t = L10n.of(context);
+    Widget row(Key key, String title, String price, VoidCallback onTap) => Material(
+          color: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.colorScheme.outlineVariant)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: key,
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 64),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(title, style: theme.textTheme.titleMedium),
+                      Text(price, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
+                    ]),
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+                ]),
+              ),
+            ),
+          ),
+        );
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+            Text(t.chooseTicketKind, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            row(const Key('kindSeats'), t.chooseSeats, seatsFrom, () {
+              Navigator.of(sheet).pop();
+              context.push('/event/${event.id}/seats');
+            }),
+            const SizedBox(height: 12),
+            row(const Key('kindStanding'), t.standingTickets, standingFrom, () {
+              Navigator.of(sheet).pop();
+              _startRegister(context, ref, payable);
+            }),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -1049,6 +1113,37 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final e = widget.event;
     final listed = e.ticketTypes.where((x) => !x.seated && (x.soldOut || x.isFree || widget.payable)).toList();
     final showPromo = _promoOpen || _promoResult != null || _promo.text.isNotEmpty;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final footer = Container(
+                decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 16),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (!_type.isFree) DiscountLines(view: view, lang: lang),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: TotalRow(
+                        label: Text(t.ticketsTotal(_qty), style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant)),
+                        original: !_type.isFree && view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+                        total: _type.isFree ? t.free : t.mmk(formatAmount(view.totalMmk, lang)),
+                        totalKey: const Key('sheetTotal'),
+                      ),
+                    ),
+                    if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: scheme.error))),
+                    const SizedBox(height: 14),
+                    FilledButton(
+                      key: const Key('sheetSubmit'),
+                      style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)), textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
+                      onPressed: _busy ? null : _submit,
+                      child: _busy
+                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: E360Colors.goldInk))
+                          : Text(_type.isFree ? t.register : t.continueToPayment),
+                    ),
+                  ]),
+                ),
+              );
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: _done
@@ -1136,39 +1231,12 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                         const SizedBox(height: 8),
                       ],
                     ],
+                    // Keyboard open: the total and the button scroll with the rest, so a short screen never overflows
+                    if (keyboardOpen) footer,
                   ]),
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 16),
-                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    if (!_type.isFree) DiscountLines(view: view, lang: lang),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: TotalRow(
-                        label: Text(t.ticketsTotal(_qty), style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant)),
-                        original: !_type.isFree && view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
-                        total: _type.isFree ? t.free : t.mmk(formatAmount(view.totalMmk, lang)),
-                        totalKey: const Key('sheetTotal'),
-                      ),
-                    ),
-                    if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: scheme.error))),
-                    const SizedBox(height: 14),
-                    FilledButton(
-                      key: const Key('sheetSubmit'),
-                      style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)), textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: E360Colors.goldInk))
-                          : Text(_type.isFree ? t.register : t.continueToPayment),
-                    ),
-                  ]),
-                ),
-              ),
+              if (!keyboardOpen) footer,
             ]),
     );
   }

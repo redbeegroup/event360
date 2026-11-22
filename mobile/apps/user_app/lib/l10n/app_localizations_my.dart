@@ -362,7 +362,7 @@ class L10nMy extends L10n {
       'တိုက်ရိုက်ထုတ်လွှင့်မှု ပြီးဆုံးပါပြီ။ မှတ်တမ်း မကြာမီ ရနိုင်ပါသည်။';
 
   @override
-  String get getTickets => 'လက်မှတ်ဝယ်မည်';
+  String get getTickets => 'လက်မှတ်ယူမည်';
 
   @override
   String get checkout => 'ငွေပေးချေရန်';
@@ -526,6 +526,9 @@ class L10nMy extends L10n {
 
   @override
   String get standingTickets => 'ရပ်ကြည့် လက်မှတ်များ';
+
+  @override
+  String get chooseTicketKind => 'လက်မှတ် အမျိုးအစား ရွေးပါ';
 
   @override
   String get tapSeatHint => 'ရွေးလိုသော ခုံကို ထိပါ';

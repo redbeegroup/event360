@@ -150,7 +150,9 @@ class Event360Theme {
         shape: const StadiumBorder(),
         backgroundColor: scheme.surfaceContainerHighest,
         selectedColor: scheme.primary,
-        side: BorderSide.none,
+        side: dark
+            ? WidgetStateBorderSide.resolveWith((states) => states.contains(WidgetState.selected) ? BorderSide.none : const BorderSide(color: E360DarkColors.chipLine))
+            : BorderSide.none,
         labelStyle: text.labelMedium,
       ),
       filledButtonTheme: FilledButtonThemeData(

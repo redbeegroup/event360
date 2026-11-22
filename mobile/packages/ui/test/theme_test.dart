@@ -20,6 +20,16 @@ double _contrast(Color a, Color b) {
 }
 
 void main() {
+  test('dark chip outline is at least 3:1 against card and paper; light chips keep no outline', () {
+    expect(_contrast(E360DarkColors.chipLine, E360DarkColors.card), greaterThanOrEqualTo(3));
+    expect(_contrast(E360DarkColors.chipLine, E360DarkColors.paper), greaterThanOrEqualTo(3));
+    final side = Event360Theme.dark().chipTheme.side!;
+    expect(side, isA<WidgetStateBorderSide>());
+    expect((side as WidgetStateBorderSide).resolve({})!.color, E360DarkColors.chipLine);
+    expect(side.resolve({WidgetState.selected})!.style, BorderStyle.none);
+    expect(Event360Theme.light().chipTheme.side, BorderSide.none);
+  });
+
   test('light scheme primary is night, scaffold is paper', () {
     final t = Event360Theme.light();
     expect(t.colorScheme.primary, E360Colors.night);

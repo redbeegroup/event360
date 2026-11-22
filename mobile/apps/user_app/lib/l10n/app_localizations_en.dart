@@ -527,6 +527,9 @@ class L10nEn extends L10n {
   String get standingTickets => 'Standing tickets';
 
   @override
+  String get chooseTicketKind => 'Choose ticket type';
+
+  @override
   String get tapSeatHint => 'Tap a seat to select it';
 
   @override

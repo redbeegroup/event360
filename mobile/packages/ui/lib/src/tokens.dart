@@ -70,6 +70,9 @@ class E360DarkColors {
   static const Color ink2 = Color(0xFFC9CDE6);
   static const Color muted = Color(0xFFA6ABC8);
   static const Color line = Color(0xFF2C3054);
+
+  /// Chip outline: at least 3:1 against [card] and [paper] (the hairline [line] is too faint for a control edge).
+  static const Color chipLine = Color(0xFF6B719E);
   static const Color tint = Color(0xFF262A52);
 
   /// Navy filled buttons become this in dark mode, with [onNavy] text.
