@@ -764,94 +764,115 @@ class _BottomBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (notice != null)
-              Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(notice!, key: const Key('seatNotice'), style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600))),
-            if (error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(error!, key: const Key('seatError'), style: TextStyle(color: theme.colorScheme.error))),
-            if (selected.isEmpty)
-              Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(t.tapSeatHint, style: theme.textTheme.bodyMedium))
-            else
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 76),
-                child: SingleChildScrollView(
-                  child: Wrap(spacing: 6, runSpacing: 0, children: [
-                    for (final i in selected)
-                      InputChip(
-                        key: Key('chip-${layout.seats[i].seatKey}'),
-                        label: Text(layout.seats[i].labelFor(lang), style: const TextStyle(fontSize: 12)),
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        shape: const StadiumBorder(),
-                        side: BorderSide.none,
-                        deleteIconColor: theme.colorScheme.onPrimaryContainer,
-                        onDeleted: () => onRemove(i),
-                      ),
-                  ]),
-                ),
-              ),
-            if (!promoOpen)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(key: const Key('addPromo'), style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero), onPressed: onOpenPromo, child: Text(t.addPromoCode)),
-              )
-            else ...[
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('promoField'),
-                    controller: promoController,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(labelText: t.promoCode, isDense: true),
-                    onSubmitted: (_) => onApplyPromo(),
+          // With large text the bar scrolls inside half the screen so the seat map keeps room
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.5),
+            child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (notice != null)
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(notice!, key: const Key('seatNotice'), style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600))),
+                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(error!, key: const Key('seatError'), style: TextStyle(color: theme.colorScheme.error))),
+                if (selected.isEmpty)
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(t.tapSeatHint, style: theme.textTheme.bodyMedium))
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 76),
+                    child: SingleChildScrollView(
+                      child: Wrap(spacing: 6, runSpacing: 0, children: [
+                        for (final i in selected)
+                          InputChip(
+                            key: Key('chip-${layout.seats[i].seatKey}'),
+                            label: Text(layout.seats[i].labelFor(lang), style: const TextStyle(fontSize: 12)),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: theme.colorScheme.primaryContainer,
+                            shape: const StadiumBorder(),
+                            side: BorderSide.none,
+                            deleteIconColor: theme.colorScheme.onPrimaryContainer,
+                            onDeleted: () => onRemove(i),
+                          ),
+                      ]),
+                    ),
                   ),
+                if (!promoOpen)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(key: const Key('addPromo'), style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero), onPressed: onOpenPromo, child: Text(t.addPromoCode)),
+                  )
+                else ...[
+                  if (MediaQuery.textScalerOf(context).scale(1) >= 1.5) ...[
+                    // Large text: the code field gets its own line and the buttons wrap below it
+                    TextField(
+                      key: const Key('promoField'),
+                      controller: promoController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(labelText: t.promoCode, isDense: true),
+                      onSubmitted: (_) => onApplyPromo(),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      OutlinedButton(key: const Key('promoApply'), style: E360Buttons.outline, onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
+                      TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
+                    ]),
+                  ] else
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        child: TextField(
+                          key: const Key('promoField'),
+                          controller: promoController,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: InputDecoration(labelText: t.promoCode, isDense: true),
+                          onSubmitted: (_) => onApplyPromo(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(key: const Key('promoApply'), style: E360Buttons.outline, onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
+                      const SizedBox(width: 4),
+                      TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
+                    ]),
+                  if (promoError != null)
+                    Padding(padding: const EdgeInsets.only(top: 6), child: Text(promoError!, key: const Key('promoError'), style: TextStyle(color: theme.colorScheme.error))),
+                  if (promo != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: promo!.valid
+                          ? (promo!.promoApplied
+                              ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
+                              : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
+                          : Text(promoReasonText(t, promo!.reasonCode), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
+                    ),
+                ],
+                if (checkingCode) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t.promoChecking, key: const Key('promoCheckingNote'), style: theme.textTheme.bodySmall)),
+                if (selected.isNotEmpty && !checkingCode) DiscountLines(view: view, lang: lang),
+                const SizedBox(height: 6),
+                TotalRow(
+                  label: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium),
+                  original: view.discountMmk > 0 ? t.mmk(formatAmount(totalMmk, lang)) : null,
+                  total: t.mmk(formatAmount(view.totalMmk, lang)),
+                  totalKey: const Key('seatTotal'),
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton(key: const Key('promoApply'), style: E360Buttons.outline, onPressed: promoChecking ? null : onApplyPromo, child: Text(t.apply)),
-                const SizedBox(width: 4),
-                TextButton(key: const Key('promoRemove'), onPressed: onRemovePromo, child: Text(t.removePromo)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      key: const Key('bestAvailable'),
+                      style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
+                      onPressed: busy ? null : onBest,
+                      child: Text(t.bestAvailable),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('seatContinue'),
+                      style: E360Buttons.gold,
+                      onPressed: busy || selected.isEmpty || !canContinue ? null : onContinue,
+                      child: busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.continueLabel),
+                    ),
+                  ),
+                ]),
               ]),
-              if (promoError != null)
-                Padding(padding: const EdgeInsets.only(top: 6), child: Text(promoError!, key: const Key('promoError'), style: TextStyle(color: theme.colorScheme.error))),
-              if (promo != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: promo!.valid
-                      ? (promo!.promoApplied
-                          ? Text(t.promoApplied(t.mmk(formatAmount(promo!.discountMmk, lang))), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w600))
-                          : const SizedBox.shrink()) // lost to the group discount: DiscountLines says so
-                      : Text(promoReasonText(t, promo!.reasonCode), key: const Key('promoResult'), style: TextStyle(color: theme.colorScheme.error)),
-                ),
-            ],
-            if (checkingCode) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t.promoChecking, key: const Key('promoCheckingNote'), style: theme.textTheme.bodySmall)),
-            if (selected.isNotEmpty && !checkingCode) DiscountLines(view: view, lang: lang),
-            const SizedBox(height: 6),
-            TotalRow(
-              label: Text('${t.seatsChosen(selected.length)} · ${t.total}', style: theme.textTheme.bodyMedium),
-              original: view.discountMmk > 0 ? t.mmk(formatAmount(totalMmk, lang)) : null,
-              total: t.mmk(formatAmount(view.totalMmk, lang)),
-              totalKey: const Key('seatTotal'),
             ),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  key: const Key('bestAvailable'),
-                  style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
-                  onPressed: busy ? null : onBest,
-                  child: Text(t.bestAvailable),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  key: const Key('seatContinue'),
-                  style: E360Buttons.gold,
-                  onPressed: busy || selected.isEmpty || !canContinue ? null : onContinue,
-                  child: busy ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5)) : Text(t.continueLabel),
-                ),
-              ),
-            ]),
-          ]),
+          ),
         ),
       ),
     );

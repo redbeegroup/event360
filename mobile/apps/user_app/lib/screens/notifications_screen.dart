@@ -57,12 +57,16 @@ class NotificationsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(t.notifications), actions: [
         if ((inbox.value?.unread ?? 0) > 0)
-          TextButton(
-            onPressed: () async {
-              await ref.read(apiProvider).markNotificationsRead().catchError((_) {});
-              ref.invalidate(inboxProvider);
-            },
-            child: Text(t.markAllRead),
+          ConstrainedBox(
+            // Large text: the label wraps instead of pushing the title out of the bar
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.45),
+            child: TextButton(
+              onPressed: () async {
+                await ref.read(apiProvider).markNotificationsRead().catchError((_) {});
+                ref.invalidate(inboxProvider);
+              },
+              child: Text(t.markAllRead, textAlign: TextAlign.center),
+            ),
           ),
       ]),
       body: inbox.when(

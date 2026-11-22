@@ -16,6 +16,19 @@ class ProfileScreen extends ConsumerWidget {
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final large = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
+    final languageSwitch = SegmentedButton<String>(
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: scheme.primary,
+        selectedForegroundColor: scheme.onPrimary,
+        side: BorderSide(color: scheme.outlineVariant),
+        minimumSize: const Size(44, 44),
+      ),
+      showSelectedIcon: false,
+      segments: const [ButtonSegment(value: 'my', label: Text('မြန်မာ')), ButtonSegment(value: 'en', label: Text('EN'))],
+      selected: {lang},
+      onSelectionChanged: (s) => ref.read(localeProvider.notifier).set(s.first),
+    );
     return Scaffold(
       appBar: AppBar(title: Text(t.profile)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
@@ -32,18 +45,9 @@ class ProfileScreen extends ConsumerWidget {
               minTileHeight: 64,
               leading: Icon(Icons.translate, color: scheme.primary),
               title: Text(t.language, style: theme.textTheme.titleMedium),
-              trailing: SegmentedButton<String>(
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: scheme.primary,
-                  selectedForegroundColor: scheme.onPrimary,
-                  side: BorderSide(color: scheme.outlineVariant),
-                  minimumSize: const Size(44, 44),
-                ),
-                showSelectedIcon: false,
-                segments: const [ButtonSegment(value: 'my', label: Text('မြန်မာ')), ButtonSegment(value: 'en', label: Text('EN'))],
-                selected: {lang},
-                onSelectionChanged: (s) => ref.read(localeProvider.notifier).set(s.first),
-              ),
+              // Large text: the switch moves under the label instead of squeezing beside it
+              trailing: large ? null : languageSwitch,
+              subtitle: large ? Align(alignment: AlignmentDirectional.centerStart, child: languageSwitch) : null,
             ),
           ]),
         ),

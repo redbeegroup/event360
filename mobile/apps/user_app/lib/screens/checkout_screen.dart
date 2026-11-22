@@ -179,13 +179,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [
                     Expanded(child: Text(t.discount, style: theme.textTheme.bodyLarge)),
-                    Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount'), style: theme.textTheme.bodyLarge),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                      child: Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount'), textAlign: TextAlign.end, style: theme.textTheme.bodyLarge),
+                    ),
                   ]),
                 ),
               const Divider(height: 24),
               Row(children: [
                 Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-                Text(t.mmk(formatAmount(o.totalMmk, lang)), style: theme.textTheme.headlineSmall),
+                // Large text: a long amount wraps instead of pushing the label out
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.6),
+                  child: Text(t.mmk(formatAmount(o.totalMmk, lang)), textAlign: TextAlign.end, style: theme.textTheme.headlineSmall),
+                ),
               ]),
               if (o.holdExpiresAt != null)
                 Padding(

@@ -268,8 +268,13 @@ class _Detail extends ConsumerWidget {
                           ]),
                         ),
                         const SizedBox(width: 12),
-                        Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
-                            style: theme.textTheme.titleMedium?.copyWith(fontSize: 15, color: tt.isFree ? (dark ? E360DarkColors.success : E360Colors.success) : null)),
+                        // Large text: the price may wrap instead of squeezing the name out of the row
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                          child: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
+                              textAlign: TextAlign.end,
+                              style: theme.textTheme.titleMedium?.copyWith(fontSize: 15, color: tt.isFree ? (dark ? E360DarkColors.success : E360Colors.success) : null)),
+                        ),
                       ]),
                     ),
                     if (tt.soldOut && !ended && !cancelled) _WaitlistRow(event: e, type: tt),
@@ -329,7 +334,7 @@ class _Detail extends ConsumerWidget {
             if (e.performers.isNotEmpty)
               section(t.lineup, [
                 SizedBox(
-                  height: 132,
+                  height: 132 + MediaQuery.textScalerOf(context).scale(36) - 36, // the name and role lines grow with the text size
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: e.performers.length,
@@ -681,6 +686,28 @@ class _WaitlistRowState extends ConsumerState<_WaitlistRow> {
     final theme = Theme.of(context);
     final entry = activeEntryFor(ref.watch(waitlistProvider).value ?? const [], widget.type.id);
     final id = widget.type.id;
+    // With large text the message and its button stack instead of sharing one row
+    final large = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
+    Widget beside(Widget message, Widget action) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [message, const SizedBox(height: 8), action]);
+    if (entry != null && large) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: entry.isOffered
+            ? beside(
+                Text(t.waitlistOfferedInline, key: Key('${widget.keyPrefix}waitlistOffered-$id'), style: theme.textTheme.titleSmall),
+                FilledButton(
+                  key: Key('${widget.keyPrefix}buyOffer-$id'),
+                  style: E360Buttons.navy.copyWith(minimumSize: const WidgetStatePropertyAll(Size(64, 44))),
+                  onPressed: () => openOffer(context, ref, entry),
+                  child: Text(t.buyNow),
+                ),
+              )
+            : beside(
+                Text(t.waitlistPosition(entry.position ?? 1), key: Key('${widget.keyPrefix}waitlistPosition-$id'), style: theme.textTheme.titleSmall),
+                TextButton(key: Key('${widget.keyPrefix}leaveWaitlist-$id'), onPressed: _busy ? null : _leave, child: Text(t.leaveWaitlist)),
+              ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(children: [
@@ -760,7 +787,7 @@ class _JoinWaitlistSheetState extends ConsumerState<_JoinWaitlistSheet> {
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     final max_ = widget.type.maxPerOrder;
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(t.waitlistSheetTitle, style: theme.textTheme.titleLarge),
@@ -1072,6 +1099,14 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     );
   }
 
+  /// Name and price beside the badge; with large text the badge drops to its own line instead of overflowing.
+  Widget _soldOutHeader(Widget info, Widget badge) {
+    if (MediaQuery.textScalerOf(context).scale(1) >= 1.5) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: 8), badge]);
+    }
+    return Row(children: [Expanded(child: info), const SizedBox(width: 12), badge]);
+  }
+
   Widget _soldOutCard(TicketType tt, String lang, L10n t, ThemeData theme) {
     final price = tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang));
     return _CardBox(
@@ -1080,16 +1115,13 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                Text(price, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
-              ]),
-            ),
-            const SizedBox(width: 12),
+          child: _soldOutHeader(
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(pickLang(lang, tt.name, tt.nameMy), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(price, style: theme.textTheme.bodySmall?.copyWith(fontSize: 14)),
+            ]),
             E360Badge(t.soldOut, kind: E360BadgeKind.dark),
-          ]),
+          ),
         ),
         Divider(color: theme.colorScheme.outlineVariant),
         const SizedBox(height: 14),
@@ -1114,6 +1146,9 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final e = widget.event;
     final listed = e.ticketTypes.where((x) => !x.seated && (x.soldOut || x.isFree || widget.payable)).toList();
     final showPromo = _promoOpen || _promoResult != null || _promo.text.isNotEmpty;
+    // With large text the pinned header and footer would leave the cards almost no room: the footer then scrolls
+    // with the cards instead. At normal sizes it stays pinned.
+    final scrollFooter = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
     final footer = Container(
       decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -1187,8 +1222,10 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     for (final tt in listed) ...[
                       tt.soldOut ? _soldOutCard(tt, lang, t, theme) : _typeCard(tt, lang, t, theme),
                       const SizedBox(height: 12),
@@ -1231,10 +1268,13 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                         const SizedBox(height: 8),
                       ],
                     ],
+                      ]),
+                    ),
+                    if (scrollFooter) footer,
                   ]),
                 ),
               ),
-              footer,
+              if (!scrollFooter) footer,
             ]),
     );
   }

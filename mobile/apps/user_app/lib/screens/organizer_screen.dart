@@ -51,7 +51,7 @@ class OrganizerScreen extends ConsumerWidget {
                     Row(children: [
                       Icon(Icons.verified, size: 16, color: theme.colorScheme.primary),
                       const SizedBox(width: 4),
-                      Text(t.verified, style: theme.textTheme.bodySmall),
+                      Flexible(child: Text(t.verified, style: theme.textTheme.bodySmall)),
                     ]),
                 ]),
               ),

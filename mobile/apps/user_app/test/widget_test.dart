@@ -2708,4 +2708,323 @@ void main() {
     expect(uri.toString(), 'https://www.google.com/maps/search/?api=1&query=Shwe%20Pyi%20Theatre%2C%20Yangon');
     expect(uri.queryParameters['query'], 'Shwe Pyi Theatre, Yangon');
   });
+
+  testWidgets('ticket picker at text scale 2.0: every card, the promo field, total and submit can be scrolled to and tapped', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    for (final lang in ['en', 'my']) {
+      await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+      GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('getTickets')));
+      await tester.pumpAndSettle();
+      Future<void> reach(Finder f, String what) async {
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        final r = tester.getRect(f);
+        expect(r.top, greaterThanOrEqualTo(0), reason: '$lang $what');
+        expect(r.bottom, lessThanOrEqualTo(844), reason: '$lang $what');
+        expect(tester.takeException(), isNull, reason: '$lang $what');
+      }
+
+      for (final id in ['tt-mix-a', 'tt-mix-b']) {
+        await reach(find.byKey(Key('qty-$id')), 'card $id');
+      }
+      await reach(find.byKey(const Key('sheet-joinWaitlist-tt-mix-c')), 'sold-out card');
+      await tester.tap(find.byKey(const Key('sheet-joinWaitlist-tt-mix-c')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('waitSubmit')), findsOneWidget, reason: '$lang waitlist sheet opens');
+      await tester.tap(find.byKey(const Key('waitSubmit')));
+      await tester.pumpAndSettle();
+      final plus = find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.add)).first;
+      await reach(plus, 'stepper');
+      await tester.tap(plus);
+      await tester.pump();
+      await reach(find.byKey(const Key('sheetAddPromo')), 'add promo');
+      await tester.tap(find.byKey(const Key('sheetAddPromo')));
+      await tester.pumpAndSettle();
+      await reach(find.byKey(const Key('promoField')), 'promo field');
+      await tester.enterText(find.byKey(const Key('promoField')), 'WELCOME');
+      await tester.pump();
+      await reach(find.byKey(const Key('sheetTotal')), 'total');
+      await reach(find.byKey(const Key('sheetSubmit')), 'submit');
+      expect(goldButtons(tester, within: find.byType(BottomSheet)), hasLength(1), reason: '$lang one gold button');
+      await tester.tap(find.byKey(const Key('sheetSubmit')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$lang after submit');
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('ticket picker at text scale 1.0 keeps its footer pinned: total and submit are visible without scrolling', (tester) async {
+    await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    for (final key in ['sheetTotal', 'sheetSubmit']) {
+      final f = find.byKey(Key(key));
+      expect(f, findsOneWidget);
+      expect(find.descendant(of: find.descendant(of: find.byType(BottomSheet), matching: find.byType(SingleChildScrollView)), matching: f), findsNothing, reason: '$key is outside the scroll area');
+      final r = tester.getRect(f);
+      expect(r.top, greaterThanOrEqualTo(0), reason: key);
+      expect(r.bottom, lessThanOrEqualTo(844), reason: key);
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('sold-out ticket card at text scale 2.0 in Myanmar puts the badge on its own line without overflow', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpApp(tester, signedIn: true, lang: 'my', setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/mixed');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('getTickets')));
+    await tester.pumpAndSettle();
+    final badge = find.descendant(of: find.byType(BottomSheet), matching: find.byType(E360Badge));
+    await tester.ensureVisible(badge);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // ───── Large-text sweep: every screen at 390x844, text scale 2.0, EN and MY ─────
+
+  /// Drags every scrollable on screen to its far end in small steps; any layout error is thrown on the way.
+  Future<void> scrollThrough(WidgetTester tester) async {
+    final count = find.byType(Scrollable).evaluate().length;
+    for (var i = 0; i < count; i++) {
+      final f = find.byType(Scrollable).at(i);
+      if (!f.evaluate().isNotEmpty) break;
+      final horizontal = tester.state<ScrollableState>(f).axisDirection == AxisDirection.right;
+      for (var k = 0; k < 10; k++) {
+        await tester.drag(f, horizontal ? const Offset(-250, 0) : const Offset(0, -350), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  final largeTextScreens = <String, ({String route, bool signedIn, void Function(FakeApi)? setup, Future<void> Function(WidgetTester)? then})>{
+    'discover': (route: '/', signedIn: false, setup: null, then: null),
+    'discover signed in with offer banner': (route: '/', signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))], then: null),
+    'explore': (route: '/explore', signedIn: false, setup: null, then: null),
+    'explore filtered by category': (route: '/explore?category=lifestyle-social', signedIn: false, setup: null, then: null),
+    'explore free only and city menu': (route: '/explore', signedIn: false, setup: null, then: (t) async {
+      await t.tap(find.byType(FilterChip));
+      await t.pumpAndSettle();
+      await t.tap(find.byType(PopupMenuButton<String?>));
+      await t.pumpAndSettle();
+    }),
+    'event free': (route: '/event/e1', signedIn: true, setup: null, then: null),
+    'event paid': (route: '/event/e2', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'event paid, no payment method': (route: '/event/e2', signedIn: true, setup: null, then: null),
+    'event rich (streams, schedule)': (route: '/event/rich', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'event seated': (route: '/event/seated', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'event seated, two types, discounts': (route: '/event/seated2', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.nextPriceJson = {'priceMmk': 700000, 'startsAt': '2027-01-10T08:00:00.000Z'};
+      a.groupTiers = [{'minQuantity': 2, 'percentBp': 1000}];
+    }, then: null),
+    'event mixed with an offer': (route: '/event/mixed', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
+    }, then: null),
+    'event mixed, waiting in line': (route: '/event/mixed', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.waitlist = [FakeApi.waitlistRow('w9', event: 'mixed', type: 'tt-mix-c', position: 3)];
+    }, then: null),
+    'event free and paid': (route: '/event/freepaid', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'event sold out': (route: '/event/soldout', signedIn: true, setup: null, then: null),
+    'event sold out, signed out': (route: '/event/soldout', signedIn: false, setup: null, then: null),
+    'event sold out, in line': (route: '/event/soldout', signedIn: true, setup: (a) => a.waitlist = [FakeApi.waitlistRow('w1', position: 2)], then: null),
+    'join waitlist sheet': (route: '/event/soldout', signedIn: true, setup: null, then: (t) async {
+      final join = find.byKey(const Key('joinWaitlist-tt-soldout'));
+      await t.scrollUntilVisible(join, 200, scrollable: find.byType(Scrollable).first);
+      await t.pumpAndSettle();
+      await t.tap(join);
+      await t.pumpAndSettle();
+    }),
+    'free registration sheet and its result': (route: '/event/e1', signedIn: true, setup: null, then: (t) async {
+      await t.tap(find.descendant(of: find.byType(PrimaryActionBar), matching: find.byType(FilledButton)));
+      await t.pumpAndSettle();
+      
+      await t.tap(find.byKey(const Key('sheetSubmit')));
+      await t.pumpAndSettle();
+    }),
+    'ticket picker sheet': (route: '/event/mixed', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: (t) async {
+      await t.tap(find.byKey(const Key('getTickets')));
+      await t.pumpAndSettle();
+    }),
+    'ticket picker sheet with promo and discounts': (route: '/event/mixed', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.groupTiers = [{'minQuantity': 2, 'percentBp': 1000}];
+    }, then: (t) async {
+      await t.tap(find.byKey(const Key('getTickets')));
+      await t.pumpAndSettle();
+      final plus = find.descendant(of: find.byType(BottomSheet), matching: find.byIcon(Icons.add)).first;
+      await t.ensureVisible(plus);
+      await t.pumpAndSettle();
+      await t.tap(plus);
+      await t.tap(plus);
+      await t.pump();
+      await t.ensureVisible(find.byKey(const Key('sheetAddPromo')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('sheetAddPromo')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('promoField')), 'WELCOME');
+      await t.tap(find.byKey(const Key('promoApply')));
+      await t.pumpAndSettle();
+    }),
+    'ticket picker sheet, paid pick next to a free type': (route: '/event/freepaid', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: (t) async {
+      await t.tap(find.byKey(const Key('getTickets')));
+      await t.pumpAndSettle();
+    }),
+    'chooser sheet (seats or standing)': (route: '/event/both', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'seat picker': (route: '/event/seated/seats', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'seat picker, two types': (route: '/event/seated2/seats', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: null),
+    'seat picker with seats and promo': (route: '/event/seated/seats', signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')], then: (t) async {
+      await zoomIntoStalls(t);
+      for (var n = 1; n <= 3; n++) {
+        await tapSeat(t, 1, n);
+      }
+      expect(find.byKey(const Key('chip-A:1:3')), findsOneWidget);
+      await t.tap(find.byKey(const Key('addPromo')));
+      await t.pump();
+      await t.enterText(find.byKey(const Key('promoField')), 'WELCOME');
+      await t.tap(find.byKey(const Key('promoApply')));
+      await t.pumpAndSettle();
+    }),
+    'checkout, choosing a wallet': (route: '/checkout/ord-1', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'KBZPAY', label: 'KBZPay'), PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
+    }, then: null),
+    'checkout, waiting for the wallet': (route: '/checkout/ord-1', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
+    }, then: (t) async {
+      await t.scrollUntilVisible(find.byKey(const Key('method-MOCK')), 200, scrollable: find.byType(Scrollable).first);
+      await t.tap(find.byKey(const Key('method-MOCK')));
+      await t.pump();
+      await t.scrollUntilVisible(find.byKey(const Key('pay')), 200, scrollable: find.byType(Scrollable).first);
+      await t.tap(find.byKey(const Key('pay')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 100));
+    }),
+    'checkout, paid': (route: '/checkout/ord-1', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PAID');
+    }, then: null),
+    'checkout, hold expired': (route: '/checkout/ord-2', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-2'] = FakeApi.orderJson('ord-2', 'EXPIRED', expires: DateTime.now().toUtc().subtract(const Duration(minutes: 1)));
+    }, then: null),
+    'login': (route: '/login', signedIn: false, setup: null, then: null),
+    'login, code entry': (route: '/login', signedIn: false, setup: null, then: (t) async {
+      await t.enterText(find.byType(TextField), '09790000001');
+      await t.tap(find.byType(FilledButton).first);
+      await t.pumpAndSettle();
+    }),
+    'login, bad number': (route: '/login', signedIn: false, setup: null, then: (t) async {
+      await t.enterText(find.byType(TextField), '0912');
+      await t.tap(find.byType(FilledButton).first);
+      await t.pumpAndSettle();
+    }),
+    'language': (route: '/language', signedIn: false, setup: null, then: null),
+    'my tickets (with orders and an offer)': (route: '/tickets', signedIn: true, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
+      a.extraTickets = [
+        {
+          'id': 'ticket-seat-0001',
+          'status': 'VALID',
+          'ticketType': {'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း'},
+          'event': {'id': 'seated', 'title': 'Opera Night with a long title for the national philharmonic', 'titleMy': null, 'startsAt': '2099-01-15T10:30:00.000Z', 'endsAt': '2099-01-15T15:30:00.000Z', 'venue': {'name': 'National Theatre', 'city': 'Yangon'}, 'coverImageUrl': null, 'organization': 'Yangon Live'},
+          'qr': 'eyJ0aWQiOiJ0In0.c2ln',
+          'seatKey': 'A:1:1',
+          'seatLabel': 'Stalls · Row 1 · Seat 1',
+          'seatLabelMy': 'ရှေ့ခန်း · အတန်း 1 · ခုံ 1',
+          'isComplimentary': true,
+          'compLabel': 'Press',
+          'canCancel': true,
+          'canTransfer': false,
+        },
+      ];
+      a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
+    }, then: null),
+    'my tickets, signed out': (route: '/tickets', signedIn: false, setup: null, then: null),
+    'ticket (QR)': (route: '/ticket/ticket-0001-abcd', signedIn: true, setup: null, then: null),
+    'ticket with a seat and a long title': (route: '/ticket/ticket-seat-0001', signedIn: true, setup: (a) => a.extraTickets = [seatTicket], then: null),
+    'ticket, complimentary': (route: '/ticket/ticket-comp-0002', signedIn: true, setup: (a) => a.extraTickets = [compTicket], then: null),
+    'ticket, refunded': (route: '/ticket/ticket-ref-0005', signedIn: true, setup: (a) => a.extraTickets = [{...seatTicket, 'id': 'ticket-ref-0005', 'status': 'REFUNDED', 'canCancel': false}], then: null),
+    'ticket, send to someone': (route: '/ticket/ticket-0001-abcd', signedIn: true, setup: null, then: (t) async {
+      final send = find.byKey(const Key('transfer'));
+      await t.scrollUntilVisible(send, 200, scrollable: find.byType(Scrollable).first);
+      await t.tap(send);
+      await t.pumpAndSettle();
+    }),
+    'ticket, cancel dialog': (route: '/ticket/ticket-seat-0001', signedIn: true, setup: (a) => a.extraTickets = [seatTicket], then: (t) async {
+      final c = find.byKey(const Key('cancelTicket'));
+      await t.scrollUntilVisible(c, 200, scrollable: find.byType(Scrollable).first);
+      await t.tap(c);
+      await t.pumpAndSettle();
+    }),
+    'profile, signed in': (route: '/profile', signedIn: true, setup: null, then: null),
+    'profile, signed out': (route: '/profile', signedIn: false, setup: null, then: null),
+    'notifications': (route: '/notifications', signedIn: true, setup: null, then: null),
+    'notifications, empty': (route: '/notifications', signedIn: true, setup: (a) => a.inbox = [], then: null),
+    'organizer page': (route: '/organizer/yangon-live', signedIn: false, setup: null, then: null),
+    'watch screen': (route: '/watch/vod/a0000000-0000-0000-0000-000000000001?title=Highlights%20from%20the%20opening%20night', signedIn: true, setup: null, then: null),
+    'watch screen, no ticket': (route: '/watch/vod/a0000000-0000-0000-0000-000000000001?title=Highlights', signedIn: true, setup: (a) => a.watchError = 403, then: null),
+  };
+
+  for (final lang in ['en', 'my']) {
+    for (final entry in largeTextScreens.entries) {
+      testWidgets('large text: ${entry.key} has no overflow at 390x844, scale 2.0, $lang', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final c = entry.value;
+        final errors = <String>[];
+        void noErrors(String when) => expect(errors, isEmpty, reason: when);
+        await pumpApp(tester, signedIn: c.signedIn, lang: lang, setup: (a) {
+          a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+          c.setup?.call(a);
+        });
+        tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+        final previous = FlutterError.onError;
+        FlutterError.onError = (d) => errors.add(d.toDiagnosticsNode().toStringDeep().split('\n').where((l) => l.contains('overflowed') || l.contains('file:///') && l.contains('/lib/') || l.contains('package:event360') || l.contains('package:user_app')).take(6).join(' / '));
+        try {
+          await tester.pumpAndSettle();
+          final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+          if (const ['/', '/explore', '/tickets', '/profile'].contains(c.route.split('?').first)) {
+            router.go(c.route);
+          } else {
+            router.push(c.route);
+          }
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 600));
+          await tester.pump(const Duration(milliseconds: 600));
+          await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 5)).catchError((_) => 0);
+          noErrors('opened');
+          if (c.route == '/event/both') {
+            await tester.tap(find.byKey(const Key('getTickets')));
+            await tester.pumpAndSettle();
+            noErrors('chooser');
+          }
+          if (c.then != null) {
+            await c.then!(tester);
+            noErrors('after action');
+          }
+          await scrollThrough(tester);
+          noErrors('scrolled');
+        } finally {
+          FlutterError.onError = previous;
+        }
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+  }
 }
