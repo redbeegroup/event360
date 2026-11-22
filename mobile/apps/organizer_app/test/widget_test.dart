@@ -14,6 +14,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _future = '2099-01-15T10:30:00.000Z';
 
+Map<String, dynamic> _att(String id, String status, String? name, String? phone, {String? seat, String? guest, bool comp = false, String type = 'Standing'}) => {
+      'id': id,
+      'status': status,
+      'createdAt': '2026-11-20T04:00:00.000Z',
+      'seatLabel': seat,
+      'seatLabelMy': null,
+      'isComplimentary': comp,
+      'guestName': guest,
+      'holder': name == null ? null : {'displayName': name, 'phone': phone},
+      'ticketType': {'name': type},
+    };
+
 class FakeApi extends Event360Api {
   FakeApi(this.store) : super(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'http://fake'), store);
   final MemoryTokenStore store;
@@ -24,6 +36,18 @@ class FakeApi extends Event360Api {
   final promos = <Map<String, dynamic>>[];
   final sent = <Map<String, dynamic>>[];
   int unread = 2;
+
+  /// When true the event is on now (inside the check-in window); otherwise it is in 2099.
+  bool eventOpen = false;
+  bool failCheckIn = false;
+  final attendeesList = <Map<String, dynamic>>[
+    _att('a1', 'VALID', 'Aung Min', '09 912 345 67', seat: 'Balcony · Row C · Seat 12'),
+    _att('a2', 'VALID', 'Zaw Win', '09771111222'),
+    _att('a3', 'CHECKED_IN', 'Hnin Si', '09881112222'),
+    _att('a4', 'CHECKED_IN', 'Bo Bo', '09882223333'),
+    _att('a5', 'VOID', 'Cherry', '09773334444'),
+    _att('a6', 'VALID', null, null, guest: 'Daw Khin', comp: true, type: 'VIP deck'),
+  ];
 
   @override
   Future<void> passwordLogin(String email, String password) async {
@@ -39,7 +63,16 @@ class FakeApi extends Event360Api {
 
   @override
   Future<List<OrgEvent>> orgEvents(String orgId) async => [
-        OrgEvent.fromJson({'id': 'e1', 'slug': 'inya', 'title': 'Inya Lake Live $orgId', 'titleMy': null, 'status': 'PUBLISHED', 'startsAt': _future, 'endsAt': '2099-01-15T16:30:00.000Z', 'venue': {'name': 'Inya Lawn'}}),
+        OrgEvent.fromJson({
+          'id': 'e1',
+          'slug': 'inya',
+          'title': 'Inya Lake Live $orgId',
+          'titleMy': null,
+          'status': 'PUBLISHED',
+          'startsAt': eventOpen ? DateTime.now().toUtc().subtract(const Duration(hours: 1)).toIso8601String() : _future,
+          'endsAt': eventOpen ? DateTime.now().toUtc().add(const Duration(hours: 3)).toIso8601String() : '2099-01-15T16:30:00.000Z',
+          'venue': {'name': 'Inya Lawn'},
+        }),
         OrgEvent.fromJson({'id': 'e0', 'slug': 'old', 'title': 'Last year', 'titleMy': null, 'status': 'COMPLETED', 'startsAt': '2020-01-15T10:30:00.000Z', 'endsAt': '2020-01-15T16:30:00.000Z'}),
       ];
 
@@ -115,6 +148,45 @@ class FakeApi extends Event360Api {
   }
 
   @override
+  Future<List<Attendee>> attendees(String orgId, String eventId) async => attendeesList.map(Attendee.fromJson).toList();
+
+  final checkedInAt = DateTime.utc(2026, 11, 22, 10, 15);
+
+  CrewTicket _crewTicket(Map<String, dynamic> row, {bool checkedIn = false}) => CrewTicket.fromJson({
+        'id': row['id'],
+        'code': 'CODE-${row['id']}',
+        'status': row['status'],
+        'holderName': (row['holder'] as Map?)?['displayName'] ?? row['guestName'] ?? '',
+        'ticketType': {'name': 'Standing'},
+        if (checkedIn) 'checkedIn': {'at': checkedInAt.toIso8601String(), 'gate': 'Gate A', 'by': 'Crew'},
+      });
+
+  @override
+  Future<ScanOutcome> crewManualCheckin(String eventId, String ticketId, {String? gate, String? deviceId}) async {
+    calls.add('checkin:$ticketId:$gate');
+    if (failCheckIn) throw ApiException(null, 'No connection');
+    final i = attendeesList.indexWhere((a) => a['id'] == ticketId);
+    final row = attendeesList[i];
+    switch (row['status']) {
+      case 'VALID':
+        attendeesList[i] = {...row, 'status': 'CHECKED_IN'};
+        return ScanOutcome(result: 'ACCEPTED', ticket: _crewTicket(attendeesList[i], checkedIn: true));
+      case 'CHECKED_IN':
+        return ScanOutcome(result: 'ALREADY_CHECKED_IN', ticket: _crewTicket(row, checkedIn: true));
+      default:
+        return ScanOutcome(result: row['status'] as String, ticket: _crewTicket(row));
+    }
+  }
+
+  @override
+  Future<CrewTicket> crewUndo(String eventId, String ticketId) async {
+    calls.add('undo:$ticketId');
+    final i = attendeesList.indexWhere((a) => a['id'] == ticketId);
+    attendeesList[i] = {...attendeesList[i], 'status': 'VALID'};
+    return _crewTicket(attendeesList[i]);
+  }
+
+  @override
   Future<Inbox> organizerNotifications() async => Inbox.fromJson({
         'items': [
           {'id': 'n1', 'kind': 'org_sold_out', 'title': 'Sold out 🎉', 'titleMy': null, 'body': 'All 20 VIP tickets are gone.', 'bodyMy': null, 'link': '/event/e1', 'eventId': 'e1', 'readAt': unread > 0 ? null : '2026-11-20T04:00:00.000Z', 'createdAt': '2026-11-20T04:00:00.000Z'},
@@ -150,7 +222,7 @@ class FakePush implements PushClient {
   Future<void> deleteToken() async {}
 }
 
-Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push, String lang = 'en', Size size = const Size(1236, 2745), double dpr = 3}) async {
+Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push, String lang = 'en', Size size = const Size(1236, 2745), double dpr = 3, bool eventOpen = false}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = dpr;
   addTearDown(tester.view.reset);
@@ -158,7 +230,9 @@ Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role 
   final sp = await SharedPreferences.getInstance();
   final store = MemoryTokenStore();
   if (signedIn) await store.save('a', 'r');
-  final api = FakeApi(store)..role = role;
+  final api = FakeApi(store)
+    ..role = role
+    ..eventOpen = eventOpen;
   await tester.pumpWidget(ProviderScope(overrides: [
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
@@ -243,6 +317,8 @@ void main() {
   testWidgets('announce to ticket holders after confirming', (tester) async {
     final api = await pumpApp(tester);
     await tester.tap(find.text('Inya Lake Live o1'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('tabAnnounce')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tabAnnounce')));
     await tester.pumpAndSettle();
@@ -338,7 +414,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$lang overview scrolled');
       // Every other tab too
-      for (final k in ['tabDoor', 'tabAnnounce', 'tabPromos']) {
+      for (final k in ['tabGuests', 'tabDoor', 'tabAnnounce', 'tabPromos']) {
         await tester.ensureVisible(find.byKey(Key(k)));
         await tester.tap(find.byKey(Key(k)));
         await tester.pumpAndSettle();
@@ -414,6 +490,24 @@ void main() {
       await t.tap(find.byType(OutlinedButton).last, warnIfMissed: false);
       await t.pumpAndSettle();
     }),
+    'guests tab, list': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabGuests')),
+    'guests tab, sheet with Check in': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabGuests');
+      await t.tap(find.byKey(const Key('guestRow-a1')));
+      await t.pumpAndSettle();
+    }),
+    'guests tab, sheet with Undo': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabGuests');
+      await t.enterText(find.byKey(const Key('guestSearch')), 'hnin');
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('guestRow-a3')));
+      await t.pumpAndSettle();
+    }),
+    'guests tab, search with no match': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabGuests');
+      await t.enterText(find.byKey(const Key('guestSearch')), 'zzzz');
+      await t.pumpAndSettle();
+    }),
     'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),
     'announce tab, confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabAnnounce');
@@ -456,7 +550,7 @@ void main() {
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         final errors = <String>[];
         void noErrors(String when) => expect(errors, isEmpty, reason: when);
-        await pumpApp(tester, signedIn: entry.value.signedIn, role: entry.value.role, lang: lang, size: const Size(390 * 3, 844 * 3));
+        await pumpApp(tester, signedIn: entry.value.signedIn, role: entry.value.role, lang: lang, size: const Size(390 * 3, 844 * 3), eventOpen: true);
         final previous = FlutterError.onError;
         FlutterError.onError = (d) => errors.add(d.toDiagnosticsNode().toStringDeep().split('\n').where((l) => l.contains('overflowed') || l.contains('file:///') && l.contains('/lib/')).take(6).join(' / '));
         try {

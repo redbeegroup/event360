@@ -648,6 +648,132 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'View only: your role can\'t change this.'**
   String get readOnly;
+
+  /// No description provided for @tabGuests.
+  ///
+  /// In en, this message translates to:
+  /// **'Guests'**
+  String get tabGuests;
+
+  /// No description provided for @guestsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{inCount} of {total} checked in'**
+  String guestsCount(int inCount, int total);
+
+  /// No description provided for @guestsSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search name, phone or seat'**
+  String get guestsSearch;
+
+  /// No description provided for @guestsNotIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Not checked in'**
+  String get guestsNotIn;
+
+  /// No description provided for @statusIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked in'**
+  String get statusIn;
+
+  /// No description provided for @statusNotIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in'**
+  String get statusNotIn;
+
+  /// No description provided for @statusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get statusCancelled;
+
+  /// No description provided for @guestBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest'**
+  String get guestBadge;
+
+  /// No description provided for @guestsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No tickets yet'**
+  String get guestsEmpty;
+
+  /// No description provided for @guestsNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No one matches'**
+  String get guestsNoMatch;
+
+  /// No description provided for @checkIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Check in'**
+  String get checkIn;
+
+  /// No description provided for @undoCheckIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo check-in'**
+  String get undoCheckIn;
+
+  /// No description provided for @undoCheckInConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo the check-in for {name}?'**
+  String undoCheckInConfirm(String name);
+
+  /// No description provided for @checkedInOk.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is checked in'**
+  String checkedInOk(String name);
+
+  /// No description provided for @alreadyCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Already checked in at {time}'**
+  String alreadyCheckedIn(String time);
+
+  /// No description provided for @alreadyCheckedInGate.
+  ///
+  /// In en, this message translates to:
+  /// **'Already checked in at {time}, {gate}'**
+  String alreadyCheckedInGate(String time, String gate);
+
+  /// No description provided for @checkInRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t check in: this ticket is {status}'**
+  String checkInRefused(String status);
+
+  /// No description provided for @checkInNoConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Not checked in — no connection. Try again.'**
+  String get checkInNoConnection;
+
+  /// No description provided for @checkInClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'Check-in opens one day before the event'**
+  String get checkInClosed;
+
+  /// No description provided for @call.
+  ///
+  /// In en, this message translates to:
+  /// **'Call'**
+  String get call;
+
+  /// No description provided for @registeredOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Registered {date}'**
+  String registeredOn(String date);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

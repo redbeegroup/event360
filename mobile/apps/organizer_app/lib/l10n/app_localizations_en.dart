@@ -300,4 +300,82 @@ class L10nEn extends L10n {
 
   @override
   String get readOnly => 'View only: your role can\'t change this.';
+
+  @override
+  String get tabGuests => 'Guests';
+
+  @override
+  String guestsCount(int inCount, int total) {
+    return '$inCount of $total checked in';
+  }
+
+  @override
+  String get guestsSearch => 'Search name, phone or seat';
+
+  @override
+  String get guestsNotIn => 'Not checked in';
+
+  @override
+  String get statusIn => 'Checked in';
+
+  @override
+  String get statusNotIn => 'Not in';
+
+  @override
+  String get statusCancelled => 'Cancelled';
+
+  @override
+  String get guestBadge => 'Guest';
+
+  @override
+  String get guestsEmpty => 'No tickets yet';
+
+  @override
+  String get guestsNoMatch => 'No one matches';
+
+  @override
+  String get checkIn => 'Check in';
+
+  @override
+  String get undoCheckIn => 'Undo check-in';
+
+  @override
+  String undoCheckInConfirm(String name) {
+    return 'Undo the check-in for $name?';
+  }
+
+  @override
+  String checkedInOk(String name) {
+    return '$name is checked in';
+  }
+
+  @override
+  String alreadyCheckedIn(String time) {
+    return 'Already checked in at $time';
+  }
+
+  @override
+  String alreadyCheckedInGate(String time, String gate) {
+    return 'Already checked in at $time, $gate';
+  }
+
+  @override
+  String checkInRefused(String status) {
+    return 'Can\'t check in: this ticket is $status';
+  }
+
+  @override
+  String get checkInNoConnection =>
+      'Not checked in — no connection. Try again.';
+
+  @override
+  String get checkInClosed => 'Check-in opens one day before the event';
+
+  @override
+  String get call => 'Call';
+
+  @override
+  String registeredOn(String date) {
+    return 'Registered $date';
+  }
 }

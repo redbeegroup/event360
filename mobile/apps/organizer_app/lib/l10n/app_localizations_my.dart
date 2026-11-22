@@ -300,4 +300,83 @@ class L10nMy extends L10n {
 
   @override
   String get readOnly => 'ကြည့်ရှုရန်သာ — သင့်ရာထူးဖြင့် ပြင်၍မရပါ။';
+
+  @override
+  String get tabGuests => 'ဧည့်သည်များ';
+
+  @override
+  String guestsCount(int inCount, int total) {
+    return '$total ဦးအနက် $inCount ဦး ဝင်ပြီး';
+  }
+
+  @override
+  String get guestsSearch => 'အမည်၊ ဖုန်း သို့မဟုတ် ခုံ ရှာပါ';
+
+  @override
+  String get guestsNotIn => 'မဝင်သေးသူ';
+
+  @override
+  String get statusIn => 'ဝင်ရောက်ပြီး';
+
+  @override
+  String get statusNotIn => 'မဝင်သေး';
+
+  @override
+  String get statusCancelled => 'ပယ်ဖျက်ပြီး';
+
+  @override
+  String get guestBadge => 'ဧည့်သည်';
+
+  @override
+  String get guestsEmpty => 'လက်မှတ် မရှိသေးပါ';
+
+  @override
+  String get guestsNoMatch => 'ကိုက်ညီသူ မရှိပါ';
+
+  @override
+  String get checkIn => 'ဝင်ရောက်မှု မှတ်မည်';
+
+  @override
+  String get undoCheckIn => 'ဝင်ရောက်မှု ပြန်ရုတ်မည်';
+
+  @override
+  String undoCheckInConfirm(String name) {
+    return '$name ၏ ဝင်ရောက်မှုကို ပြန်ရုတ်မလား။';
+  }
+
+  @override
+  String checkedInOk(String name) {
+    return '$name ဝင်ရောက်ပြီးပါပြီ';
+  }
+
+  @override
+  String alreadyCheckedIn(String time) {
+    return '$time တွင် ဝင်ရောက်ပြီးဖြစ်သည်';
+  }
+
+  @override
+  String alreadyCheckedInGate(String time, String gate) {
+    return '$time တွင် $gate မှ ဝင်ရောက်ပြီးဖြစ်သည်';
+  }
+
+  @override
+  String checkInRefused(String status) {
+    return 'ဝင်ရောက်မှု မမှတ်နိုင်ပါ — ဤလက်မှတ်သည် $status ဖြစ်သည်';
+  }
+
+  @override
+  String get checkInNoConnection =>
+      'ဝင်ရောက်မှု မမှတ်ရသေးပါ — ဆက်သွယ်မှု မရှိပါ။ ထပ်စမ်းပါ။';
+
+  @override
+  String get checkInClosed =>
+      'ပွဲမတိုင်မီ တစ်ရက်အလိုမှ ဝင်ရောက်မှု မှတ်နိုင်သည်';
+
+  @override
+  String get call => 'ဖုန်းခေါ်မည်';
+
+  @override
+  String registeredOn(String date) {
+    return '$date တွင် မှတ်ပုံတင်သည်';
+  }
 }

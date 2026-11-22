@@ -6,6 +6,7 @@ import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import 'event/announce_tab.dart';
 import 'event/door_tab.dart';
+import 'event/guests_tab.dart';
 import 'event/overview_tab.dart';
 import 'event/promos_tab.dart';
 
@@ -25,12 +26,14 @@ class EventScreen extends ConsumerWidget {
     if (org == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final k = (orgId: org.id, eventId: eventId);
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(event == null ? '' : pickLang(lang, event.title, event.titleMy), maxLines: 1, overflow: TextOverflow.ellipsis),
           bottom: TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
             Tab(key: const Key('tabOverview'), text: t.tabOverview),
+            Tab(key: const Key('tabGuests'), text: t.tabGuests),
+            // Seats tab goes here (Task 4)
             Tab(key: const Key('tabDoor'), text: t.tabDoor),
             Tab(key: const Key('tabAnnounce'), text: t.tabAnnounce),
             Tab(key: const Key('tabPromos'), text: t.tabPromos),
@@ -38,6 +41,7 @@ class EventScreen extends ConsumerWidget {
         ),
         body: TabBarView(children: [
           OverviewTab(k: k),
+          event == null ? const Center(child: CircularProgressIndicator()) : GuestsTab(k: k, canEdit: org.canEdit, event: event),
           DoorTab(k: k, canEdit: org.canEdit),
           AnnounceTab(k: k, canEdit: org.canEdit),
           PromosTab(k: k, canEdit: org.canEdit),

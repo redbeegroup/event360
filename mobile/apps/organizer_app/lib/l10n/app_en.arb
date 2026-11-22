@@ -125,5 +125,81 @@
   "notifications": "Notifications",
   "markAllRead": "Mark all read",
   "noNotifications": "Sales milestones, approvals and the daily summary will appear here.",
-  "readOnly": "View only: your role can't change this."
+  "readOnly": "View only: your role can't change this.",
+  "tabGuests": "Guests",
+  "guestsCount": "{inCount} of {total} checked in",
+  "@guestsCount": {
+    "placeholders": {
+      "inCount": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "guestsSearch": "Search name, phone or seat",
+  "guestsNotIn": "Not checked in",
+  "statusIn": "Checked in",
+  "statusNotIn": "Not in",
+  "statusCancelled": "Cancelled",
+  "guestBadge": "Guest",
+  "guestsEmpty": "No tickets yet",
+  "guestsNoMatch": "No one matches",
+  "checkIn": "Check in",
+  "undoCheckIn": "Undo check-in",
+  "undoCheckInConfirm": "Undo the check-in for {name}?",
+  "@undoCheckInConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "checkedInOk": "{name} is checked in",
+  "@checkedInOk": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "alreadyCheckedIn": "Already checked in at {time}",
+  "@alreadyCheckedIn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "alreadyCheckedInGate": "Already checked in at {time}, {gate}",
+  "@alreadyCheckedInGate": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "gate": {
+        "type": "String"
+      }
+    }
+  },
+  "checkInRefused": "Can't check in: this ticket is {status}",
+  "@checkInRefused": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "checkInNoConnection": "Not checked in — no connection. Try again.",
+  "checkInClosed": "Check-in opens one day before the event",
+  "call": "Call",
+  "registeredOn": "Registered {date}",
+  "@registeredOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  }
 }

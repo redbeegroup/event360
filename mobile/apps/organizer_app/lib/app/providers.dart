@@ -97,6 +97,7 @@ typedef EventKey = ({String orgId, String eventId});
 final dashboardProvider = FutureProvider.family<EventDashboard, EventKey>((ref, k) => ref.watch(apiProvider).eventDashboard(k.orgId, k.eventId));
 final attendanceProvider = FutureProvider.family<CrewStats, EventKey>((ref, k) => ref.watch(apiProvider).eventAttendance(k.orgId, k.eventId));
 final recentOrdersProvider = FutureProvider.family<List<RecentOrder>, EventKey>((ref, k) => ref.watch(apiProvider).recentOrders(k.orgId, k.eventId));
+final attendeesProvider = FutureProvider.family<List<Attendee>, EventKey>((ref, k) => ref.watch(apiProvider).attendees(k.orgId, k.eventId));
 final crewCodesProvider = FutureProvider.family<List<CrewCode>, EventKey>((ref, k) => ref.watch(apiProvider).crewCodes(k.orgId, k.eventId));
 final announcementsProvider = FutureProvider.family<Announcements, EventKey>((ref, k) => ref.watch(apiProvider).announcements(k.orgId, k.eventId));
 final promoCodesProvider = FutureProvider.family<List<PromoCodeInfo>, EventKey>((ref, k) => ref.watch(apiProvider).promoCodes(k.orgId, k.eventId));
