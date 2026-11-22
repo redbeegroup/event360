@@ -22,8 +22,7 @@ export function SeatMapStatic({ seats, lang, t }: { seats: PublicSeats; lang: La
   // instead of running off the picture.
   const rightEdge = new Map<string, number>();
   for (const s of list) {
-    const key = s.seatKey.slice(0, s.seatKey.indexOf(':'));
-    rightEdge.set(key, Math.max(rightEdge.get(key) ?? -Infinity, s.x));
+    rightEdge.set(s.sectionKey, Math.max(rightEdge.get(s.sectionKey) ?? -Infinity, s.x));
   }
   const endAnchored = (sec: { kind: string; key: string; x: number }) => sec.kind !== 'STANDING' && sec.x > layout.width / 2 && rightEdge.has(sec.key);
   return (

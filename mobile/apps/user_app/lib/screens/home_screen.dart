@@ -186,9 +186,10 @@ class HomeScreen extends ConsumerWidget {
             Expanded(
               child: Text(title, style: Theme.of(context).textTheme.titleLarge),
             ),
-            // Flexible: at large text sizes the label wraps or ellipsizes instead of pushing the row wider than the screen
+            // The title keeps the width at normal text size; at large sizes the label is capped, then wraps or ellipsizes
             if (onSeeAll != null)
-              Flexible(
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.45),
                 child: TextButton(
                   onPressed: onSeeAll,
                   child: Text(t.seeAll, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),

@@ -504,6 +504,7 @@ class _Detail extends ConsumerWidget {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
       builder: (sheet) => SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -1113,37 +1114,36 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
     final e = widget.event;
     final listed = e.ticketTypes.where((x) => !x.seated && (x.soldOut || x.isFree || widget.payable)).toList();
     final showPromo = _promoOpen || _promoResult != null || _promo.text.isNotEmpty;
-    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final footer = Container(
-                decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 16),
-                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    if (!_type.isFree) DiscountLines(view: view, lang: lang),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: TotalRow(
-                        label: Text(t.ticketsTotal(_qty), style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant)),
-                        original: !_type.isFree && view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
-                        total: _type.isFree ? t.free : t.mmk(formatAmount(view.totalMmk, lang)),
-                        totalKey: const Key('sheetTotal'),
-                      ),
-                    ),
-                    if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: scheme.error))),
-                    const SizedBox(height: 14),
-                    FilledButton(
-                      key: const Key('sheetSubmit'),
-                      style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)), textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: E360Colors.goldInk))
-                          : Text(_type.isFree ? t.register : t.continueToPayment),
-                    ),
-                  ]),
-                ),
-              );
+      decoration: BoxDecoration(color: scheme.surface, border: Border(top: BorderSide(color: scheme.outlineVariant))),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (!_type.isFree) DiscountLines(view: view, lang: lang),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: TotalRow(
+              label: Text(t.ticketsTotal(_qty), style: theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant)),
+              original: !_type.isFree && view.discountMmk > 0 ? t.mmk(formatAmount(_type.priceMmk * _qty, lang)) : null,
+              total: _type.isFree ? t.free : t.mmk(formatAmount(view.totalMmk, lang)),
+              totalKey: const Key('sheetTotal'),
+            ),
+          ),
+          if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: scheme.error))),
+          const SizedBox(height: 14),
+          FilledButton(
+            key: const Key('sheetSubmit'),
+            style: E360Buttons.gold.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)), textStyle: const WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
+            onPressed: _busy ? null : _submit,
+            child: _busy
+                ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: E360Colors.goldInk))
+                : Text(_type.isFree ? t.register : t.continueToPayment),
+          ),
+        ]),
+      ),
+    );
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: _done
@@ -1231,12 +1231,10 @@ class _RegisterSheetState extends ConsumerState<_RegisterSheet> {
                         const SizedBox(height: 8),
                       ],
                     ],
-                    // Keyboard open: the total and the button scroll with the rest, so a short screen never overflows
-                    if (keyboardOpen) footer,
                   ]),
                 ),
               ),
-              if (!keyboardOpen) footer,
+              footer,
             ]),
     );
   }

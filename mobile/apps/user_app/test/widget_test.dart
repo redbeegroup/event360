@@ -155,6 +155,28 @@ class FakeApi extends Event360Api {
         ],
       };
 
+  /// Seats plus a cheaper sold-out standing type and a paid one (the sold-out price must not count).
+  static Map<String, dynamic> bothSoldOutCheapJson() => {
+        ...bothEventJson(),
+        'id': 'bothsold',
+        'ticketTypes': [
+          {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'quota': 10, 'remaining': 10, 'maxPerOrder': 3, 'seated': true, 'color': '#f2b632'},
+          {'id': 'tt-cheap', 'name': 'Early', 'nameMy': null, 'priceMmk': 2000, 'quota': 50, 'remaining': 0, 'maxPerOrder': 4},
+          {'id': 'tt-stand', 'name': 'Standing', 'nameMy': null, 'priceMmk': 8000, 'quota': 50, 'remaining': 40, 'maxPerOrder': 4},
+        ],
+      };
+
+  /// Seats plus a free standing type beside a paid one.
+  static Map<String, dynamic> bothFreeStandingJson() => {
+        ...bothEventJson(),
+        'id': 'bothfree',
+        'ticketTypes': [
+          {'id': 'tt-seat', 'name': 'Stalls', 'nameMy': 'ရှေ့ခန်း', 'priceMmk': 20000, 'quota': 10, 'remaining': 10, 'maxPerOrder': 3, 'seated': true, 'color': '#f2b632'},
+          {'id': 'tt-free', 'name': 'Free standing', 'nameMy': null, 'priceMmk': 0, 'quota': 50, 'remaining': 40, 'maxPerOrder': 4},
+          {'id': 'tt-stand', 'name': 'Standing', 'nameMy': null, 'priceMmk': 8000, 'quota': 50, 'remaining': 40, 'maxPerOrder': 4},
+        ],
+      };
+
   static Map<String, dynamic> twoTypeEventJson() => {
         ...seatedEventJson(),
         'id': 'seated2',
@@ -408,7 +430,7 @@ class FakeApi extends Event360Api {
               {'id': 'tt-soldout', 'name': 'General', 'nameMy': 'အထွေထွေ', 'priceMmk': 5000, 'quota': 100, 'remaining': 0, 'maxPerOrder': 4},
             ],
           }
-        : idOrSlug == 'freepaid' ? freePaidEventJson() : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'both' ? bothEventJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
+        : idOrSlug == 'freepaid' ? freePaidEventJson() : idOrSlug == 'mixed' ? mixedEventJson() : idOrSlug == 'both' ? bothEventJson() : idOrSlug == 'bothsold' ? bothSoldOutCheapJson() : idOrSlug == 'bothfree' ? bothFreeStandingJson() : idOrSlug == 'seated2' ? twoTypeEventJson() : idOrSlug == 'seated' ? seatedEventJson() : (idOrSlug == 'rich' ? richEventJson(idOrSlug) : eventJson(idOrSlug, free: idOrSlug != 'e2'));
     return EventSummary.fromJson({
       ...j,
       'groupDiscounts': groupTiers,
@@ -739,6 +761,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(tester.getSize(find.byType(DiscoverSearchPill)).height, greaterThanOrEqualTo(56));
+  });
+
+  testWidgets('Discover section title keeps its width and stays on one line at normal text size', (tester) async {
+    await pumpApp(tester);
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+    await tester.pumpAndSettle();
+    final title = find.text('Free events');
+    await tester.ensureVisible(title);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(title).height, lessThan(30)); // one line of the 20 px title (two lines would be 50)
+    final seeAll = tester.getRect(find.text('See all'));
+    expect(tester.getRect(title).center.dy, closeTo(seeAll.center.dy, 4));
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('Discover has no overflow at text scale 2.0 in EN and MY on a 390x844 phone', (tester) async {
@@ -2416,6 +2452,33 @@ void main() {
     }
   });
 
+  testWidgets('chooser prices: a sold-out cheaper type is ignored, a free type shows Free, Myanmar label reads naturally', (tester) async {
+    Future<void> openChooser(String lang, String id) async {
+      await pumpApp(tester, signedIn: true, lang: lang, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
+      GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/$id');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('getTickets')));
+      await tester.pumpAndSettle();
+    }
+
+    await openChooser('en', 'bothsold');
+    expect(find.descendant(of: find.byKey(const Key('kindStanding')), matching: find.text('From 8,000 MMK')), findsOneWidget);
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.textContaining('2,000')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+
+    await openChooser('en', 'bothfree');
+    expect(find.descendant(of: find.byKey(const Key('kindStanding')), matching: find.text('Free')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('kindSeats')), matching: find.text('From 20,000 MMK')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+
+    await openChooser('my', 'both');
+    final my = await L10n.delegate.load(const Locale('my'));
+    final expected = my.fromPrice(my.mmk(formatAmount(8000, 'my')));
+    expect(find.descendant(of: find.byKey(const Key('kindStanding')), matching: find.text(expected)), findsOneWidget);
+    expect(expected, contains('မှစ၍'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('mixed event chooser: seats row goes to the seat map, standing row opens the quantity picker', (tester) async {
     await pumpApp(tester, signedIn: true, setup: (a) => a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')]);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/event/both');
@@ -2471,7 +2534,7 @@ void main() {
       addTearDown(tester.view.resetViewInsets);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$lang keyboard open');
-      // The promo field and the total scroll into reach above the keyboard
+      // The promo field scrolls into reach above the keyboard
       await tester.ensureVisible(find.byKey(const Key('promoField')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('promoField')));
@@ -2479,11 +2542,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$lang promo');
       expect(tester.getRect(find.byKey(const Key('promoField'))).bottom, lessThanOrEqualTo(844 - 300), reason: '$lang promo above the keyboard');
-      await tester.ensureVisible(find.byKey(const Key('sheetTotal')));
-      await tester.pumpAndSettle();
-      final total = tester.getRect(find.byKey(const Key('sheetTotal')));
-      expect(total.bottom, lessThanOrEqualTo(844 - 300), reason: '$lang total above the keyboard');
-      expect(total.top, greaterThanOrEqualTo(0), reason: lang);
+      // The footer stays pinned: the total and the button are on screen above the keyboard without scrolling
+      for (final key in ['sheetTotal', 'sheetSubmit']) {
+        final r = tester.getRect(find.byKey(Key(key)));
+        expect(r.bottom, lessThanOrEqualTo(844 - 300), reason: '$lang $key above the keyboard');
+        expect(r.top, greaterThanOrEqualTo(0), reason: '$lang $key');
+      }
       tester.view.resetViewInsets();
       await tester.pumpWidget(const SizedBox());
     }
