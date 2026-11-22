@@ -44,7 +44,7 @@
   "seatsHeld": "Held at checkout",
   "seatsGuest": "Held for guests",
   "seatsSold": "Sold",
-  "seatsComp": "Free seats",
+  "seatsComp": "Guest tickets",
   "seatsOffered": "Waitlist offers",
   "waitlistTitle": "Waitlist",
   "waitlistLine": "{waiting} waiting · {offered} with an offer",

@@ -370,7 +370,7 @@ abstract class L10n {
   /// No description provided for @seatsComp.
   ///
   /// In en, this message translates to:
-  /// **'Free seats'**
+  /// **'Guest tickets'**
   String get seatsComp;
 
   /// No description provided for @seatsOffered.

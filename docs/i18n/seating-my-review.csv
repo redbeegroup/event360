@@ -209,7 +209,7 @@
 "seatsHeld","Held at checkout","ငွေပေးချေနေဆဲ","organizer_app"
 "seatsGuest","Held for guests","ဧည့်သည်ထားသည်","organizer_app"
 "seatsSold","Sold","ရောင်းပြီး","organizer_app"
-"seatsComp","Free seats","အခမဲ့","organizer_app"
+"seatsComp","Guest tickets","ဧည့်သည်လက်မှတ်","organizer_app"
 "seat label (labelMy, expandSeats)","{section} · Row {row} · Seat {seat}","{sectionMy} · အတန်း {row} · ခုံ {seat}","api"
 "seat label (labelMy, event-seats.service)","{section} · Row {row} · Seat {seat}","{sectionMy} · အတန်း {row} · ခုံ {seat}","api"
 "ticket_received titleMy","You received a ticket","လက်မှတ် လက်ခံရရှိပါသည်","api"

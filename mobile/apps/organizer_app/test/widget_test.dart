@@ -493,7 +493,7 @@ void main() {
     expect(find.text('Gate A'), findsOneWidget);
     expect(find.text('No gate'), findsOneWidget);
     // Seat counts are tiles: label on top, the number below
-    for (final (label, n) in [('Available', '11'), ('Held for guests', '3'), ('Free seats', '1')]) {
+    for (final (label, n) in [('Available', '11'), ('Held for guests', '3'), ('Guest tickets', '1')]) {
       final tile = find.ancestor(of: find.text(label), matching: find.byType(StatTile));
       expect(tile, findsOneWidget, reason: label);
       expect(find.descendant(of: tile, matching: find.text(n)), findsOneWidget, reason: label);

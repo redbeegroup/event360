@@ -145,7 +145,7 @@ class L10nEn extends L10n {
   String get seatsSold => 'Sold';
 
   @override
-  String get seatsComp => 'Free seats';
+  String get seatsComp => 'Guest tickets';
 
   @override
   String get seatsOffered => 'Waitlist offers';
