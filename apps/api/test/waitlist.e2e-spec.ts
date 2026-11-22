@@ -1204,7 +1204,7 @@ run('Waitlist', () => {
       const l = await line('NoticeCrash');
       // The process dies after the offer committed, before anything was marked or sent
       const mark = jest.spyOn(prisma.waitlistEntry, 'updateMany').mockRejectedValueOnce(new Error('crash'));
-      await expect(wl.assignOffers()).rejects.toThrow('crash');
+      await wl.assignOffers(); // the failed claim is logged; the pass goes on
       mark.mockRestore();
       expect(await entry(l.entryId)).toMatchObject({ status: 'OFFERED', offerNotifiedAt: null });
       expect(await offerRows(l.W.id)).toHaveLength(1);
@@ -1220,7 +1220,7 @@ run('Waitlist', () => {
       expect(await offerRows(l.W.id)).toHaveLength(1);
     });
 
-    it('an offer sent in the same pass is marked after sending, and a reopened offer sends no SMS', async () => {
+    it('an offer is marked, then sent, in the same pass; a reopened offer sends no SMS', async () => {
       smsOn();
       const l = await line('NoticeReopen');
       await sweepWaitlist();
@@ -1234,11 +1234,39 @@ run('Waitlist', () => {
       expect(await offerRows(l.W.id)).toHaveLength(1);
     });
 
+    it('rows from older code are never sent: a joined entry has a marker, an offer from before the marker does not', async () => {
+      smsOn();
+      const l = await line('NoticeLegacy');
+      expect((await entry(l.entryId)).offerNotifiedAt).not.toBeNull(); // joined: not pending
+      await sweepWaitlist(); // offered by the current code: pending, then sent once
+      expect(l.sms()).toHaveLength(1);
+      expect((await entry(l.entryId)).offerNotifiedAt).not.toBeNull();
+      // A second offered entry as an older pod leaves it (OFFERED, marker set by the column default)
+      const l2 = await line('NoticeLegacy2');
+      await sweepWaitlist();
+      expect(l2.sms()).toHaveLength(1);
+      await prisma.waitlistEntry.update({ where: { id: l2.entryId }, data: { offerNotifiedAt: new Date() } });
+      smsCalls.length = 0;
+      await sweepWaitlist();
+      expect(smsCalls).toHaveLength(0);
+    });
+
+    it('an offer made by the current code starts unsent (NULL) until a pass sends it', async () => {
+      const l = await line('NoticeNull');
+      await wl.expireOffers();
+      const mark = jest.spyOn(wl as any, 'notifyOffers').mockResolvedValueOnce(undefined);
+      await wl.assignOffers();
+      mark.mockRestore();
+      expect(await entry(l.entryId)).toMatchObject({ status: 'OFFERED', offerNotifiedAt: null });
+      await sweepWaitlist();
+      expect((await entry(l.entryId)).offerNotifiedAt).not.toBeNull();
+    });
+
     it('a lapsed offer that was never sent is not sent late', async () => {
       smsOn();
       const l = await line('NoticeLapsed');
       const mark = jest.spyOn(prisma.waitlistEntry, 'updateMany').mockRejectedValueOnce(new Error('crash'));
-      await expect(wl.assignOffers()).rejects.toThrow('crash');
+      await wl.assignOffers();
       mark.mockRestore();
       await prisma.waitlistEntry.update({ where: { id: l.entryId }, data: { offerExpiresAt: new Date(Date.now() - 1000) } });
       await wl.assignOffers();
@@ -1279,6 +1307,20 @@ run('Waitlist', () => {
       expect(n[0].bodyMy).toBeTruthy();
     });
 
+    it('a failed payment gets the plain expiry wording', async () => {
+      const r = await reopenedWithPayment('ExpiryFailed');
+      await prisma.payment.update({ where: { id: r.paymentId }, data: { status: 'FAILED' } });
+      await expireNow(r.entryId);
+      expect((await notices(r.W.id, ['waitlist_offer_expired']))[0]).toMatchObject({ title: 'Your offer expired' });
+    });
+
+    it('an expired payment counts as in flight', async () => {
+      const r = await reopenedWithPayment('ExpiryExpired');
+      await prisma.payment.update({ where: { id: r.paymentId }, data: { status: 'EXPIRED' } });
+      await expireNow(r.entryId);
+      expect((await notices(r.W.id, ['waitlist_offer_expired']))[0]).toMatchObject({ title: 'Your reserved tickets were released' });
+    });
+
     it('the closing notice says the same; no notice when the order is already paid', async () => {
       const r = await reopenedWithPayment('ClosePaying');
       await prisma.ticketType.update({ where: { id: r.ev.type }, data: { salesEndAt: new Date(Date.now() - 1000) } });
@@ -1290,6 +1332,16 @@ run('Waitlist', () => {
       await prisma.order.update({ where: { id: paid.orderId }, data: { status: 'PAID', paidAt: new Date() } });
       await expireNow(paid.entryId);
       expect(await notices(paid.W.id, ['waitlist_offer_expired', 'waitlist_closed'])).toHaveLength(0);
+    });
+
+    it('a normal paid order does not get the sold-out notice', async () => {
+      const ev = await standing('PaidFine', 2, 2);
+      const P = await consumer();
+      const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+      await pay.settle(await payFor(P.H, o.body.id));
+      await app.get(NotifyService).idle();
+      expect(await prisma.notification.count({ where: { userId: P.id, kind: 'ticket_confirmed' } })).toBe(1);
+      expect(await prisma.notification.count({ where: { userId: P.id, kind: 'order_paid_sold_out' } })).toBe(0);
     });
 
     it('money that arrives with no tickets left tells the buyer once', async () => {

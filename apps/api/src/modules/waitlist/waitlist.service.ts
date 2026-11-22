@@ -409,7 +409,7 @@ export class WaitlistService {
       if (left <= 0) break;
       const qty = Math.min(e.quantity, left);
       const n = await tx.$executeRaw`
-        UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, offered_at = ${now}, offer_expires_at = ${expires}, updated_at = now()
+        UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, offered_at = ${now}, offer_expires_at = ${expires}, offer_notified_at = NULL, updated_at = now()
         WHERE id = ${e.id}::uuid AND status = 'WAITING'`;
       if (n !== 1) continue;
       // The inbox notice commits with the offer (a plain insert: no lock that conflicts with the lock order); push and SMS follow
@@ -458,7 +458,7 @@ export class WaitlistService {
 
   /**
    * One notice per offer: the inbox row is stored with the offer; this sends push, and SMS when SMS is enabled and
-   * "Waitlist SMS" is on. Each live offer not yet sent is claimed first (never two SMS for one offer; a crash after the
+   * "Waitlist SMS" is on. Each live offer not yet sent is claimed first (NULL means "offered by this code, push and SMS pending"; rows from older code or a join carry a time. Never two SMS for one offer; a crash after the
    * claim loses that offer's push and SMS only), then sent. A reopened offer keeps its mark, so it is not sent again.
    */
   private async notifyOffers(now: Date) {
@@ -472,9 +472,14 @@ export class WaitlistService {
     const cfg = await this.sms.settingsConfig().catch(() => null);
     const sms = !!cfg?.enabled && cfg.waitlistSms !== false;
     for (const e of rows) {
-      const claim = await this.prisma.waitlistEntry.updateMany({ where: { id: e.id, status: 'OFFERED', offerNotifiedAt: null }, data: { offerNotifiedAt: now } });
-      if (claim.count !== 1) continue;
-      await this.notify.pushAndSms([e.userId], offerNotice(e, sms)).catch((err) => this.logger.warn(`waitlist offer notice ${e.id}: ${(err as Error).message}`));
+      try {
+        // Expiry is checked again now: the pass may have been slow, and a lapsed offer is not announced
+        const claim = await this.prisma.waitlistEntry.updateMany({ where: { id: e.id, status: 'OFFERED', offerNotifiedAt: null, offerExpiresAt: { gt: new Date() } }, data: { offerNotifiedAt: now } });
+        if (claim.count !== 1) continue;
+        await this.notify.pushAndSms([e.userId], offerNotice(e, sms));
+      } catch (err) {
+        this.logger.warn(`waitlist offer notice ${e.id}: ${(err as Error).message}`);
+      }
     }
   }
 
@@ -501,7 +506,7 @@ export class WaitlistService {
   private paymentState(e: { order: { status: string; payments: { status: string }[] } | null }): 'paid' | 'in_flight' | 'none' {
     if (!e.order) return 'none';
     if (e.order.status === 'PAID' || e.order.status === 'CONFIRMED') return 'paid';
-    return e.order.payments.some((p) => p.status === 'INITIATED' || p.status === 'PENDING') ? 'in_flight' : 'none';
+    return e.order.payments.some((p) => ['INITIATED', 'PENDING', 'EXPIRED'].includes(p.status)) ? 'in_flight' : 'none';
   }
 
   /** Inbox only (no SMS): the offer's time ran out. */

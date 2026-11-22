@@ -25,7 +25,7 @@ interface OrgDetail {
 export default async function OrgDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tr = await t();
-  const [o, summary] = await Promise.all([api<OrgDetail>(`/admin/organizations/${id}`), api<{ owedMmk: number }>(`/admin/finance/organizations/${id}/summary`)]);
+  const [o, summary] = await Promise.all([api<OrgDetail>(`/admin/organizations/${id}`), api<{ owedMmk: number }>(`/admin/finance/organizations/${id}/summary`).catch(() => null)]);
   return (
     <>
       <PageHeader
@@ -51,14 +51,18 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <h2>{tr.pyTitle}</h2>
-      <div className="card">
-        <div className="card-head">
-          <strong>{o.name}</strong>
-          <span>{tr.owed}: <strong>{fmtMmk(summary.owedMmk, tr.lang)}</strong></span>
-        </div>
-        <RecordPayout orgId={o.id} orgName={o.name} owedMmk={summary.owedMmk} defaultPaidAt={toLocalInput(new Date())} action={recordPayoutAction} labels={payoutLabels(tr)} errorText={{ alreadyVoided: tr.pyAlreadyVoided }} />
-      </div>
+      {summary && (
+        <>
+          <h2>{tr.pyTitle}</h2>
+          <div className="card">
+            <div className="card-head">
+              <strong>{o.name}</strong>
+              <span>{tr.owed}: <strong>{fmtMmk(summary.owedMmk, tr.lang)}</strong></span>
+            </div>
+            <RecordPayout orgId={o.id} orgName={o.name} owedMmk={summary.owedMmk} defaultPaidAt={toLocalInput(new Date())} action={recordPayoutAction} labels={payoutLabels(tr)} errorText={{ alreadyVoided: tr.pyAlreadyVoided }} />
+          </div>
+        </>
+      )}
 
       <h2>{tr.members}</h2>
       <div className="table-card">

@@ -1174,7 +1174,8 @@ model WaitlistEntry {
   offeredAt       DateTime?      @map("offered_at")
   offerExpiresAt  DateTime?      @map("offer_expires_at")
   /// Set (claimed) once the offer's push and SMS have been handed out; the inbox notice is written with the offer.
-  offerNotifiedAt DateTime?      @map("offer_notified_at")
+/// Defaults to now: only an offer made by the current code sets it to NULL ("push and SMS pending"), so rows from older code are never re-sent.
+  offerNotifiedAt DateTime?      @default(now()) @map("offer_notified_at")
   orderId         String?        @map("order_id") @db.Uuid
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
