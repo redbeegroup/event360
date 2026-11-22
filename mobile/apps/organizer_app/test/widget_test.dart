@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/providers.dart';
 import 'package:organizer_app/app/push.dart';
-import 'package:organizer_app/l10n/app_localizations.dart';
 import 'package:organizer_app/main.dart';
 import 'package:organizer_app/screens/event_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,6 +85,12 @@ class FakeApi extends Event360Api {
 
   /// While set, the seating request waits for it (the Seats tab then shows up late).
   Completer<void>? seatingGate;
+
+  /// While set, hold requests wait for it (a slow connection).
+  Completer<void>? actionGate;
+
+  /// The seating request fails (no connection).
+  bool failSeating = false;
 
   /// The server rejects the phone number of the next issue with 400.
   bool rejectPhone = false;
@@ -273,6 +278,7 @@ class FakeApi extends Event360Api {
   @override
   Future<OrgSeating> orgSeating(String orgId, String eventId) async {
     await seatingGate?.future;
+    if (failSeating) throw ApiException(null, 'No connection');
     int n(bool Function(Map<String, dynamic>) f) => seatRows.where(f).length;
     final comp = guestRows.where((g) => g['status'] == 'VALID').length;
     return OrgSeating.fromJson({
@@ -298,6 +304,7 @@ class FakeApi extends Event360Api {
   @override
   Future<int> holdSeats(String orgId, String eventId, List<String> seats, String label) async {
     calls.add('hold:${seats.join(',')}:$label');
+    await actionGate?.future;
     _seatsConflict();
     for (final s in seats) {
       _setSeat(s, 'GUEST_HOLD', label: label);
@@ -355,14 +362,18 @@ class FakeApi extends Event360Api {
   Future<void> removeDevice(String pushToken) async => devices.removeWhere((d) => d.endsWith(':$pushToken'));
 }
 
-/// Taps a seat of the fixture map where it is drawn (the whole map is zoomed in enough to select).
+/// Taps a seat of the fixture map where it is drawn. When the map is zoomed out (large text leaves it little
+/// room) the first tap zooms into the section, as for a user, and the seat is tapped again.
 Future<void> tapSeat(WidgetTester t, String key) async {
   final seat = SeatLayout.fromJson(seatLayoutJson()).seatByKey(key)!;
   final map = find.byKey(const Key('seatMap'));
-  final tl = t.getTopLeft(map);
-  final scale = (t.getBottomRight(map).dx - tl.dx) / 200;
-  await t.tapAt(tl + seat.pos * scale);
-  await t.pumpAndSettle();
+  for (var attempt = 0; attempt < 2; attempt++) {
+    final tl = t.getTopLeft(map);
+    final scale = (t.getBottomRight(map).dx - tl.dx) / 200;
+    await t.tapAt(tl + seat.pos * scale);
+    await t.pumpAndSettle();
+    if (scale >= kSeatTapScale) return;
+  }
 }
 
 Future<void> tapSeats(WidgetTester t, List<String> keys) async {
@@ -371,9 +382,9 @@ Future<void> tapSeats(WidgetTester t, List<String> keys) async {
   }
 }
 
-/// Scrolls the Seats tab page by dragging its "Guest tickets" heading (a drag on the map would pan the map).
-Future<void> scrollSeatsPage(WidgetTester t, [double dy = -400]) async {
-  await t.drag(find.text(L10n.of(t.element(find.byType(Scaffold).first)).guestList), Offset(0, dy));
+/// Switches the Seats tab to its guest ticket list.
+Future<void> openGuestTickets(WidgetTester t) async {
+  await t.tap(find.byKey(const Key('seatsViewGuests')));
   await t.pumpAndSettle();
 }
 
@@ -684,7 +695,7 @@ void main() {
     'seats tab, view only': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabSeats')),
     'seats tab, guest list': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await scrollSeatsPage(t, -500);
+      await openGuestTickets(t);
     }),
     'seats tab, free seats selected': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
@@ -692,11 +703,11 @@ void main() {
     }),
     'seats tab, held seats selected with Issue and Release': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await tapSeats(t, ['A:2:4', 'A:1:5']);
     }),
     'seats tab, held seat without ticket type': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await tapSeats(t, ['A:1:5', 'A:2:5']);
+      await tapSeats(t, ['A:2:5', 'A:1:5']);
     }),
     'seats tab, mixed selection': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
@@ -712,7 +723,7 @@ void main() {
     }),
     'seats tab, issue sheet with errors': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await tapSeats(t, ['A:2:4', 'A:1:5']);
       await t.tap(find.byKey(const Key('seatsIssue')));
       await t.pumpAndSettle();
       await t.enterText(find.byKey(const Key('guestPhone')), '123');
@@ -721,7 +732,7 @@ void main() {
     }),
     'seats tab, issue confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await tapSeats(t, ['A:2:4', 'A:1:5']);
       await t.tap(find.byKey(const Key('seatsIssue')));
       await t.pumpAndSettle();
       await t.enterText(find.byKey(const Key('guestName')), 'Daw Aye Aye Khin');
@@ -731,13 +742,13 @@ void main() {
     }),
     'seats tab, release confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await tapSeats(t, ['A:2:4', 'A:1:5']);
       await t.tap(find.byKey(const Key('seatsRelease')));
       await t.pumpAndSettle();
     }),
     'seats tab, revoke confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabSeats');
-      await scrollSeatsPage(t, -500);
+      await openGuestTickets(t);
       await t.tap(find.byKey(const Key('guestRevoke-g1')));
       await t.pumpAndSettle();
     }),

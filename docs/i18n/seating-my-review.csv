@@ -428,3 +428,7 @@
 "seatsZoomHint","Zoom in to select seats","ခုံရွေးရန် ချဲ့ကြည့်ပါ","organizer app"
 "fieldRequired","Required","လိုအပ်သည်","organizer app"
 "noGuestTickets","No guest tickets yet","ဧည့်သည်လက်မှတ် မရှိသေးပါ","organizer app"
+"seatsViewMap","Map","မြေပုံ","organizer app"
+"seatsViewGuests","Guest tickets ({count})","ဧည့်သည်လက်မှတ် ({count})","organizer app"
+"legendSelected","Selected","ရွေးထားသည်","organizer app"
+"ticketsIssued","{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}","ဧည့်သည်လက်မှတ် {count} စောင် ထုတ်ပေးပြီး","organizer app"

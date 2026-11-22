@@ -960,6 +960,30 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'No guest tickets yet'**
   String get noGuestTickets;
+
+  /// No description provided for @seatsViewMap.
+  ///
+  /// In en, this message translates to:
+  /// **'Map'**
+  String get seatsViewMap;
+
+  /// No description provided for @seatsViewGuests.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest tickets ({count})'**
+  String seatsViewGuests(int count);
+
+  /// No description provided for @legendSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Selected'**
+  String get legendSelected;
+
+  /// No description provided for @ticketsIssued.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}'**
+  String ticketsIssued(int count);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

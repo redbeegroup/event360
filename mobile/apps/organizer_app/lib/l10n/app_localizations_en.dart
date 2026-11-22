@@ -501,4 +501,26 @@ class L10nEn extends L10n {
 
   @override
   String get noGuestTickets => 'No guest tickets yet';
+
+  @override
+  String get seatsViewMap => 'Map';
+
+  @override
+  String seatsViewGuests(int count) {
+    return 'Guest tickets ($count)';
+  }
+
+  @override
+  String get legendSelected => 'Selected';
+
+  @override
+  String ticketsIssued(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count guest tickets issued',
+      one: '1 guest ticket issued',
+    );
+    return '$_temp0';
+  }
 }

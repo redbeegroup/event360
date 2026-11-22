@@ -270,5 +270,23 @@
   "viewOnlySeats": "You can view seats but not change them",
   "seatsZoomHint": "Zoom in to select seats",
   "fieldRequired": "Required",
-  "noGuestTickets": "No guest tickets yet"
+  "noGuestTickets": "No guest tickets yet",
+  "seatsViewMap": "Map",
+  "seatsViewGuests": "Guest tickets ({count})",
+  "@seatsViewGuests": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "legendSelected": "Selected",
+  "ticketsIssued": "{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}",
+  "@ticketsIssued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

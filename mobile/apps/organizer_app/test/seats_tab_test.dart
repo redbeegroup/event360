@@ -237,7 +237,11 @@ void main() {
     expect(api.calls, contains('issue:A:1:5,A:1:6:Aung Aung:09 123 456 789:Family'));
     expect(key('guestName'), findsNothing);
     expect(bar, findsNothing);
-    await scrollSeatsPage(tester);
+    expect(find.text('2 guest tickets issued'), findsOneWidget);
+    expect(key('seatsZoomHint'), findsNothing);
+    expect(find.text('Guest tickets (4)'), findsOneWidget, reason: 'the count in the segment follows');
+    expect(legend('legendHeld', 'Held for guests 2'), findsOneWidget, reason: 'still on the map');
+    await openGuestTickets(tester);
     expect(key('guestTicket-g3'), findsOneWidget);
     expect(key('guestTicket-g4'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -317,7 +321,7 @@ void main() {
 
   testWidgets('Revoke confirms, calls the API, the row shows Revoked and loses its button; checked-in has none', (tester) async {
     final api = await openSeats(tester);
-    await scrollSeatsPage(tester);
+    await openGuestTickets(tester);
     expect(key('guestRevoke-g1'), findsOneWidget);
     expect(key('guestTicket-g2'), findsOneWidget);
     expect(key('guestRevoke-g2'), findsNothing, reason: 'checked in');
@@ -349,7 +353,7 @@ void main() {
     for (final k in ['seatsHold', 'seatsIssue', 'seatsRelease']) {
       expect(key(k), findsNothing, reason: k);
     }
-    await scrollSeatsPage(tester);
+    await openGuestTickets(tester);
     expect(key('guestTicket-g1'), findsOneWidget);
     expect(key('guestRevoke-g1'), findsNothing);
     await tester.pumpWidget(const SizedBox());
@@ -359,13 +363,94 @@ void main() {
     await pumpBig(tester, 201);
     expect(find.text('201 seats selected'), findsOneWidget);
     expect(find.text('Select 200 seats or fewer'), findsOneWidget);
-    expect(key('seatsHold'), findsNothing);
+    expect(key('seatsHold'), findsOneWidget);
+    expect(tester.widget<FilledButton>(key('seatsHold')).onPressed, isNull, reason: 'visible but disabled');
     expect(key('seatsZoomHint'), findsOneWidget);
     expect(find.text('Zoom in to select seats'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await pumpBig(tester, 200);
     expect(find.text('Select 200 seats or fewer'), findsNothing);
     expect(tester.widget<FilledButton>(key('seatsHold')).onPressed, isNotNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the guest list is reachable and Revoke works while seats are selected on the map', (tester) async {
+    final api = await openSeats(tester);
+    await tapSeats(tester, ['A:3:1', 'A:3:2']);
+    expect(find.text('2 seats selected'), findsOneWidget);
+    await openGuestTickets(tester);
+    expect(bar, findsNothing, reason: 'the bar belongs to the map');
+    await tester.tap(key('guestRevoke-g1'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('revokeConfirm'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('revokeGuest:g1'));
+    await tester.tap(key('seatsViewMap'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 seats selected'), findsOneWidget, reason: 'the selection survived');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('dismissing the sheet during a slow request is not possible; the event screen stays and the map refreshes', (tester) async {
+    final api = await openSeats(tester);
+    api.actionGate = Completer<void>();
+    await tapSeat(tester, 'A:3:1');
+    await tester.tap(key('seatsHold'));
+    await tester.pumpAndSettle();
+    await tester.enterText(key('holdLabel'), 'Sponsor');
+    await tester.tap(key('holdSubmit'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tapAt(const Offset(10, 10)); // the barrier
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.binding.handlePopRoute(); // the back button
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(key('holdLabel'), findsOneWidget, reason: 'still open while the request runs');
+    expect(key('tabSeats'), findsOneWidget);
+    api.actionGate!.complete();
+    await tester.pumpAndSettle();
+    expect(key('holdLabel'), findsNothing);
+    expect(key('tabSeats'), findsOneWidget, reason: 'the event screen was not popped');
+    expect(legend('legendAvailable', 'On sale 9'), findsOneWidget);
+    expect(bar, findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a selected held seat is handed to the map as selected, with a drawable state', (tester) async {
+    await openSeats(tester);
+    final layout = SeatLayout.fromJson(seatLayoutJson());
+    final sel = layout.seatByKey('A:1:5')!.index, other = layout.seatByKey('A:1:6')!.index;
+    var map = tester.widget<SeatMapView>(find.byType(SeatMapView));
+    expect(map.states[sel], SeatState.held);
+    await tapSeat(tester, 'A:1:5');
+    map = tester.widget<SeatMapView>(find.byType(SeatMapView));
+    expect(map.selected, {sel});
+    expect(map.states[sel], SeatState.available, reason: 'the painter marks selection only on drawable seats');
+    expect(map.colors[sel], isNotNull);
+    expect(map.states[other], SeatState.held);
+    expect(key('legendSelected'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('after a refresh a selected seat that is no longer selectable drops out', (tester) async {
+    final api = await openSeats(tester);
+    await tapSeats(tester, ['A:3:1', 'A:3:2']);
+    final i = api.seatRows.indexWhere((r) => r['seatKey'] == 'A:3:2');
+    api.seatRows[i] = {...api.seatRows[i], 'status': 'SOLD'};
+    ProviderScope.containerOf(tester.element(find.byType(SeatsTab))).invalidate(orgSeatingProvider((orgId: 'o1', eventId: 'e1')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 seat selected'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('when the seating request fails the Seats tab stays, with a retry', (tester) async {
+    final api = await openSeats(tester, setup: (a) => a.failSeating = true); // opens the tab: it is there
+    expect(find.text("Couldn't load. Check your connection."), findsOneWidget);
+    api.failSeating = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(key('seatsViewMap'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

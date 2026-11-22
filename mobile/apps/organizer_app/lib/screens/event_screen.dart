@@ -25,10 +25,15 @@ class EventScreen extends ConsumerStatefulWidget {
 class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderStateMixin {
   TabController? _tabs;
   List<String> _ids = const [];
+  // Replaced controllers wait here until the frame is done; disposed with the screen at the latest.
+  final _retired = <TabController>[];
 
   @override
   void dispose() {
     _tabs?.dispose();
+    for (final c in _retired) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -42,7 +47,12 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     final next = TabController(length: ids.length, vsync: this, initialIndex: index);
     _tabs = next;
     _ids = ids;
-    if (old != null) WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    if (old != null) {
+      _retired.add(old);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_retired.remove(old)) old.dispose();
+      });
+    }
     return next;
   }
 
@@ -55,7 +65,9 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     final event = ref.watch(orgEventsProvider).value?.where((e) => e.id == eventId).firstOrNull;
     if (org == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final k = (orgId: org.id, eventId: eventId);
-    final hasSeats = ref.watch(orgSeatingProvider(k)).value?.hasMap ?? false;
+    // A failed fetch keeps the tab (with a retry) rather than hiding it on an event that has a map.
+    final seating = ref.watch(orgSeatingProvider(k));
+    final hasSeats = seating.hasValue ? seating.value!.hasMap : seating.hasError;
     final ids = ['overview', 'guests', if (hasSeats) 'seats', 'door', 'announce', 'promos'];
     final controller = _controllerFor(ids);
     return Scaffold(

@@ -487,4 +487,20 @@ class L10nMy extends L10n {
 
   @override
   String get noGuestTickets => 'ဧည့်သည်လက်မှတ် မရှိသေးပါ';
+
+  @override
+  String get seatsViewMap => 'မြေပုံ';
+
+  @override
+  String seatsViewGuests(int count) {
+    return 'ဧည့်သည်လက်မှတ် ($count)';
+  }
+
+  @override
+  String get legendSelected => 'ရွေးထားသည်';
+
+  @override
+  String ticketsIssued(int count) {
+    return 'ဧည့်သည်လက်မှတ် $count စောင် ထုတ်ပေးပြီး';
+  }
 }

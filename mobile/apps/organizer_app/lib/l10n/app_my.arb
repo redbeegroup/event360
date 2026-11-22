@@ -142,5 +142,9 @@
   "viewOnlySeats": "ခုံများကို ကြည့်ရှုနိုင်သော်လည်း မပြောင်းလဲနိုင်ပါ",
   "seatsZoomHint": "ခုံရွေးရန် ချဲ့ကြည့်ပါ",
   "fieldRequired": "လိုအပ်သည်",
-  "noGuestTickets": "ဧည့်သည်လက်မှတ် မရှိသေးပါ"
+  "noGuestTickets": "ဧည့်သည်လက်မှတ် မရှိသေးပါ",
+  "seatsViewMap": "မြေပုံ",
+  "seatsViewGuests": "ဧည့်သည်လက်မှတ် ({count})",
+  "legendSelected": "ရွေးထားသည်",
+  "ticketsIssued": "ဧည့်သည်လက်မှတ် {count} စောင် ထုတ်ပေးပြီး"
 }
