@@ -130,6 +130,9 @@ export class WaitlistService {
     if (t.salesStartAt && t.salesStartAt > now) throw new ConflictException('Sales have not opened yet');
     if (quantity < 1 || quantity > t.maxPerOrder) throw new BadRequestException(`Join for 1 to ${t.maxPerOrder} tickets`);
     const seated = t._count.eventSeats > 0;
+    // A seated join queues for the type's counter row behind the seated checkouts of an on-sale rush (and for a pool
+    // connection), so it gets the same patience as they do: the default 5 s transaction timeout and 2 s pool wait
+    // would turn a busy moment into a 500 for the buyer.
     const entryId = await this.prisma.$transaction(async (tx) => {
       // The buyer's row first, as at checkout (lock order step 1): serialises one buyer's joins and checkouts, so the
       // per-person limit can't be raced. FOR NO KEY UPDATE, not FOR UPDATE: it must not conflict with the KEY SHARE
@@ -170,7 +173,7 @@ export class WaitlistService {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException({ message: 'You are already on this waitlist', reasonCode: 'ALREADY_WAITING' });
         throw e;
       }
-    });
+    }, seated ? SEATED_TX : undefined);
     if (seated) await this.reserveAfterJoin(t.eventId, ticketTypeId);
     return { entryId, position: await this.position(entryId) };
   }

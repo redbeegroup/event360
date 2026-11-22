@@ -1,9 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { CATEGORY_SEED } from './modules/catalog/category-seed';
 
-const prisma = new PrismaClient();
-
-async function main() {
+/**
+ * Reference data the API (and its tests) rely on: the category tree, the default commission rule and the promo
+ * placements. Idempotent: safe to run on every deploy, and from the jest global setup against a fresh database.
+ */
+export async function seedBaseData(prisma: PrismaClient): Promise<void> {
   for (const [i, parent] of CATEGORY_SEED.entries()) {
     const p = await prisma.category.upsert({
       where: { slug: parent.slug },
@@ -37,12 +39,15 @@ async function main() {
   for (const pl of placements) {
     await prisma.promoPlacement.upsert({ where: { code: pl.code }, update: {}, create: pl });
   }
-  console.log('Seed complete');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+if (require.main === module) {
+  const prisma = new PrismaClient();
+  seedBaseData(prisma)
+    .then(() => console.log('Seed complete'))
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}

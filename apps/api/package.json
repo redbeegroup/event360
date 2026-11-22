@@ -68,6 +68,7 @@
       "^.+\\.ts$": "ts-jest"
     },
     "testEnvironment": "node",
+    "globalSetup": "<rootDir>/test/global-setup.ts",
     "maxWorkers": 1
   }
 }

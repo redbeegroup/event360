@@ -730,6 +730,25 @@ run('Waitlist', () => {
     await expectSeatCounters(ev.vip);
   });
 
+  it('a seated join still commits after queueing longer than the default transaction timeout', async () => {
+    const ev = await seated('JoinPatience');
+    const [H, W] = [await consumer(), await consumer()];
+    await order(H.H, ev.id, { seats: ['V:1:1', 'V:1:2', 'V:1:3', 'V:1:4'] }).expect(201);
+    // A busy on-sale moment: the type's counter row is held for longer than Prisma's 5 s default. The join waits for it
+    // like a seated checkout (SEATED_TX) instead of failing with an expired transaction.
+    const gate = await lockGate(prisma, (tx) => tx.$queryRaw`SELECT id FROM ticket_types WHERE id = ${ev.vip}::uuid FOR NO KEY UPDATE`);
+    let joined: Promise<request.Response> | undefined;
+    try {
+      joined = join(W.H, ev.vip, 1).then((r) => r);
+      await queued(prisma, [gate.pid]);
+      await new Promise((r) => setTimeout(r, 5_500));
+    } finally {
+      gate.release();
+      await gate.done;
+    }
+    expect((await joined!).status).toBe(201);
+  });
+
   it('assignOffers only looks at types with something to offer', async () => {
     const ev = await standing('Starve', 1, 1);
     const [H, W] = [await consumer(), await consumer()];
