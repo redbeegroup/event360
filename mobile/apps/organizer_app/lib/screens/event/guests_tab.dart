@@ -113,7 +113,6 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      showDragHandle: true,
       enableDrag: false, // a swipe could close the sheet while a request is in flight
       builder: (_) => AttendeeSheet(k: widget.k, attendee: a, canEdit: widget.canEdit, event: widget.event, onCheckIn: () => _checkIn(a), onUndo: () => _undo(a)),
     );
@@ -225,9 +224,19 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
             onChanged: (v) => setState(() => _q = v),
           ),
           const SizedBox(height: 8),
-          FilterChip(key: const Key('guestFilterNotIn'), label: Text(t.guestsNotIn), selected: _onlyNotIn, onSelected: (v) => setState(() => _onlyNotIn = v)),
+          // The selected fill is the primary colour: the label and the tick must read on it.
+          FilterChip(
+            key: const Key('guestFilterNotIn'),
+            label: Text(t.guestsNotIn),
+            selected: _onlyNotIn,
+            labelStyle: _onlyNotIn ? theme.chipTheme.labelStyle?.copyWith(color: theme.colorScheme.onPrimary) ?? TextStyle(color: theme.colorScheme.onPrimary) : null,
+            checkmarkColor: theme.colorScheme.onPrimary,
+            onSelected: (v) => setState(() => _onlyNotIn = v),
+          ),
+          const SizedBox(height: 8),
         ]),
       ),
+      const Divider(),
       Expanded(
         child: RefreshIndicator(
           onRefresh: _refresh,

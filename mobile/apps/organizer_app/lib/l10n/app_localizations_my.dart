@@ -139,7 +139,7 @@ class L10nMy extends L10n {
   String get seatsHeld => 'ငွေပေးချေနေဆဲ';
 
   @override
-  String get seatsGuest => 'ဧည့်သည်အတွက် ထားသည်';
+  String get seatsGuest => 'ဧည့်သည်ထားသည်';
 
   @override
   String get seatsSold => 'ရောင်းပြီး';
@@ -148,7 +148,7 @@ class L10nMy extends L10n {
   String get seatsComp => 'အခမဲ့';
 
   @override
-  String get seatsOffered => 'စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်အတွက် ထားသည်';
+  String get seatsOffered => 'ကမ်းလှမ်းထားသည်';
 
   @override
   String get waitlistTitle => 'စောင့်ဆိုင်းစာရင်း';
@@ -479,8 +479,8 @@ class L10nMy extends L10n {
   String get guestList => 'ဧည့်သည်လက်မှတ်များ';
 
   @override
-  String revokeGuestConfirm(String name) {
-    return '$name ၏ ဧည့်သည်လက်မှတ်ကို ရုပ်သိမ်းမလား။';
+  String revokeGuestConfirm(String name, String seat) {
+    return '$name ($seat) ၏ ဧည့်သည်လက်မှတ်ကို ရုပ်သိမ်းမလား။';
   }
 
   @override

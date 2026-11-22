@@ -378,7 +378,7 @@ void main() {
     expect(find.descendant(of: key('guestTicket-g2'), matching: find.text('CHECKED IN')), findsOneWidget);
     await tester.tap(key('guestRevoke-g1'));
     await tester.pumpAndSettle();
-    expect(find.text('Revoke the guest ticket for Daw Mya?'), findsOneWidget);
+    expect(find.text('Revoke the guest ticket for Daw Mya, Stalls · Row 1 · Seat 4?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(api.calls.where((c) => c.startsWith('revokeGuest')), isEmpty);
@@ -464,6 +464,32 @@ void main() {
     expect(key('tabSeats'), findsOneWidget, reason: 'the event screen was not popped');
     expect(legend('legendAvailable', 'On sale 9'), findsOneWidget);
     expect(bar, findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the Guest tickets count leaves out revoked tickets', (tester) async {
+    await openSeats(tester, setup: (a) => a.guestRows.add({...a.guestRows.first, 'id': 'g9', 'status': 'VOID'}));
+    await tester.tap(key('seatsViewMap'));
+    await tester.pumpAndSettle();
+    expect(find.text('Guest tickets (2)'), findsOneWidget, reason: 'g1 and g2 are valid; the voided one is not counted');
+    await openGuestTickets(tester);
+    await tester.tap(key('guestRevoke-g1'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('revokeConfirm'));
+    await tester.pumpAndSettle();
+    expect(find.text('Guest tickets (1)'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the legend fades at the right edge while it can scroll on', (tester) async {
+    await openSeats(tester);
+    double fade() => tester.widget<AnimatedOpacity>(key('legendFade')).opacity;
+    expect(fade(), 1);
+    await tester.drag(find.ancestor(of: key('legendAvailable'), matching: find.byType(SingleChildScrollView)), const Offset(-300, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(find.ancestor(of: key('legendAvailable'), matching: find.byType(SingleChildScrollView)), const Offset(-300, 0));
+    await tester.pumpAndSettle();
+    expect(fade(), 0, reason: 'at the end: no fade');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -701,3 +727,4 @@ void tallTests() {
     },
   );
 }
+

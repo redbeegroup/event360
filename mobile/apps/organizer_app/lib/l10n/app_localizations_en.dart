@@ -145,10 +145,10 @@ class L10nEn extends L10n {
   String get seatsSold => 'Sold';
 
   @override
-  String get seatsComp => 'Complimentary';
+  String get seatsComp => 'Free seats';
 
   @override
-  String get seatsOffered => 'Held for waitlist offers';
+  String get seatsOffered => 'Waitlist offers';
 
   @override
   String get waitlistTitle => 'Waitlist';
@@ -494,8 +494,8 @@ class L10nEn extends L10n {
   String get guestList => 'Guest tickets';
 
   @override
-  String revokeGuestConfirm(String name) {
-    return 'Revoke the guest ticket for $name?';
+  String revokeGuestConfirm(String name, String seat) {
+    return 'Revoke the guest ticket for $name, $seat?';
   }
 
   @override

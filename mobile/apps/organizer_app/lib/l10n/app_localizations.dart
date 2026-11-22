@@ -370,13 +370,13 @@ abstract class L10n {
   /// No description provided for @seatsComp.
   ///
   /// In en, this message translates to:
-  /// **'Complimentary'**
+  /// **'Free seats'**
   String get seatsComp;
 
   /// No description provided for @seatsOffered.
   ///
   /// In en, this message translates to:
-  /// **'Held for waitlist offers'**
+  /// **'Waitlist offers'**
   String get seatsOffered;
 
   /// No description provided for @waitlistTitle.
@@ -946,8 +946,8 @@ abstract class L10n {
   /// No description provided for @revokeGuestConfirm.
   ///
   /// In en, this message translates to:
-  /// **'Revoke the guest ticket for {name}?'**
-  String revokeGuestConfirm(String name);
+  /// **'Revoke the guest ticket for {name}, {seat}?'**
+  String revokeGuestConfirm(String name, String seat);
 
   /// No description provided for @guestRevoked.
   ///

@@ -493,12 +493,12 @@ void main() {
     expect(find.text('Gate A'), findsOneWidget);
     expect(find.text('No gate'), findsOneWidget);
     // Seat counts are tiles: label on top, the number below
-    for (final (label, n) in [('Available', '11'), ('Held for guests', '3'), ('Complimentary', '1')]) {
+    for (final (label, n) in [('Available', '11'), ('Held for guests', '3'), ('Free seats', '1')]) {
       final tile = find.ancestor(of: find.text(label), matching: find.byType(StatTile));
       expect(tile, findsOneWidget, reason: label);
       expect(find.descendant(of: tile, matching: find.text(n)), findsOneWidget, reason: label);
     }
-    final offered = find.ancestor(of: find.text('Held for waitlist offers'), matching: find.byType(StatTile));
+    final offered = find.ancestor(of: find.text('Waitlist offers'), matching: find.byType(StatTile));
     expect(find.descendant(of: offered, matching: find.text('2')), findsOneWidget);
     // Waitlist card: only types with someone waiting or holding an offer
     final card = find.byKey(const Key('waitlistCard'), skipOffstage: false);
@@ -531,7 +531,7 @@ void main() {
       });
       expect(find.byKey(const Key('sold')), findsOneWidget);
       expect(find.byKey(const Key('waitlistCard')), findsNothing);
-      expect(find.text('Held for waitlist offers'), findsNothing);
+      expect(find.text('Waitlist offers'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -548,7 +548,7 @@ void main() {
         a.offeredSeats = 2;
         a.standingOffered = 3;
       });
-      final tile = find.ancestor(of: find.text('Held for waitlist offers'), matching: find.byType(StatTile));
+      final tile = find.ancestor(of: find.text('Waitlist offers'), matching: find.byType(StatTile));
       expect(find.descendant(of: tile, matching: find.text('5')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });

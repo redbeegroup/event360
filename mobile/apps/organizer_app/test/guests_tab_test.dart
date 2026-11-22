@@ -400,4 +400,34 @@ void main() {
     expect(find.text('Check-in opens one day before the event'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+
+  double contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    return (la > lb ? la + 0.05 : lb + 0.05) / ((la > lb ? lb : la) + 0.05);
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('the selected Not checked in chip is readable (${dark ? 'dark' : 'light'} theme)', (tester) async {
+      tester.platformDispatcher.platformBrightnessTestValue = dark ? Brightness.dark : Brightness.light;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      await openGuests(tester);
+      await tester.tap(find.byKey(const Key('guestFilterNotIn')));
+      await tester.pumpAndSettle();
+      final chip = tester.widget<FilterChip>(find.byKey(const Key('guestFilterNotIn')));
+      final ctx = tester.element(find.byKey(const Key('guestFilterNotIn')));
+      final fill = Theme.of(ctx).chipTheme.selectedColor!;
+      final label = chip.labelStyle!.color!;
+      expect(contrast(label, fill), greaterThanOrEqualTo(4.5));
+      expect(contrast(chip.checkmarkColor!, fill), greaterThanOrEqualTo(4.5));
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('the attendee sheet has no drag handle (it cannot be dragged away)', (tester) async {
+    await openGuests(tester);
+    await openRow(tester, 'a1');
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(tester.widget<BottomSheet>(find.byType(BottomSheet)).showDragHandle, isNot(true));
+    await tester.pumpWidget(const SizedBox());
+  });
 }

@@ -223,7 +223,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
       ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          content: Text(t.revokeGuestConfirm(g.guestName)),
+          content: Text(t.revokeGuestConfirm(g.guestName, pickLang(ref.read(langProvider), g.seatLabel ?? g.seatKey, g.seatLabelMy))),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
@@ -296,7 +296,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
     }
     final chosen = [for (final key in selected) _byKey[key]!];
     final guestCount =
-        ref.watch(guestTicketsProvider(widget.k)).value?.length ?? 0;
+        ref.watch(guestTicketsProvider(widget.k)).value?.where((g) => g.status != 'VOID').length ?? 0;
 
     // The bar floats over the map: its measured height is added below the map's pan boundary, so the last rows can
     // be brought above it. boundaryMargin is in scene units; at low zoom a unit is fewer pixels, so this over-provisions.
@@ -487,12 +487,42 @@ class _ViewOnly extends StatelessWidget {
   );
 }
 
-class _Legend extends StatelessWidget {
+class _Legend extends StatefulWidget {
   const _Legend({required this.data});
   final OrgSeating data;
+  @override
+  State<_Legend> createState() => _LegendState();
+}
+
+class _LegendState extends State<_Legend> {
+  final _scroll = ScrollController();
+  bool _more = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_measure);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// True while there is more of the line to scroll to: the fade at the right edge says so.
+  void _measure() {
+    if (!_scroll.hasClients) return;
+    final more = _scroll.position.maxScrollExtent - _scroll.offset > 1;
+    if (more != _more) setState(() => _more = more);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _measure();
+    });
     final t = L10n.of(context);
     final theme = Theme.of(context);
     int sum(int Function(SeatCounts) f) =>
@@ -516,7 +546,8 @@ class _Legend extends StatelessWidget {
       child: icon == null ? null : Icon(icon, size: 11, color: Colors.white),
     );
     // One scrolling line: the map below keeps the height.
-    return SingleChildScrollView(
+    final line = SingleChildScrollView(
+      controller: _scroll,
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
@@ -557,6 +588,25 @@ class _Legend extends StatelessWidget {
         ],
       ),
     );
+    // A fade at the right edge while the line goes on.
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    return Stack(children: [
+      line,
+      Positioned(
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: 32,
+        child: IgnorePointer(
+          child: AnimatedOpacity(
+            key: const Key('legendFade'),
+            opacity: _more ? 1 : 0,
+            duration: const Duration(milliseconds: 150),
+            child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [bg.withValues(alpha: 0), bg]))),
+          ),
+        ),
+      ),
+    ]);
   }
 }
 
