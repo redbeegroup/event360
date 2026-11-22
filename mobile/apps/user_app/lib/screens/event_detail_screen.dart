@@ -72,6 +72,8 @@ class _Detail extends ConsumerWidget {
     final dark = theme.brightness == Brightness.dark;
     void open(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
+    Widget priceText(TicketType tt) => Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
+        style: theme.textTheme.titleMedium?.copyWith(fontSize: 15, color: tt.isFree ? (dark ? E360DarkColors.success : E360Colors.success) : null));
     Widget section(String title, List<Widget> children) => Padding(
           padding: const EdgeInsets.only(top: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: bold), const SizedBox(height: 12), ...children]),
@@ -265,16 +267,12 @@ class _Detail extends ConsumerWidget {
                                 style: theme.textTheme.bodySmall?.copyWith(color: !tt.soldOut && _scarce(tt) ? (dark ? E360DarkColors.amberInk : E360Colors.amberInk) : null, fontWeight: !tt.soldOut && _scarce(tt) ? FontWeight.w600 : null)),
                             if (priceRiseText(t, lang, tt.priceMmk, tt.nextPrice) != null)
                               Text(priceRiseText(t, lang, tt.priceMmk, tt.nextPrice)!, key: Key('priceRise-${tt.id}'), style: theme.textTheme.bodySmall),
+                            if (MediaQuery.textScalerOf(context).scale(1) >= 1.5) priceText(tt),
                           ]),
                         ),
                         const SizedBox(width: 12),
-                        // Large text: the price may wrap instead of squeezing the name out of the row
-                        ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.5),
-                          child: Text(tt.isFree ? t.free : t.mmk(formatAmount(tt.priceMmk, lang)),
-                              textAlign: TextAlign.end,
-                              style: theme.textTheme.titleMedium?.copyWith(fontSize: 15, color: tt.isFree ? (dark ? E360DarkColors.success : E360Colors.success) : null)),
-                        ),
+                        // Large text: the price moves under the name instead of squeezing it out of the row
+                        if (MediaQuery.textScalerOf(context).scale(1) < 1.5) priceText(tt),
                       ]),
                     ),
                     if (tt.soldOut && !ended && !cancelled) _WaitlistRow(event: e, type: tt),

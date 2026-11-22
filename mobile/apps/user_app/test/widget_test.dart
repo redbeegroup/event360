@@ -3027,4 +3027,45 @@ void main() {
       });
     }
   }
+
+  testWidgets('seat picker bar at 1.0x on a short 360x640 phone: Continue is visible and not inside a scroller', (tester) async {
+    await openPicker(tester);
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    await tester.pumpAndSettle();
+    await zoomIntoStalls(tester);
+    await tapSeat(tester, 1, 1);
+    await tester.tap(find.byKey(const Key('addPromo')));
+    await tester.pumpAndSettle();
+    final cont = find.byKey(const Key('seatContinue'));
+    final r = tester.getRect(cont);
+    expect(r.bottom, lessThanOrEqualTo(640));
+    expect(find.ancestor(of: cont, matching: find.byType(SingleChildScrollView)), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('seat picker bar at 2.0x: with seats chosen and the promo open Continue is on screen without scrolling and tappable', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    for (final lang in ['en', 'my']) {
+      await openPicker(tester, lang: lang);
+      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+      await tester.pumpAndSettle();
+      await zoomIntoStalls(tester);
+      for (var n = 1; n <= 3; n++) {
+        await tapSeat(tester, 1, n);
+      }
+      await tester.tap(find.byKey(const Key('addPromo')));
+      await tester.pumpAndSettle();
+      final cont = find.byKey(const Key('seatContinue'));
+      final r = tester.getRect(cont);
+      expect(r.top, greaterThanOrEqualTo(0), reason: lang);
+      expect(r.bottom, lessThanOrEqualTo(844), reason: lang);
+      expect(find.ancestor(of: cont, matching: find.byType(SingleChildScrollView)), findsNothing, reason: lang);
+      expect(tester.takeException(), isNull, reason: lang);
+      await tester.tap(cont);
+      await tester.pumpAndSettle();
+      expect(pickerApi.seatOrders, isNotEmpty, reason: '$lang Continue sent the order');
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
 }

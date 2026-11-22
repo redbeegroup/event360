@@ -177,23 +177,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
               if (o.discountMmk > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Row(children: [
-                    Expanded(child: Text(t.discount, style: theme.textTheme.bodyLarge)),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.5),
-                      child: Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount'), textAlign: TextAlign.end, style: theme.textTheme.bodyLarge),
-                    ),
-                  ]),
+                  child: _labelAndAmount(
+                    context,
+                    Text(t.discount, style: theme.textTheme.bodyLarge),
+                    Text('− ${t.mmk(formatAmount(o.discountMmk, lang))}', key: const Key('discount'), style: theme.textTheme.bodyLarge),
+                  ),
                 ),
               const Divider(height: 24),
-              Row(children: [
-                Expanded(child: Text(t.total, style: theme.textTheme.titleMedium)),
-                // Large text: a long amount wraps instead of pushing the label out
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.6),
-                  child: Text(t.mmk(formatAmount(o.totalMmk, lang)), textAlign: TextAlign.end, style: theme.textTheme.headlineSmall),
-                ),
-              ]),
+              _labelAndAmount(
+                context,
+                Text(t.total, style: theme.textTheme.titleMedium),
+                Text(t.mmk(formatAmount(o.totalMmk, lang)), style: theme.textTheme.headlineSmall),
+              ),
               if (o.holdExpiresAt != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -273,6 +268,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> with WidgetsBin
 }
 
 /// A payment method as a selectable card: 2 px navy border when chosen (like the ticket picker's cards).
+/// A label with an amount at the end of the row. With large text they wrap onto separate lines when they don't fit.
+Widget _labelAndAmount(BuildContext context, Widget label, Widget amount) {
+  if (MediaQuery.textScalerOf(context).scale(1) >= 1.5) {
+    return Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, runSpacing: 4, spacing: 12, children: [label, amount]);
+  }
+  return Row(children: [Expanded(child: label), amount]);
+}
+
 class _MethodCard extends StatelessWidget {
   const _MethodCard({super.key, required this.label, required this.selected, required this.onTap});
   final String label;

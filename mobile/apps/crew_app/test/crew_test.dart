@@ -575,8 +575,8 @@ void main() {
           await entry.value.then?.call(tester, api);
           noErrors('after action');
           await scrollThrough(tester);
-          noErrors('scrolled');
           await tester.pump(const Duration(seconds: 6)); // let result auto-hide timers finish
+          noErrors('scrolled and auto-hidden');
         } finally {
           FlutterError.onError = previous;
         }
