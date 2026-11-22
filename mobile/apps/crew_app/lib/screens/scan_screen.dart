@@ -115,22 +115,30 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ]),
           ),
         ),
-        if (!st.online)
-          MaterialBanner(
-            backgroundColor: warnBg,
-            dividerColor: Colors.transparent,
-            leading: Icon(Icons.cloud_off, color: warnInk),
-            content: Text(t.offlineBanner(st.pending.length), style: TextStyle(color: warnInk, fontWeight: FontWeight.w600)),
-            actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).refresh(), child: Text(t.retry))],
+        // With large text the banners scroll inside a third of the screen so the camera keeps room
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.35),
+          child: SingleChildScrollView(
+            child: Column(children: [
+              if (!st.online)
+                MaterialBanner(
+                  backgroundColor: warnBg,
+                  dividerColor: Colors.transparent,
+                  leading: Icon(Icons.cloud_off, color: warnInk),
+                  content: Text(t.offlineBanner(st.pending.length), style: TextStyle(color: warnInk, fontWeight: FontWeight.w600)),
+                  actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).refresh(), child: Text(t.retry))],
+                ),
+              if (st.conflicts.isNotEmpty)
+                MaterialBanner(
+                  backgroundColor: warnBg,
+                  dividerColor: Colors.transparent,
+                  leading: Icon(Icons.warning_amber_rounded, color: warnInk),
+                  content: Text('${t.syncConflict}: ${st.conflicts.map((c) => c.ticket?.holderName ?? '?').join(', ')}', style: TextStyle(color: warnInk)),
+                  actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).clearConflicts(), child: Text(t.ok))],
+                ),
+            ]),
           ),
-        if (st.conflicts.isNotEmpty)
-          MaterialBanner(
-            backgroundColor: warnBg,
-            dividerColor: Colors.transparent,
-            leading: Icon(Icons.warning_amber_rounded, color: warnInk),
-            content: Text('${t.syncConflict}: ${st.conflicts.map((c) => c.ticket?.holderName ?? '?').join(', ')}', style: TextStyle(color: warnInk)),
-            actions: [TextButton(onPressed: () => ref.read(checkinProvider.notifier).clearConflicts(), child: Text(t.ok))],
-          ),
+        ),
         Expanded(
           child: Stack(fit: StackFit.expand, children: [
             QrScannerView(onCode: _handle, paused: st.busy),

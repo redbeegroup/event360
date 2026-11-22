@@ -92,6 +92,9 @@ class FakeCrewApi extends Event360Api {
       });
     }
     if (qr == 'bad.qr') return ScanOutcome.fromJson({'result': 'INVALID', 'reason': 'signature', 'ticket': null});
+    if (qr == 'wrong.qr') return ScanOutcome.fromJson({'result': 'WRONG_EVENT', 'ticket': null, 'otherEvent': {'title': 'Yangon International New Year Countdown Gala Night'}});
+    if (qr == 'void.qr') return ScanOutcome.fromJson({'result': 'VOID', 'ticket': ticketJson('ffffffff-0000-0000-0000-000000000006', status: 'VOID')});
+    if (qr == 'refunded.qr') return ScanOutcome.fromJson({'result': 'REFUNDED', 'ticket': ticketJson('ffffffff-0000-0000-0000-000000000007', status: 'REFUNDED')});
     return ScanOutcome.fromJson({
       'result': 'ACCEPTED',
       'ticket': {...ticketJson('cccccccc-0000-0000-0000-000000000003'), 'seat': 'Stalls · Row A · Seat 5', 'seatMy': 'ကြမ်းခင်း · အတန်း A · ခုံ 5'},
@@ -453,4 +456,132 @@ void main() {
     expect({ok.icon, dup.icon, bad.icon}, hasLength(3));
     expect({ok.title, dup.title, bad.title}, hasLength(3));
   });
+
+  // ───── Large-text sweep: every screen at 390x844, text scale 2.0, EN and MY ─────
+
+  Future<void> scrollThrough(WidgetTester tester) async {
+    final count = find.byType(Scrollable).evaluate().length;
+    for (var i = 0; i < count; i++) {
+      final f = find.byType(Scrollable).at(i);
+      if (!f.evaluate().isNotEmpty) break;
+      final horizontal = tester.state<ScrollableState>(f).axisDirection == AxisDirection.right;
+      for (var k = 0; k < 10; k++) {
+        await tester.drag(f, horizontal ? const Offset(-250, 0) : const Offset(0, -350), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  final accountNoEvent = {'crew_session_v1': jsonEncode({'mode': 'account', 'event': null, 'gate': '', 'deviceName': ''})};
+  final accountNoGate = {'crew_session_v1': jsonEncode({'mode': 'account', 'event': eventJson(), 'gate': '', 'deviceName': ''})};
+  final sweepScreens = <String, ({Map<String, Object> prefs, Future<void> Function(WidgetTester, FakeCrewApi)? then})>{
+    'login (account)': (prefs: const {}, then: null),
+    'login, wrong password shows an error': (prefs: const {}, then: null),
+    'login, event code': (prefs: const {}, then: (t, a) async {
+      await t.tap(find.byType(Tab).last);
+      await t.pumpAndSettle();
+    }),
+    'login, event code rejected': (prefs: const {}, then: (t, a) async {
+      await t.tap(find.byType(Tab).last);
+      await t.pumpAndSettle();
+      await t.enterText(find.byType(TextField).first, 'zzzz-zzzz');
+      await t.tap(find.byType(FilledButton));
+      await t.pumpAndSettle();
+    }),
+    'event list': (prefs: accountNoEvent, then: null),
+    'gate setup': (prefs: accountNoGate, then: null),
+    'scanner, waiting': (prefs: readySession(), then: null),
+    'scanner, accepted': (prefs: readySession(), then: (t, a) async => typeScan(t, 'good.qr')),
+    'scanner, already checked in': (prefs: readySession(), then: (t, a) async => typeScan(t, 'dup.qr')),
+    'scanner, invalid': (prefs: readySession(), then: (t, a) async => typeScan(t, 'bad.qr')),
+    'scanner, wrong event': (prefs: readySession(), then: (t, a) async => typeScan(t, 'wrong.qr')),
+    'scanner, void': (prefs: readySession(), then: (t, a) async => typeScan(t, 'void.qr')),
+    'scanner, refunded': (prefs: readySession(), then: (t, a) async => typeScan(t, 'refunded.qr')),
+    'scanner, offline with a queued scan': (prefs: readySession(), then: (t, a) async {
+      final container = ProviderScope.containerOf(t.element(find.byType(CrewApp)));
+      a.offline = true;
+      await t.runAsync(() => container.read(checkinProvider.notifier).scan('queued.qr'));
+      await t.pumpAndSettle();
+    }),
+    'scanner menu': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byType(PopupMenuButton<String>));
+      await t.pumpAndSettle();
+    }),
+    'manual lookup': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byIcon(Icons.person_search));
+      await t.pumpAndSettle();
+    }),
+    'manual lookup with results and the confirm dialog': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byIcon(Icons.person_search));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('lookupInput')), 'Aung');
+      await t.testTextInput.receiveAction(TextInputAction.search);
+      await t.pumpAndSettle();
+      await t.tap(find.byType(FilledButton).first);
+      await t.pumpAndSettle();
+    }),
+    'manual lookup, result dialog': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byIcon(Icons.person_search));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('lookupInput')), 'Aung');
+      await t.testTextInput.receiveAction(TextInputAction.search);
+      await t.pumpAndSettle();
+      await t.tap(find.byType(FilledButton).first);
+      await t.pumpAndSettle();
+      await t.tap(find.byType(FilledButton).last);
+      await t.pumpAndSettle();
+    }),
+    'recent scans and stats': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byIcon(Icons.history));
+      await t.pump(const Duration(milliseconds: 500)); // stats are still loading: a spinner never settles
+      final container = ProviderScope.containerOf(t.element(find.byType(CrewApp)));
+      await t.runAsync(() => container.read(checkinProvider.notifier).refresh());
+      await t.pumpAndSettle();
+    }),
+    'recent scans, undo dialog': (prefs: readySession(), then: (t, a) async {
+      await t.tap(find.byIcon(Icons.history));
+      await t.pump(const Duration(milliseconds: 500)); // stats are still loading: a spinner never settles
+      final container = ProviderScope.containerOf(t.element(find.byType(CrewApp)));
+      await t.runAsync(() => container.read(checkinProvider.notifier).refresh());
+      await t.pumpAndSettle();
+      final undo = find.descendant(of: find.byType(ListTile), matching: find.byType(TextButton));
+      await t.scrollUntilVisible(undo, 200, scrollable: find.byType(Scrollable).first);
+      await t.ensureVisible(undo);
+      await t.pumpAndSettle();
+      await t.tap(undo);
+      await t.pumpAndSettle();
+    }),
+  };
+
+  for (final lang in ['en', 'my']) {
+    for (final entry in sweepScreens.entries) {
+      testWidgets('large text: ${entry.key} has no overflow at 390x844, scale 2.0, $lang', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final errors = <String>[];
+        void noErrors(String when) => expect(errors, isEmpty, reason: when);
+        final api = await pumpCrew(tester, prefs: {'crew_lang': lang, ...entry.value.prefs});
+        tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+        final previous = FlutterError.onError;
+        FlutterError.onError = (d) => errors.add(d.toDiagnosticsNode().toStringDeep().split('\n').where((l) => l.contains('overflowed') || l.contains('file:///') && l.contains('/lib/')).take(6).join(' / '));
+        try {
+          await tester.pumpAndSettle();
+          noErrors('opened');
+          if (entry.key == 'login, wrong password shows an error') {
+            await tester.enterText(find.byType(TextField).at(0), 'crew@example.com');
+            await tester.enterText(find.byType(TextField).at(1), 'secret-123');
+          }
+          await entry.value.then?.call(tester, api);
+          noErrors('after action');
+          await scrollThrough(tester);
+          noErrors('scrolled');
+          await tester.pump(const Duration(seconds: 6)); // let result auto-hide timers finish
+        } finally {
+          FlutterError.onError = previous;
+        }
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+  }
 }

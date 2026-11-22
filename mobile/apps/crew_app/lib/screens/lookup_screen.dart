@@ -115,25 +115,31 @@ class _LookupScreenState extends ConsumerState<LookupScreen> {
                         final tk = _results![i];
                         final inside = tk.isCheckedIn || local.containsKey(tk.id);
                         final ci = tk.checkedIn;
+                        final action = switch (tk.status) {
+                          'VALID' when !inside => FilledButton(style: compactFilled, onPressed: () => _checkIn(tk), child: Text(t.checkIn)),
+                          'CHECKED_IN' => OutlinedButton(style: E360Buttons.outline, onPressed: () => confirmUndo(context, ref, tk.id, tk.holderName).then((_) => _search(_q.text)), child: Text(t.undo)),
+                          'VALID' => E360Badge(t.offlineChecked, kind: E360BadgeKind.success),
+                          _ => E360Badge(resultStyle(t, ScanOutcome(result: tk.status)).title),
+                        };
+                        // Large text: the action moves under the details instead of squeezing beside them
+                        final large = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
+                        final details = [
+                          if (tk.seat != null && tk.seat!.isNotEmpty) pickLang(lang, tk.seat, tk.seatMy),
+                          pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy),
+                          '#${tk.code}',
+                          if (tk.phoneLast4 != null && !tk.holderName.contains(tk.phoneLast4!)) '••${tk.phoneLast4}',
+                          if (inside && ci != null) t.checkedInAt(formatTime(ci.at, lang)),
+                        ].join(' · ');
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor: inside ? okBg : theme.colorScheme.surfaceContainerHighest,
                             child: Icon(inside ? Icons.check : Icons.confirmation_number_outlined, color: inside ? okInk : theme.colorScheme.primary),
                           ),
                           title: Text(tk.holderName, style: theme.textTheme.titleSmall),
-                          subtitle: Text([
-                            if (tk.seat != null && tk.seat!.isNotEmpty) pickLang(lang, tk.seat, tk.seatMy),
-                            pickLang(lang, tk.ticketTypeName, tk.ticketTypeNameMy),
-                            '#${tk.code}',
-                            if (tk.phoneLast4 != null && !tk.holderName.contains(tk.phoneLast4!)) '••${tk.phoneLast4}',
-                            if (inside && ci != null) t.checkedInAt(formatTime(ci.at, lang)),
-                          ].join(' · ')),
-                          trailing: switch (tk.status) {
-                            'VALID' when !inside => FilledButton(style: compactFilled, onPressed: () => _checkIn(tk), child: Text(t.checkIn)),
-                            'CHECKED_IN' => OutlinedButton(style: E360Buttons.outline, onPressed: () => confirmUndo(context, ref, tk.id, tk.holderName).then((_) => _search(_q.text)), child: Text(t.undo)),
-                            'VALID' => E360Badge(t.offlineChecked, kind: E360BadgeKind.success),
-                            _ => E360Badge(resultStyle(t, ScanOutcome(result: tk.status)).title),
-                          },
+                          subtitle: large
+                              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(details), const SizedBox(height: 8), action])
+                              : Text(details),
+                          trailing: large ? null : action,
                         );
                       },
                     ),

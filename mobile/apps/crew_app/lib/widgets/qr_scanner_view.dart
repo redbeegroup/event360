@@ -70,13 +70,17 @@ class _Placeholder extends StatelessWidget {
         const ColoredBox(color: Color(0xFF15172E)),
         const ViewfinderOverlay(scrim: false),
         Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 190),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
-              const SizedBox(height: 10),
-              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
-            ]),
+          // Large text on a short area: the message shrinks to fit instead of overflowing
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 190),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
+                const SizedBox(height: 10),
+                Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+              ]),
+            ),
           ),
         ),
       ]);
