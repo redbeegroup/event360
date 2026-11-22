@@ -12,6 +12,9 @@ export default async function globalSetup(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     await seedBaseData(prisma);
+  } catch (e) {
+    // Unit specs need no database: report it and let the suites that do need one fail on their own
+    console.warn(`test seed skipped: ${(e as Error).message.split('\n')[0]}`);
   } finally {
     await prisma.$disconnect();
   }
