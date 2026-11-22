@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
@@ -23,11 +25,15 @@ SeatState orgSeatState(String status) => switch (status) {
 bool _selectable(OrgSeat s) =>
     s.status == 'AVAILABLE' || s.status == 'GUEST_HOLD';
 
-final _myanmarPhone = RegExp(r'^(\+?95|0)9\d{7,9}$');
-
-/// Client-side check only; the server is the authority.
-bool isMyanmarMobile(String input) =>
-    _myanmarPhone.hasMatch(input.replaceAll(RegExp(r'[\s\-]'), ''));
+/// The server's rule (normalizeMyanmarPhone): spaces, dashes and brackets are ignored; +959…, 959… or 09…,
+/// then 7 to 10 more digits. Client-side check only; the server is the authority.
+bool isMyanmarMobile(String input) {
+  final s = input.replaceAll(RegExp(r'[\s\-()]'), '');
+  final m = RegExp(r'^(?:\+959|959|09)(\d+)$').firstMatch(s);
+  if (m == null) return false;
+  final n = m.group(1)!.length;
+  return n >= 7 && n <= 10;
+}
 
 /// Reloads everything a seat action can change.
 void refreshSeating(ProviderContainer c, EventKey k) {
@@ -35,6 +41,7 @@ void refreshSeating(ProviderContainer c, EventKey k) {
   c.invalidate(guestTicketsProvider(k));
   c.invalidate(attendeesProvider(k));
   c.invalidate(dashboardProvider(k));
+  c.invalidate(attendanceProvider(k));
 }
 
 enum _Result { ok, changed, phone, failed }
@@ -69,6 +76,8 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
   bool _busy = false;
   bool _dialogOpen = false;
   bool _guestsView = false;
+  final _barKey = GlobalKey();
+  double _barHeight = 0;
 
   // Worked out once per fetched OrgSeating.
   OrgSeating? _source;
@@ -151,6 +160,9 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
       if (phoneOn400 && e.status == 400)
         return _Outcome(_Result.phone, t.phoneInvalid);
       return _Outcome(_Result.failed, e.isNetwork ? t.loadError : e.message);
+    } catch (_) {
+      // Anything unexpected (a parsing error, say) still ends the busy state and lets the sheet close.
+      return _Outcome(_Result.failed, t.loadError);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -243,6 +255,8 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
       messenger.showSnackBar(
         SnackBar(content: Text(e.isNetwork ? t.loadError : e.message)),
       );
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text(t.loadError)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -284,6 +298,17 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
     final guestCount =
         ref.watch(guestTicketsProvider(widget.k)).value?.length ?? 0;
 
+    // The bar floats over the map: its measured height is added below the map's pan boundary, so the last rows can
+    // be brought above it. boundaryMargin is in scene units; at low zoom a unit is fewer pixels, so this over-provisions.
+    final barShown = widget.canEdit && chosen.isNotEmpty;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final h = barShown ? (_barKey.currentContext?.size?.height ?? 0) : 0.0;
+      if ((h - _barHeight).abs() > 0.5) setState(() => _barHeight = h);
+    });
+    final barPx = barShown ? _barHeight : 0.0;
+    final extraBottom = barPx / math.max(_controller.scale, 0.5);
+
     // The selection bar floats over the bottom of the map: the map keeps its size (and its pan and zoom) when it comes and goes.
     final mapView = Stack(
       children: [
@@ -307,6 +332,8 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
                     selected: indexes,
                     lang: lang,
                     controller: _controller,
+                    extraBoundary: EdgeInsets.only(bottom: extraBottom),
+                    onScaleChanged: (_) => setState(() {}),
                     onSeatTap: widget.canEdit ? _tap : null,
                     overlayBuilder: (ctx, scale) =>
                         scale >= kSeatTapScale || !widget.canEdit
@@ -314,7 +341,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
                         : Positioned(
                             left: 8,
                             right: 8,
-                            bottom: 8,
+                            bottom: math.max(8, barPx),
                             child: IgnorePointer(
                               child: Container(
                                 key: const Key('seatsZoomHint'),
@@ -347,7 +374,9 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: _SelectionBar(
+            child: KeyedSubtree(
+              key: _barKey,
+              child: _SelectionBar(
               seats: chosen,
               busy: _busy,
               onClear: _clear,
@@ -382,6 +411,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
                   ),
                 );
               },
+            ),
             ),
           ),
       ],

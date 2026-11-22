@@ -206,6 +206,7 @@
   },
   "checkInNoConnection": "Not checked in — no connection. Try again.",
   "checkInClosed": "Check-in opens one day before the event",
+  "checkInEnded": "Check-in has closed",
   "call": "Call",
   "registeredOn": "Registered {date}",
   "@registeredOn": {

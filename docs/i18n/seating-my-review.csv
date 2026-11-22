@@ -435,3 +435,4 @@
 "seatsOffered","Held for waitlist offers","စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်အတွက် ထားသည်","organizer app"
 "waitlistTitle","Waitlist","စောင့်ဆိုင်းစာရင်း","organizer app"
 "waitlistLine","{waiting} waiting · {offered} with an offer","စောင့်နေသူ {waiting} ဦး · ကမ်းလှမ်းချက်ရသူ {offered} ဦး","organizer app"
+"checkInEnded","Check-in has closed","ဝင်ရောက်မှု မှတ်ချိန် ပြီးဆုံးသွားပါပြီ","organizer app"

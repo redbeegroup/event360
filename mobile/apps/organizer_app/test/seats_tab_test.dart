@@ -81,6 +81,7 @@ Future<void> pumpBig(WidgetTester tester, int selected) async {
 }
 
 void main() {
+  tallTests();
   setUpAll(() async {
     await initializeDateFormatting('en');
     await initializeDateFormatting('my');
@@ -95,13 +96,62 @@ void main() {
     expect(orgSeatState('WAITLIST_HOLD'), SeatState.taken);
   });
 
-  test('isMyanmarMobile accepts the usual spellings only', () {
-    for (final ok in ['09123456789', '09 123 456 789', '+959123456789', '959-123-456-789', '0912345678']) {
-      expect(isMyanmarMobile(ok), isTrue, reason: ok);
-    }
-    for (final bad in ['123', '08123456789', '0912345', '09123456789012', '']) {
-      expect(isMyanmarMobile(bad), isFalse, reason: bad);
-    }
+  test(
+    'isMyanmarMobile follows the server rule: +959 / 959 / 09, then 7 to 10 digits, spaces, dashes and brackets ignored',
+    () {
+      for (final ok in [
+        '09123456789',
+        '09 123 456 789',
+        '+959123456789',
+        '959-123-456-789',
+        '0912345678',
+        '09 (123) 4567', // 7 digits after the 9: the shortest the server takes
+        '091234567890', // 10 after the 9: the longest
+        '+959 12 345-6789',
+      ]) {
+        expect(isMyanmarMobile(ok), isTrue, reason: ok);
+      }
+      for (final bad in [
+        '123',
+        '08123456789',
+        '091234', // 4 after the 9
+        '09123456', // 6
+        '0912345678901', // 11
+        '09123456789012', // 12
+        '+95912345678901', // 11
+        '+09123456789',
+        '9123456789', // no prefix
+        '09 12a 456 789',
+        '',
+      ]) {
+        expect(isMyanmarMobile(bad), isFalse, reason: bad);
+      }
+    },
+  );
+
+  test('refreshSeating also reloads the attendance totals', () async {
+    final api = FakeApi(MemoryTokenStore());
+    var loads = 0;
+    final c = ProviderContainer(
+      overrides: [
+        apiProvider.overrideWithValue(api),
+        attendanceProvider((orgId: 'o1', eventId: 'e1')).overrideWith((
+          ref,
+        ) async {
+          loads++;
+          return api.eventAttendance('o1', 'e1');
+        }),
+      ],
+    );
+    addTearDown(c.dispose);
+    final k = (orgId: 'o1', eventId: 'e1');
+    final sub = c.listen(attendanceProvider(k), (_, __) {});
+    await c.read(attendanceProvider(k).future);
+    expect(loads, 1);
+    refreshSeating(c, k);
+    await c.read(attendanceProvider(k).future);
+    expect(loads, 2);
+    sub.close();
   });
 
   testWidgets('no Seats tab when the event has no seat map', (tester) async {
@@ -367,6 +417,7 @@ void main() {
     expect(tester.widget<FilledButton>(key('seatsHold')).onPressed, isNull, reason: 'visible but disabled');
     expect(key('seatsZoomHint'), findsOneWidget);
     expect(find.text('Zoom in to select seats'), findsOneWidget);
+    expect(tester.getRect(key('seatsZoomHint')).bottom, lessThanOrEqualTo(tester.getTopLeft(bar).dy), reason: 'the hint is not hidden under the bar');
     await tester.pumpWidget(const SizedBox());
     await pumpBig(tester, 200);
     expect(find.text('Select 200 seats or fewer'), findsNothing);
@@ -463,4 +514,190 @@ void main() {
     expect(find.text('ဧည့်သည်အတွက် ထိန်းထားမည်'), findsWidgets);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'an unexpected error in a seat action ends the busy state, shows the load error and the sheet can be closed',
+    (tester) async {
+      final api = await openSeats(tester, setup: (a) => a.crashHold = true);
+      await tapSeat(tester, 'A:3:1');
+      await tester.tap(key('seatsHold'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('holdLabel'), 'Sponsor');
+      await tester.tap(key('holdSubmit'));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('hold:A:3:1:Sponsor'));
+      expect(
+        find.text("Couldn't load. Check your connection."),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<FilledButton>(key('holdSubmit')).onPressed,
+        isNotNull,
+        reason: 'not busy any more',
+      );
+      await tester.tapAt(const Offset(10, 10)); // the barrier
+      await tester.pumpAndSettle();
+      expect(key('holdLabel'), findsNothing, reason: 'the sheet closed');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'an unexpected error while revoking shows the load error and frees the list',
+    (tester) async {
+      final api = await openSeats(tester, setup: (a) => a.crashRevoke = true);
+      await openGuestTickets(tester);
+      await tester.tap(key('guestRevoke-g1'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('revokeConfirm'));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('revokeGuest:g1'));
+      expect(
+        find.text("Couldn't load. Check your connection."),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    api.crashRevoke = false;
+      await tester.tap(key('guestRevoke-g1'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('revokeConfirm'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Revoked'),
+        findsOneWidget,
+        reason: 'a second try works: nothing was left busy',
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+}
+
+/// 21 rows x 6 seats at 24-unit spacing; the last row sits at the bottom edge of the layout.
+class TallApi extends FakeApi {
+  TallApi(super.store);
+  static const rows = 21;
+  @override
+  Future<OrgSeating> orgSeating(String orgId, String eventId) async =>
+      OrgSeating.fromJson({
+        'layout': {
+          'width': 200,
+          'height': 30 + (rows - 1) * 24 + 8,
+          'sections': [
+            {
+              'key': 'T',
+              'name': 'Tall',
+              'kind': 'SEATED',
+              'x': 30,
+              'y': 30,
+              'rows': [
+                for (var r = 1; r <= rows; r++)
+                  {
+                    'label': '$r',
+                    'seats': [
+                      for (var n = 1; n <= 6; n++) {'n': n},
+                    ],
+                  },
+              ],
+            },
+          ],
+        },
+        'seats': [
+          for (var r = 1; r <= rows; r++)
+            for (var n = 1; n <= 6; n++)
+              {
+                'seatKey': 'T:$r:$n',
+                'status': r <= 2 || r == rows ? 'GUEST_HOLD' : 'AVAILABLE',
+                'ticketTypeId': 't1',
+                'holdLabel': 'Sponsor',
+              },
+        ],
+        'colors': {'t1': '#2f6fed'},
+        'counts': {
+          't1': {
+            'available': 100,
+            'held': 0,
+            'offered': 0,
+            'guest': 12,
+            'sold': 0,
+            'comp': 0,
+          },
+        },
+      });
+}
+
+void tallTests() {
+  testWidgets(
+    'held seats selected at 390x844: the lowest seat row can be dragged above the bar and tapped',
+    (tester) async {
+      tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(bottom: 34 * 3);
+      tester.view.viewPadding = const FakeViewPadding(bottom: 34 * 3);
+      addTearDown(tester.view.reset);
+      SharedPreferences.setMockInitialValues({'org_lang': 'en'});
+      final sp = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            prefsProvider.overrideWithValue(sp),
+            apiProvider.overrideWithValue(TallApi(MemoryTokenStore())),
+          ],
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: L10n.localizationsDelegates,
+            supportedLocales: L10n.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2.0)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: SeatsTab(
+                k: (orgId: 'o1', eventId: 'e1'),
+                canEdit: true,
+                initialSelected: {'T:1:1', 'T:1:2'},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final layout = SeatLayout.fromJson(
+        (await TallApi(MemoryTokenStore()).orgSeating('o', 'e')).layout!,
+      );
+      final last = layout.seatByKey('T:21:3')!;
+      final map = find.byKey(const Key('seatMap'));
+      Offset screen() =>
+          tester.renderObject<RenderBox>(map).localToGlobal(last.pos);
+      double scale() =>
+          (tester.getBottomRight(map).dx - tester.getTopLeft(map).dx) / 200;
+      // Zoom in on the top rows, where the selection is.
+      final first = layout.seatByKey('T:1:3')!;
+      await tester.tapAt(
+        tester.renderObject<RenderBox>(map).localToGlobal(first.pos),
+      );
+      await tester.pumpAndSettle();
+      expect(scale(), greaterThanOrEqualTo(kSeatTapScale));
+      final barTop = tester.getTopLeft(bar).dy;
+      final top = tester.getTopLeft(find.byType(SeatMapView)).dy;
+      for (var i = 0; i < 40 && screen().dy > barTop - 40; i++) {
+        await tester.dragFrom(
+          Offset(195, (top + barTop) / 2),
+          const Offset(0, -100),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(
+        screen().dy,
+        lessThan(barTop - 8),
+        reason: 'the lowest row is above the bar',
+      );
+      await tester.tapAt(screen());
+      await tester.pumpAndSettle();
+      expect(find.text('3 seats selected'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

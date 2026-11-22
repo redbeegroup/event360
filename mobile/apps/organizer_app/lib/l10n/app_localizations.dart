@@ -781,6 +781,12 @@ abstract class L10n {
   /// **'Check-in opens one day before the event'**
   String get checkInClosed;
 
+  /// No description provided for @checkInEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Check-in has closed'**
+  String get checkInEnded;
+
   /// No description provided for @call.
   ///
   /// In en, this message translates to:

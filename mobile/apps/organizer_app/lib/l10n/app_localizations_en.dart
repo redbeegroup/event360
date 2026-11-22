@@ -383,6 +383,9 @@ class L10nEn extends L10n {
   String get checkInClosed => 'Check-in opens one day before the event';
 
   @override
+  String get checkInEnded => 'Check-in has closed';
+
+  @override
   String get call => 'Call';
 
   @override

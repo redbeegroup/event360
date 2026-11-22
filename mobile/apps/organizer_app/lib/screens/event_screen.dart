@@ -34,6 +34,7 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     for (final c in _retired) {
       c.dispose();
     }
+    _retired.clear();
     super.dispose();
   }
 

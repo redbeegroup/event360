@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:event360_core/event360_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -258,5 +260,144 @@ void main() {
     await openRow(tester, 'a1');
     expect(find.byKey(const Key('guestCheckIn')), findsNothing);
     expect(find.text('Check-in opens one day before the event'), findsOneWidget);
+  });
+
+  OrgEvent liveEvent() => event('PUBLISHED', DateTime.now().subtract(const Duration(hours: 1)), DateTime.now().add(const Duration(hours: 3)));
+
+  Future<(FakeApi, ProviderContainer)> pumpTab(WidgetTester tester, OrgEvent ev, {void Function(FakeApi)? setup}) async {
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({'org_lang': 'en'});
+    final sp = await SharedPreferences.getInstance();
+    final api = FakeApi(MemoryTokenStore());
+    setup?.call(api);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [prefsProvider.overrideWithValue(sp), apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+        localizationsDelegates: L10n.localizationsDelegates,
+        supportedLocales: L10n.supportedLocales,
+        locale: const Locale('en'),
+        home: Scaffold(body: GuestsTab(k: (orgId: 'o1', eventId: 'e1'), canEdit: true, event: ev)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    return (api, ProviderScope.containerOf(tester.element(find.byType(GuestsTab))));
+  }
+
+  testWidgets('a slow check-in cannot be dismissed; when it completes the row is Checked in and the message shows', (tester) async {
+    final (api, _) = await pumpTab(tester, liveEvent());
+    api.checkInGate = Completer<void>();
+    await openRow(tester, 'a1');
+    await tester.tap(find.byKey(const Key('guestCheckIn')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tapAt(const Offset(10, 10)); // the barrier
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.binding.handlePopRoute(); // the back button
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.fling(find.byKey(const Key('guestCheckIn')), const Offset(0, 600), 2000); // a swipe down
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key('guestCheckIn')), findsOneWidget, reason: 'still open while the request runs');
+    api.checkInGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestCheckIn')), findsNothing);
+    expect(find.text('Aung Min is checked in'), findsOneWidget);
+    expect(status('a1', 'Checked in'), findsOneWidget);
+    expect(find.text('3 of 5 checked in'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a slow check-in that fails shows the no-connection message', (tester) async {
+    final (api, _) = await pumpTab(tester, liveEvent());
+    api.checkInGate = Completer<void>();
+    api.failCheckIn = true;
+    await openRow(tester, 'a1');
+    await tester.tap(find.byKey(const Key('guestCheckIn')));
+    await tester.pump();
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('guestCheckIn')), findsOneWidget);
+    api.checkInGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Not checked in — no connection. Try again.'), findsOneWidget);
+    expect(status('a1', 'Not in'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('guestCheckIn'))).onPressed, isNotNull, reason: 'free to retry');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('check-in and undo also reload the guest tickets', (tester) async {
+    final (api, c) = await pumpTab(tester, liveEvent());
+    final k = (orgId: 'o1', eventId: 'e1');
+    final sub = c.listen(guestTicketsProvider(k), (_, __) {});
+    await c.read(guestTicketsProvider(k).future);
+    final before = c.read(guestTicketsProvider(k));
+    await openRow(tester, 'a1');
+    await tester.tap(find.byKey(const Key('guestCheckIn')));
+    await tester.pumpAndSettle();
+    expect(identical(c.read(guestTicketsProvider(k)), before), isFalse, reason: 'reloaded after the check-in');
+    final afterCheckIn = c.read(guestTicketsProvider(k));
+    await openRow(tester, 'a3');
+    await tester.tap(find.byKey(const Key('guestUndo')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('guestUndoConfirm')));
+    await tester.pumpAndSettle();
+    expect(identical(c.read(guestTicketsProvider(k)), afterCheckIn), isFalse, reason: 'reloaded after the undo');
+    expect(api.calls, ['checkin:a1:Organizer app', 'undo:a3']);
+    sub.close();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('searching a seat does not match phone numbers by its digits', (tester) async {
+    await openGuests(tester, setup: (a) {
+      a.attendeesList.add({...aRow('s1'), 'seatLabel': 'Balcony · A12', 'holder': {'displayName': 'Seat Holder', 'phone': '09770000000'}});
+    });
+    await tester.enterText(find.byKey(const Key('guestSearch')), 'A12');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestRow-s1')), findsOneWidget);
+    expect(find.byType(ListTile).evaluate().length, 1, reason: 'a1 and a2 have 12 in their phones but are not seat A12');
+    await tester.enterText(find.byKey(const Key('guestSearch')), 'row c 12');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestRow-a2')), findsNothing);
+    expect(find.byKey(const Key('guestRow-a1')), findsNothing);
+    await tester.enterText(find.byKey(const Key('guestSearch')), '0991');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestRow-a1')), findsOneWidget);
+    expect(find.byType(ListTile).evaluate().length, 1);
+    await tester.enterText(find.byKey(const Key('guestSearch')), '+95 (9) 912');
+    await tester.pumpAndSettle();
+    expect(find.text('No one matches'), findsOneWidget, reason: 'phone-like queries still use the digits');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('checkInHasEnded: after the window, or not live although it has started', () {
+    final start = DateTime.utc(2026, 12, 1, 12);
+    final end = DateTime.utc(2026, 12, 1, 18);
+    bool at(String s, DateTime now) => checkInHasEnded(event(s, start, end), now);
+    expect(at('PUBLISHED', start.subtract(const Duration(days: 3))), isFalse, reason: 'not yet open');
+    expect(at('PUBLISHED', end.add(const Duration(hours: 12))), isFalse);
+    expect(at('PUBLISHED', end.add(const Duration(hours: 12, seconds: 1))), isTrue);
+    expect(at('CANCELLED', start.add(const Duration(hours: 1))), isTrue);
+    expect(at('COMPLETED', end), isTrue);
+    expect(at('CANCELLED', start.subtract(const Duration(days: 3))), isFalse, reason: 'not started: the old text');
+  });
+
+  testWidgets('the closed explanation says Check-in has closed after the window or for a completed event', (tester) async {
+    final now = DateTime.now();
+    await pumpTab(tester, event('PUBLISHED', now.subtract(const Duration(days: 3)), now.subtract(const Duration(days: 2))));
+    await openRow(tester, 'a1');
+    expect(find.text('Check-in has closed'), findsOneWidget);
+    expect(find.text('Check-in opens one day before the event'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await pumpTab(tester, event('COMPLETED', now.subtract(const Duration(hours: 5)), now.subtract(const Duration(hours: 1))));
+    await openRow(tester, 'a1');
+    expect(find.text('Check-in has closed'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await pumpTab(tester, event('PUBLISHED', now.add(const Duration(days: 5)), now.add(const Duration(days: 5, hours: 3))));
+    await openRow(tester, 'a1');
+    expect(find.text('Check-in opens one day before the event'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 }

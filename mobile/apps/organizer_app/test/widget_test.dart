@@ -76,6 +76,12 @@ class FakeApi extends Event360Api {
   bool eventOpen = false;
   bool failCheckIn = false;
   bool crashCheckIn = false;
+
+  /// While set, check-in requests wait for it (a slow connection).
+  Completer<void>? checkInGate;
+
+  /// The next hold / revoke fails with an unexpected (non-API) error.
+  bool crashHold = false, crashRevoke = false;
   String? refuseWith;
   /// Seat map: off for an event without one.
   bool hasMap = true;
@@ -258,6 +264,7 @@ class FakeApi extends Event360Api {
   @override
   Future<ScanOutcome> crewManualCheckin(String eventId, String ticketId, {String? gate, String? deviceId}) async {
     calls.add('checkin:$ticketId:$gate');
+    await checkInGate?.future;
     if (failCheckIn) throw ApiException(null, 'No connection');
     if (crashCheckIn) throw StateError('boom');
     if (refuseWith != null) return ScanOutcome(result: refuseWith!);
@@ -325,6 +332,7 @@ class FakeApi extends Event360Api {
   Future<int> holdSeats(String orgId, String eventId, List<String> seats, String label) async {
     calls.add('hold:${seats.join(',')}:$label');
     await actionGate?.future;
+    if (crashHold) throw StateError('boom');
     _seatsConflict();
     for (final s in seats) {
       _setSeat(s, 'GUEST_HOLD', label: label);
@@ -357,6 +365,7 @@ class FakeApi extends Event360Api {
   @override
   Future<void> revokeGuestTicket(String orgId, String eventId, String ticketId) async {
     calls.add('revokeGuest:$ticketId');
+    if (crashRevoke) throw StateError('boom');
     final i = guestRows.indexWhere((g) => g['id'] == ticketId);
     if (guestRows[i]['checkedIn'] == true) throw ApiException(409, 'Already checked in');
     guestRows[i] = {...guestRows[i], 'status': 'VOID'};

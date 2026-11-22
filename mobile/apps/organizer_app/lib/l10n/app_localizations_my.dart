@@ -384,6 +384,9 @@ class L10nMy extends L10n {
       'ပွဲမတိုင်မီ တစ်ရက်အလိုမှ ဝင်ရောက်မှု မှတ်နိုင်သည်';
 
   @override
+  String get checkInEnded => 'ဝင်ရောက်မှု မှတ်ချိန် ပြီးဆုံးသွားပါပြီ';
+
+  @override
   String get call => 'ဖုန်းခေါ်မည်';
 
   @override

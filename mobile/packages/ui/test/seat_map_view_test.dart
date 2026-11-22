@@ -179,4 +179,36 @@ void main() {
     expect(seen, isNotEmpty);
     expect(seen.every((s) => s >= kSeatTapScale), isTrue, reason: '$seen');
   });
+
+  testWidgets('extraBoundary at the bottom lets the content be panned further up', (tester) async {
+    Future<double> lowestEdge(EdgeInsets extra) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 390,
+            height: 500,
+            child: SeatMapView(
+              layout: layout,
+              states: List.filled(layout.seats.length, SeatState.available),
+              colors: List.filled(layout.seats.length, Colors.blue),
+              controller: ctl,
+              extraBoundary: extra,
+            ),
+          ),
+        ),
+      ));
+      ctl.zoomTo(layout.sections.first.bounds);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 20; i++) {
+        await tester.dragFrom(const Offset(195, 400), const Offset(0, -150));
+        await tester.pumpAndSettle();
+      }
+      return tester.getBottomLeft(find.byKey(const Key('seatMap'))).dy;
+    }
+
+    final plain = await lowestEdge(EdgeInsets.zero);
+    final padded = await lowestEdge(const EdgeInsets.only(bottom: 100));
+    expect(padded, closeTo(plain - 100 * ctl.scale, 1.0), reason: "plain $plain padded $padded scale ${ctl.scale}");
+  });
 }

@@ -21,6 +21,25 @@ bool checkInOpen(OrgEvent e, DateTime now) =>
     !now.isBefore(e.startsAt.subtract(const Duration(hours: 24))) &&
     !now.isAfter(e.endsAt.add(const Duration(hours: 12)));
 
+/// True when the check-in window is over for good, or the event can no longer take check-ins (cancelled, completed)
+/// although it has started. Before the start the "not yet open" text applies instead.
+bool checkInHasEnded(OrgEvent e, DateTime now) {
+  if (now.isAfter(e.endsAt.add(const Duration(hours: 12)))) return true;
+  final live = e.status == 'PUBLISHED' || e.status == 'ONGOING';
+  return !live && !now.isBefore(e.startsAt);
+}
+
+/// What the attendee sheet gets back from a check-in or undo that ran in the tab.
+class _Done {
+  const _Done({this.closes = false, this.error});
+
+  /// The sheet can close (the tab shows any message itself).
+  final bool closes;
+
+  /// Shown in the sheet, which then stays.
+  final String? error;
+}
+
 /// The number as dialled: no spaces, dashes or brackets (a leading + stays).
 String telNumber(String phone) => phone.replaceAll(RegExp(r'[^0-9+]'), '');
 
@@ -65,6 +84,8 @@ class GuestsTab extends ConsumerStatefulWidget {
   ConsumerState<GuestsTab> createState() => _GuestsTabState();
 }
 
+final _phoneLike = RegExp(r'^[0-9\s+\-()]+$');
+
 class _GuestsTabState extends ConsumerState<GuestsTab> {
   final _search = TextEditingController();
   bool _onlyNotIn = false;
@@ -93,8 +114,71 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => AttendeeSheet(k: widget.k, attendee: a, canEdit: widget.canEdit, event: widget.event, parentContext: context),
+      enableDrag: false, // a swipe could close the sheet while a request is in flight
+      builder: (_) => AttendeeSheet(k: widget.k, attendee: a, canEdit: widget.canEdit, event: widget.event, onCheckIn: () => _checkIn(a), onUndo: () => _undo(a)),
     );
+  }
+
+  /// Reloads what a check-in or undo changes. On a container, so it works after the sheet (or this tab) is gone.
+  void _reload(ProviderContainer c) {
+    c.invalidate(attendeesProvider(widget.k));
+    c.invalidate(attendanceProvider(widget.k));
+    c.invalidate(guestTicketsProvider(widget.k));
+  }
+
+  void _say(ScaffoldMessengerState messenger, String message) {
+    try {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {}
+  }
+
+  /// Runs here, in the tab: the lists are refreshed and the result shown even if the sheet is gone.
+  Future<_Done> _checkIn(Attendee a) async {
+    final t = L10n.of(context);
+    final lang = ref.read(langProvider);
+    final api = ref.read(apiProvider);
+    final c = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final out = await api.crewManualCheckin(widget.k.eventId, a.id, gate: organizerGate);
+      _reload(c);
+      if (out.accepted) {
+        _say(messenger, t.checkedInOk(_name(t, a)));
+      } else if (out.result == 'ALREADY_CHECKED_IN') {
+        final ci = out.ticket?.checkedIn;
+        final time = ci == null ? '' : formatTime(ci.at, lang);
+        final gate = ci?.gate;
+        _say(messenger, ci == null ? t.statusIn : (gate == null || gate.isEmpty) ? t.alreadyCheckedIn(time) : t.alreadyCheckedInGate(time, gate));
+      } else {
+        final dead = const {'VOID', 'REFUNDED', 'TRANSFERRED'}.contains(out.result);
+        _say(messenger, dead ? t.checkInRefused(t.statusCancelled) : t.checkInRefusedGeneric);
+      }
+      return const _Done(closes: true);
+    } on ApiException catch (e) {
+      return _Done(error: e.isNetwork ? t.checkInNoConnection : e.message);
+    } catch (_) {
+      return _Done(error: t.checkInRefusedGeneric);
+    }
+  }
+
+  Future<_Done> _undo(Attendee a) async {
+    final t = L10n.of(context);
+    final api = ref.read(apiProvider);
+    final c = ProviderScope.containerOf(context, listen: false);
+    try {
+      await api.crewUndo(widget.k.eventId, a.id);
+      _reload(c);
+      return const _Done(closes: true);
+    } on ApiException catch (e) {
+      if (e.status == 409) {
+        // Not checked in any more: the list was out of date.
+        _reload(c);
+        return const _Done(closes: true);
+      }
+      return _Done(error: e.isNetwork ? t.loadError : e.message);
+    } catch (_) {
+      return _Done(error: t.loadError);
+    }
   }
 
   @override
@@ -115,7 +199,8 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
     final total = data.where((a) => !a.isDead).length;
     final inCount = data.where((a) => a.isIn).length;
     final q = _q.trim().toLowerCase();
-    final qDigits = q.replaceAll(RegExp(r'\D'), '');
+    // Phone digits are matched only when the query reads as a number: "A12" is a seat, not a phone.
+    final qDigits = _phoneLike.hasMatch(q) ? q.replaceAll(RegExp(r'\D'), '') : '';
     final shown = [
       for (final r in _rows)
         if ((!_onlyNotIn || r.a.isValid) && (q.isEmpty || r.matches(q, qDigits))) r.a,
@@ -200,14 +285,15 @@ class _GuestTile extends StatelessWidget {
 
 /// Bottom sheet with one ticket: details and, inside the check-in window, Check in or Undo.
 class AttendeeSheet extends ConsumerStatefulWidget {
-  const AttendeeSheet({super.key, required this.k, required this.attendee, required this.canEdit, required this.event, required this.parentContext});
+  const AttendeeSheet({super.key, required this.k, required this.attendee, required this.canEdit, required this.event, required this.onCheckIn, required this.onUndo});
   final EventKey k;
   final Attendee attendee;
   final bool canEdit;
   final OrgEvent? event;
 
-  /// The tab's context: snack bars go there so they outlive the sheet.
-  final BuildContext parentContext;
+  /// Both run in the tab, so the refresh and the message survive the sheet.
+  final Future<_Done> Function() onCheckIn;
+  final Future<_Done> Function() onUndo;
   @override
   ConsumerState<AttendeeSheet> createState() => _AttendeeSheetState();
 }
@@ -216,48 +302,21 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
   bool _busy = false;
   String? _error;
 
-  void _refreshLists() {
-    ref.invalidate(attendeesProvider(widget.k));
-    ref.invalidate(attendanceProvider(widget.k));
-  }
-
-  void _finish(String message) {
-    final messenger = ScaffoldMessenger.maybeOf(widget.parentContext);
-    Navigator.of(context).pop();
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _checkIn() async {
-    final t = L10n.of(context);
-    final lang = ref.read(langProvider);
-    final a = widget.attendee;
+  Future<void> _apply(Future<_Done> Function() run) async {
     setState(() {
       _busy = true;
       _error = null;
     });
-    try {
-      final out = await ref.read(apiProvider).crewManualCheckin(widget.k.eventId, a.id, gate: organizerGate);
-      _refreshLists();
-      if (!mounted) return;
-      if (out.accepted) {
-        _finish(t.checkedInOk(_name(t, a)));
-      } else if (out.result == 'ALREADY_CHECKED_IN') {
-        final ci = out.ticket?.checkedIn;
-        final time = ci == null ? '' : formatTime(ci.at, lang);
-        final gate = ci?.gate;
-        _finish(ci == null ? t.statusIn : (gate == null || gate.isEmpty) ? t.alreadyCheckedIn(time) : t.alreadyCheckedInGate(time, gate));
-      } else {
-        final dead = const {'VOID', 'REFUNDED', 'TRANSFERRED'}.contains(out.result);
-        _finish(dead ? t.checkInRefused(t.statusCancelled) : t.checkInRefusedGeneric);
-      }
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.isNetwork ? t.checkInNoConnection : e.message);
-    } catch (_) {
-      if (mounted) setState(() => _error = t.checkInRefusedGeneric);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final out = await run();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = out.error;
+    });
+    if (out.closes) Navigator.of(context).pop();
   }
+
+  Future<void> _checkIn() => _apply(widget.onCheckIn);
 
   Future<void> _undo() async {
     final t = L10n.of(context);
@@ -273,27 +332,7 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
       ),
     );
     if (ok != true || !mounted) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await ref.read(apiProvider).crewUndo(widget.k.eventId, a.id);
-      _refreshLists();
-      if (mounted) Navigator.of(context).pop();
-    } on ApiException catch (e) {
-      if (e.status == 409) {
-        // Not checked in any more: the list was out of date.
-        _refreshLists();
-        if (mounted) Navigator.of(context).pop();
-      } else if (mounted) {
-        setState(() => _error = e.isNetwork ? t.loadError : e.message);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _error = t.loadError);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _apply(widget.onUndo);
   }
 
   Future<void> _call(String phone) async {
@@ -309,8 +348,12 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
     final seat = _seat(lang, a);
     final phone = a.phone ?? '';
     final ev = widget.event;
-    final open = ev != null && checkInOpen(ev, DateTime.now());
-    return SafeArea(
+    final now = DateTime.now();
+    final open = ev != null && checkInOpen(ev, now);
+    final ended = ev != null && !open && checkInHasEnded(ev, now);
+    return PopScope(
+      canPop: !_busy,
+      child: SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
@@ -337,11 +380,12 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
             if (open)
               FilledButton.icon(key: const Key('guestCheckIn'), style: E360Buttons.gold, onPressed: _busy ? null : _checkIn, icon: const Icon(Icons.how_to_reg_outlined), label: Text(t.checkIn))
             else
-              Text(t.checkInClosed, key: const Key('guestClosed'), style: theme.textTheme.bodySmall),
+              Text(ended ? t.checkInEnded : t.checkInClosed, key: const Key('guestClosed'), style: theme.textTheme.bodySmall),
           if (widget.canEdit && a.isIn && open)
             OutlinedButton.icon(key: const Key('guestUndo'), style: E360Buttons.outline, onPressed: _busy ? null : _undo, icon: const Icon(Icons.undo), label: Text(t.undoCheckIn)),
           if (!widget.canEdit) readOnly(context, t),
         ]),
+      ),
       ),
     );
   }

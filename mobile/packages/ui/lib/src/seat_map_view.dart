@@ -50,6 +50,7 @@ class SeatMapView extends StatefulWidget {
     this.ink,
     this.stageColor,
     this.takenColor,
+    this.extraBoundary = EdgeInsets.zero,
   });
 
   final SeatLayout layout;
@@ -75,6 +76,9 @@ class SeatMapView extends StatefulWidget {
   final Color? ink;
   final Color? stageColor;
   final Color? takenColor;
+
+  /// Added to the pan boundary margin (scene units): lets an overlay that covers an edge of the map be panned clear of.
+  final EdgeInsets extraBoundary;
 
   @override
   State<SeatMapView> createState() => _SeatMapViewState();
@@ -203,7 +207,7 @@ class _SeatMapViewState extends State<SeatMapView> with SingleTickerProviderStat
         constrained: false,
         minScale: _fit,
         maxScale: math.max(6, _fit),
-        boundaryMargin: const EdgeInsets.all(120),
+        boundaryMargin: const EdgeInsets.all(120) + widget.extraBoundary,
         child: GestureDetector(
           key: const Key('seatMap'),
           behavior: HitTestBehavior.opaque,
