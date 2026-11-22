@@ -2797,8 +2797,8 @@ void main() {
   Future<void> scrollThrough(WidgetTester tester) async {
     final count = find.byType(Scrollable).evaluate().length;
     for (var i = 0; i < count; i++) {
+      if (i >= find.byType(Scrollable).evaluate().length) break; // fields come and go while scrolling
       final f = find.byType(Scrollable).at(i);
-      if (!f.evaluate().isNotEmpty) break;
       final horizontal = tester.state<ScrollableState>(f).axisDirection == AxisDirection.right;
       for (var k = 0; k < 10; k++) {
         await tester.drag(f, horizontal ? const Offset(-250, 0) : const Offset(0, -350), warnIfMissed: false);

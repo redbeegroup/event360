@@ -347,4 +347,130 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
   });
+
+  // ───── Large-text sweep: every screen at 390x844, text scale 2.0, EN and MY ─────
+
+  Future<void> scrollThrough(WidgetTester tester) async {
+    final count = find.byType(Scrollable).evaluate().length;
+    for (var i = 0; i < count; i++) {
+      if (i >= find.byType(Scrollable).evaluate().length) break; // fields come and go while scrolling
+      final f = find.byType(Scrollable).at(i);
+      final horizontal = tester.state<ScrollableState>(f).axisDirection == AxisDirection.right;
+      for (var k = 0; k < 10; k++) {
+        await tester.drag(f, horizontal ? const Offset(-250, 0) : const Offset(0, -350), warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  /// The vertical scrollable of the open tab (not the tab pager, not a text field's own).
+  Finder pageScroll() => find.descendant(of: find.byType(ListView).last, matching: find.byType(Scrollable)).first;
+
+  Future<void> openEvent(WidgetTester t) async {
+    await t.tap(find.byKey(const Key('event-e1')));
+    await t.pumpAndSettle();
+  }
+
+  Future<void> openTab(WidgetTester t, String key) async {
+    await openEvent(t);
+    await t.ensureVisible(find.byKey(Key(key)));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(Key(key)));
+    await t.pumpAndSettle();
+  }
+
+  Future<void> createCode(WidgetTester t) async {
+    await openTab(t, 'tabDoor');
+    await t.enterText(find.byKey(const Key('codeLabel')), 'Volunteers for the north side entrance');
+    await t.enterText(find.byKey(const Key('codeGate')), 'Gate A');
+    await t.scrollUntilVisible(find.byKey(const Key('createCode')), 200, scrollable: pageScroll());
+    await t.tap(find.byKey(const Key('createCode')));
+    await t.pumpAndSettle();
+  }
+
+  final sweepScreens = <String, ({bool signedIn, String role, Future<void> Function(WidgetTester)? then})>{
+    'login': (signedIn: false, role: 'ORG_OWNER', then: null),
+    'login, wrong password': (signedIn: false, role: 'ORG_OWNER', then: (t) async {
+      await t.enterText(find.byKey(const Key('email')), 'owner@yl.test');
+      await t.enterText(find.byKey(const Key('password')), 'nope');
+      await t.tap(find.byKey(const Key('signIn')));
+      await t.pumpAndSettle();
+    }),
+    'event list': (signedIn: true, role: 'ORG_OWNER', then: null),
+    'organization picker': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await t.tap(find.byKey(const Key('orgPicker')));
+      await t.pumpAndSettle();
+    }),
+    'event overview': (signedIn: true, role: 'ORG_OWNER', then: openEvent),
+    'door tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabDoor')),
+    'door tab, view only': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabDoor')),
+    'door tab, new code dialog': (signedIn: true, role: 'ORG_OWNER', then: createCode),
+    'door tab, code list and revoke dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await createCode(t);
+      await t.tap(find.byType(FilledButton).last); // Done
+      await t.pumpAndSettle();
+      await t.scrollUntilVisible(find.byType(OutlinedButton).last, 200, scrollable: pageScroll());
+      await t.tap(find.byType(OutlinedButton).last, warnIfMissed: false);
+      await t.pumpAndSettle();
+    }),
+    'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),
+    'announce tab, confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabAnnounce');
+      await t.enterText(find.byKey(const Key('annTitle')), 'Gates open at 4');
+      await t.enterText(find.byKey(const Key('annBody')), 'Bring your QR code.');
+      await t.scrollUntilVisible(find.byKey(const Key('sendAnnouncement')), 200, scrollable: pageScroll());
+      await t.tap(find.byKey(const Key('sendAnnouncement')));
+      await t.pumpAndSettle();
+    }),
+    'announce tab, after sending': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabAnnounce');
+      await t.enterText(find.byKey(const Key('annTitle')), 'Gates open at 4');
+      await t.enterText(find.byKey(const Key('annBody')), 'Bring your QR code.');
+      await t.scrollUntilVisible(find.byKey(const Key('sendAnnouncement')), 200, scrollable: pageScroll());
+      await t.tap(find.byKey(const Key('sendAnnouncement')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('confirmSend')));
+      await t.pumpAndSettle();
+    }),
+    'promos tab with a code and a duplicate error': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabPromos');
+      for (var n = 0; n < 2; n++) {
+        await t.enterText(find.byKey(const Key('promoCode')), 'EARLY20');
+        await t.enterText(find.byKey(const Key('promoValue')), '20');
+        await t.scrollUntilVisible(find.byKey(const Key('createPromo')), 200, scrollable: pageScroll());
+        await t.tap(find.byKey(const Key('createPromo')));
+        await t.pumpAndSettle();
+      }
+    }),
+    'inbox': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await t.tap(find.byKey(const Key('inboxBell')));
+      await t.pumpAndSettle();
+    }),
+  };
+
+  for (final lang in ['en', 'my']) {
+    for (final entry in sweepScreens.entries) {
+      testWidgets('large text: ${entry.key} has no overflow at 390x844, scale 2.0, $lang', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final errors = <String>[];
+        void noErrors(String when) => expect(errors, isEmpty, reason: when);
+        await pumpApp(tester, signedIn: entry.value.signedIn, role: entry.value.role, lang: lang, size: const Size(390 * 3, 844 * 3));
+        final previous = FlutterError.onError;
+        FlutterError.onError = (d) => errors.add(d.toDiagnosticsNode().toStringDeep().split('\n').where((l) => l.contains('overflowed') || l.contains('file:///') && l.contains('/lib/')).take(6).join(' / '));
+        try {
+          await tester.pumpAndSettle();
+          noErrors('opened');
+          await entry.value.then?.call(tester);
+          noErrors('after action');
+          await scrollThrough(tester);
+          noErrors('scrolled');
+        } finally {
+          FlutterError.onError = previous;
+        }
+        await tester.pumpWidget(const SizedBox()); // stop the refresh timer
+      });
+    }
+  }
 }

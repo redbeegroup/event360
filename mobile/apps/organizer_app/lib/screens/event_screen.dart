@@ -335,13 +335,16 @@ class _CodeDialog extends StatelessWidget {
       title: Text(t.codeCreated),
       content: SizedBox(
         width: 260,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(color: Colors.white, padding: const EdgeInsets.all(10), child: SizedBox.square(dimension: 200, child: QrImageView(data: link, size: 200))),
-        const SizedBox(height: 12),
-        SelectableText(code.code ?? '', key: const Key('newCode'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 2)),
-        const SizedBox(height: 8),
-        Text(t.codeOnce, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
-      ]),
+        // Large text: the dialog content scrolls instead of overflowing
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(color: Colors.white, padding: const EdgeInsets.all(10), child: SizedBox.square(dimension: 200, child: QrImageView(data: link, size: 200))),
+            const SizedBox(height: 12),
+            SelectableText(code.code ?? '', key: const Key('newCode'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 2)),
+            const SizedBox(height: 8),
+            Text(t.codeOnce, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+          ]),
+        ),
       ),
       actions: [
         IconButton(onPressed: () => Clipboard.setData(ClipboardData(text: code.code ?? '')), icon: const Icon(Icons.copy)),
