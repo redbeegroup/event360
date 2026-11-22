@@ -774,6 +774,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Registered {date}'**
   String registeredOn(String date);
+
+  /// No description provided for @checkInRefusedGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t check in this ticket'**
+  String get checkInRefusedGeneric;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

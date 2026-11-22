@@ -21,6 +21,9 @@ bool checkInOpen(OrgEvent e, DateTime now) =>
     !now.isBefore(e.startsAt.subtract(const Duration(hours: 24))) &&
     !now.isAfter(e.endsAt.add(const Duration(hours: 12)));
 
+/// The number as dialled: no spaces, dashes or brackets (a leading + stays).
+String telNumber(String phone) => phone.replaceAll(RegExp(r'[^0-9+]'), '');
+
 String attendeeStatusLabel(L10n t, Attendee a) => a.isIn
     ? t.statusIn
     : a.isValid
@@ -45,14 +48,19 @@ class _Row {
 List<_Row> _sorted(List<Attendee> list) => [for (final a in list) _Row(a)]
   ..sort((x, y) {
     final g = x.group.compareTo(y.group);
-    return g != 0 ? g : x.nameKey.compareTo(y.nameKey);
+    if (g != 0) return g;
+    final n = x.nameKey.compareTo(y.nameKey);
+    if (n != 0) return n;
+    final c = x.a.createdAt.compareTo(y.a.createdAt);
+    return c != 0 ? c : x.a.id.compareTo(y.a.id);
   });
 
 class GuestsTab extends ConsumerStatefulWidget {
   const GuestsTab({super.key, required this.k, required this.canEdit, required this.event});
   final EventKey k;
   final bool canEdit;
-  final OrgEvent event;
+  /// Null while the event is still loading (or failed to load): the list shows, with no actions.
+  final OrgEvent? event;
   @override
   ConsumerState<GuestsTab> createState() => _GuestsTabState();
 }
@@ -196,7 +204,7 @@ class AttendeeSheet extends ConsumerStatefulWidget {
   final EventKey k;
   final Attendee attendee;
   final bool canEdit;
-  final OrgEvent event;
+  final OrgEvent? event;
 
   /// The tab's context: snack bars go there so they outlive the sheet.
   final BuildContext parentContext;
@@ -240,10 +248,12 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
         _finish(ci == null ? t.statusIn : (gate == null || gate.isEmpty) ? t.alreadyCheckedIn(time) : t.alreadyCheckedInGate(time, gate));
       } else {
         final dead = const {'VOID', 'REFUNDED', 'TRANSFERRED'}.contains(out.result);
-        _finish(t.checkInRefused(dead ? t.statusCancelled : out.result));
+        _finish(dead ? t.checkInRefused(t.statusCancelled) : t.checkInRefusedGeneric);
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.isNetwork ? t.checkInNoConnection : e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = t.checkInRefusedGeneric);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -279,13 +289,15 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
       } else if (mounted) {
         setState(() => _error = e.isNetwork ? t.loadError : e.message);
       }
+    } catch (_) {
+      if (mounted) setState(() => _error = t.loadError);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _call(String phone) async {
-    await launchUrl(Uri(scheme: 'tel', path: phone)).catchError((_) => false);
+    await launchUrl(Uri(scheme: 'tel', path: telNumber(phone))).catchError((_) => false);
   }
 
   @override
@@ -296,7 +308,8 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
     final a = widget.attendee;
     final seat = _seat(lang, a);
     final phone = a.phone ?? '';
-    final open = checkInOpen(widget.event, DateTime.now());
+    final ev = widget.event;
+    final open = ev != null && checkInOpen(ev, DateTime.now());
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),

@@ -201,5 +201,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "checkInRefusedGeneric": "Can't check in this ticket"
 }

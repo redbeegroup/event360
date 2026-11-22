@@ -378,4 +378,7 @@ class L10nEn extends L10n {
   String registeredOn(String date) {
     return 'Registered $date';
   }
+
+  @override
+  String get checkInRefusedGeneric => 'Can\'t check in this ticket';
 }

@@ -2,7 +2,11 @@ import 'package:event360_core/event360_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:organizer_app/app/providers.dart';
+import 'package:organizer_app/l10n/app_localizations.dart';
 import 'package:organizer_app/screens/event/guests_tab.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'widget_test.dart' hide main;
 
@@ -20,6 +24,8 @@ Future<void> openRow(WidgetTester tester, String id) async {
   await tester.tap(find.byKey(Key('guestRow-$id')));
   await tester.pumpAndSettle();
 }
+
+Map<String, dynamic> a_row(String id) => {'id': id, 'status': 'VALID', 'createdAt': '2026-11-20T04:00:00.000Z', 'isComplimentary': false, 'ticketType': {'name': 'Standing'}};
 
 Finder status(String id, String label) => find.descendant(of: find.byKey(Key('guestRow-$id')), matching: find.text(label.toUpperCase()));
 
@@ -195,5 +201,62 @@ void main() {
     expect(find.byKey(const Key('guestRow-g2999')), findsOneWidget);
     expect(find.byType(ListTile).evaluate().length, 1);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  test('telNumber strips spaces, dashes and brackets', () {
+    expect(telNumber('09 912-345 67'), '0991234567');
+    expect(telNumber('+95 (9) 912 345'), '+959912345');
+  });
+
+  testWidgets('equal names keep a stable order (created, then id)', (tester) async {
+    await openGuests(tester, setup: (a) {
+      a.attendeesList
+        ..clear()
+        ..addAll([
+          for (final id in ['z2', 'z3', 'z1']) {...a_row(id), 'holder': {'displayName': 'Same Name', 'phone': null}},
+        ]);
+    });
+    final ys = [for (final id in ['z1', 'z2', 'z3']) tester.getTopLeft(find.byKey(Key('guestRow-$id'))).dy];
+    expect(ys, orderedEquals([...ys]..sort()));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('unknown refusal result shows the generic text, not the raw code', (tester) async {
+    await openGuests(tester, setup: (a) => a.refuseWith = 'WRONG_EVENT');
+    await openRow(tester, 'a1');
+    await tester.tap(find.byKey(const Key('guestCheckIn')));
+    await tester.pumpAndSettle();
+    expect(find.text("Can't check in this ticket"), findsOneWidget);
+    expect(find.textContaining('WRONG_EVENT'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('an unexpected error shows the generic message in the sheet', (tester) async {
+    await openGuests(tester, setup: (a) => a.crashCheckIn = true);
+    await openRow(tester, 'a1');
+    await tester.tap(find.byKey(const Key('guestCheckIn')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestError')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('event not loaded: the Guests list still shows, with no actions', (tester) async {
+    SharedPreferences.setMockInitialValues({'org_lang': 'en'});
+    final sp = await SharedPreferences.getInstance();
+    final api = FakeApi(MemoryTokenStore());
+    await tester.pumpWidget(ProviderScope(
+      overrides: [prefsProvider.overrideWithValue(sp), apiProvider.overrideWithValue(api)],
+      child: MaterialApp(
+        localizationsDelegates: L10n.localizationsDelegates,
+        supportedLocales: L10n.supportedLocales,
+        locale: const Locale('en'),
+        home: const Scaffold(body: GuestsTab(k: (orgId: 'o1', eventId: 'e1'), canEdit: true, event: null)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('guestRow-a1')), findsOneWidget);
+    await openRow(tester, 'a1');
+    expect(find.byKey(const Key('guestCheckIn')), findsNothing);
+    expect(find.text('Check-in opens one day before the event'), findsOneWidget);
   });
 }

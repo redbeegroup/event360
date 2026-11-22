@@ -41,7 +41,7 @@ class EventScreen extends ConsumerWidget {
         ),
         body: TabBarView(children: [
           OverviewTab(k: k),
-          event == null ? const Center(child: CircularProgressIndicator()) : GuestsTab(k: k, canEdit: org.canEdit, event: event),
+          GuestsTab(k: k, canEdit: org.canEdit, event: event),
           DoorTab(k: k, canEdit: org.canEdit),
           AnnounceTab(k: k, canEdit: org.canEdit),
           PromosTab(k: k, canEdit: org.canEdit),

@@ -40,6 +40,8 @@ class FakeApi extends Event360Api {
   /// When true the event is on now (inside the check-in window); otherwise it is in 2099.
   bool eventOpen = false;
   bool failCheckIn = false;
+  bool crashCheckIn = false;
+  String? refuseWith;
   final attendeesList = <Map<String, dynamic>>[
     _att('a1', 'VALID', 'Aung Min', '09 912 345 67', seat: 'Balcony · Row C · Seat 12'),
     _att('a2', 'VALID', 'Zaw Win', '09771111222'),
@@ -165,6 +167,8 @@ class FakeApi extends Event360Api {
   Future<ScanOutcome> crewManualCheckin(String eventId, String ticketId, {String? gate, String? deviceId}) async {
     calls.add('checkin:$ticketId:$gate');
     if (failCheckIn) throw ApiException(null, 'No connection');
+    if (crashCheckIn) throw StateError('boom');
+    if (refuseWith != null) return ScanOutcome(result: refuseWith!);
     final i = attendeesList.indexWhere((a) => a['id'] == ticketId);
     final row = attendeesList[i];
     switch (row['status']) {

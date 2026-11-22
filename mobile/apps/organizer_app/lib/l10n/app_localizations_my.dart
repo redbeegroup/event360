@@ -379,4 +379,7 @@ class L10nMy extends L10n {
   String registeredOn(String date) {
     return '$date တွင် မှတ်ပုံတင်သည်';
   }
+
+  @override
+  String get checkInRefusedGeneric => 'ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်နိုင်ပါ';
 }

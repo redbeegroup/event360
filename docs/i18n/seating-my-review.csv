@@ -397,3 +397,4 @@
 "checkInClosed","Check-in opens one day before the event","ပွဲမတိုင်မီ တစ်ရက်အလိုမှ ဝင်ရောက်မှု မှတ်နိုင်သည်","organizer_app"
 "call","Call","ဖုန်းခေါ်မည်","organizer_app"
 "registeredOn","Registered {date}","{date} တွင် မှတ်ပုံတင်သည်","organizer_app"
+"checkInRefusedGeneric","Can't check in this ticket","ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်နိုင်ပါ","organizer_app"
