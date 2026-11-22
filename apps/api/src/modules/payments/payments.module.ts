@@ -270,6 +270,12 @@ export class AdminFinanceController {
     return this.payouts.record(orgId, dto, u.sub);
   }
 
+  /** Earned / paid out / owed for one organization (zeros when it has no ledger rows yet). */
+  @Get('finance/organizations/:orgId/summary')
+  payoutSummary(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.payouts.summary(orgId);
+  }
+
   @Get('finance/organizations/:orgId/payouts')
   listPayouts(@Param('orgId', ParseUUIDPipe) orgId: string) {
     return this.payouts.list(orgId);

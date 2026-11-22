@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { ActionForm } from '../../components/ActionForm';
 import { PageHeader } from '../../components/PageHeader';
 import { StatTile } from '../../components/StatTile';
-import { RecordPayout, VoidPayout, type PayoutLabels } from '../../components/PayoutAdmin';
+import { RecordPayout, VoidPayout } from '../../components/PayoutAdmin';
 import { api } from '../../lib/api';
 import { fmtDate, fmtMmk, t, toLocalInput } from '../../lib/i18n';
+import { payoutLabels } from '../../lib/payoutLabels';
 import { completeRefundAction, recordPayoutAction, refundOrderAction, retryRefundAction, saveFeeAction, voidPayoutAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -76,14 +77,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   ]);
   const payoutLists = await Promise.allSettled(balances.map((b) => api<PayoutRow[]>(`/admin/finance/organizations/${b.organizationId}/payouts`)));
   const payoutsOf = new Map(balances.map((b, i) => [b.organizationId, (payoutLists[i] as PromiseFulfilledResult<PayoutRow[]>).status === 'fulfilled' ? (payoutLists[i] as PromiseFulfilledResult<PayoutRow[]>).value : []]));
-  const methods = Object.fromEntries(['BANK', 'KBZPAY', 'WAVEPAY', 'CASH', 'OTHER'].map((m) => [m, String((tr as Record<string, unknown>)[`pyMethod${m}`])]));
-  const pl: PayoutLabels = {
-    record: tr.pyRecord, amount: tr.pyAmount, paidAt: tr.pyDate, method: tr.pyMethod, reference: tr.pyReference, note: tr.note,
-    review: tr.pyReview, confirmLine: tr.pyConfirmLine, confirm: tr.pyConfirm, back: tr.pyBack, overWarn: tr.pyOverWarn,
-    recorded: tr.pyRecorded, newOwed: tr.pyNewOwed, newOwing: tr.pyNewOwing, voidBtn: tr.pyVoidBtn, voidReasonPh: tr.pyVoidReasonPh,
-    voidConfirm: tr.pyVoidConfirm, voidDone: tr.pyVoidDone, alreadyVoided: tr.pyAlreadyVoided, methods,
-    currency: tr.lang === 'my' ? 'ကျပ်' : 'MMK', locale: tr.lang === 'my' ? 'my-MM' : 'en-US',
-  };
+  const pl = payoutLabels(tr);
+  const methods = pl.methods;
   const payoutErrors = { alreadyVoided: tr.pyAlreadyVoided };
   const nowLocal = toLocalInput(new Date());
   const okText = { saved: tr.saved, refunded: tr.refundStarted };

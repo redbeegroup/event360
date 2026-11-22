@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { ActionForm } from '../../../components/ActionForm';
 import { PageHeader } from '../../../components/PageHeader';
+import { RecordPayout } from '../../../components/PayoutAdmin';
 import { api } from '../../../lib/api';
-import { fmtDate, t } from '../../../lib/i18n';
-import { adminInviteMemberAction, setKycAction } from '../../actions';
+import { fmtDate, fmtMmk, t, toLocalInput } from '../../../lib/i18n';
+import { payoutLabels } from '../../../lib/payoutLabels';
+import { adminInviteMemberAction, recordPayoutAction, setKycAction } from '../../actions';
 
 interface OrgDetail {
   id: string;
@@ -23,7 +25,7 @@ interface OrgDetail {
 export default async function OrgDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tr = await t();
-  const o = await api<OrgDetail>(`/admin/organizations/${id}`);
+  const [o, summary] = await Promise.all([api<OrgDetail>(`/admin/organizations/${id}`), api<{ owedMmk: number }>(`/admin/finance/organizations/${id}/summary`)]);
   return (
     <>
       <PageHeader
@@ -47,6 +49,15 @@ export default async function OrgDetailPage({ params }: { params: Promise<{ id: 
             <input name="note" placeholder={tr.note} style={{ width: 220 }} />
           </ActionForm>
         </div>
+      </div>
+
+      <h2>{tr.pyTitle}</h2>
+      <div className="card">
+        <div className="card-head">
+          <strong>{o.name}</strong>
+          <span>{tr.owed}: <strong>{fmtMmk(summary.owedMmk, tr.lang)}</strong></span>
+        </div>
+        <RecordPayout orgId={o.id} orgName={o.name} owedMmk={summary.owedMmk} defaultPaidAt={toLocalInput(new Date())} action={recordPayoutAction} labels={payoutLabels(tr)} errorText={{ alreadyVoided: tr.pyAlreadyVoided }} />
       </div>
 
       <h2>{tr.members}</h2>

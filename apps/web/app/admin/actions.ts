@@ -335,6 +335,7 @@ export async function recordPayoutAction(_: FormState, fd: FormData): Promise<Fo
       },
     });
     revalidatePath('/admin/finance');
+    revalidatePath(`/admin/organizations/${fd.get('orgId')}`);
     return { ok: 'recorded', data: { owedMmk: r.owedMmk } };
   } catch (e) {
     return err(e);

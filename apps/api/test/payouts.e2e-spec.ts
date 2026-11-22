@@ -243,4 +243,17 @@ run('Payouts', () => {
     expect(after.events).toEqual(before.events);
     expect((await balance()).grossMmk).toBe(55_000);
   });
+
+  it('an organization with no sales yet: admin summary is zeros, a payout can be recorded, non-admins are refused', async () => {
+    const fresh = await http.post('/v1/admin/organizations').set(A).send({ name: `Payout Fresh ${tag}`, slug: `pof-${tag}`, ownerEmail: `ownf-po-${tag}@e2e.test` }).expect(201);
+    const id = fresh.body.organization.id as string;
+    const sum = `/v1/admin/finance/organizations/${id}/summary`;
+    expect((await http.get(sum).set(A).expect(200)).body).toMatchObject({ earnedMmk: 0, paidOutMmk: 0, owedMmk: 0, events: [], payouts: [] });
+    for (const h of [O, F, M, C, await consumer()]) await http.get(sum).set(h).expect(403);
+    await http.get(sum).expect(401);
+    await http.get('/v1/admin/finance/organizations/not-a-uuid/summary').set(A).expect(400);
+    const r = await http.post(`/v1/admin/finance/organizations/${id}/payouts`).set(A).send({ amountMmk: 5_000, paidAt: new Date().toISOString(), method: 'CASH' }).expect(201);
+    expect(r.body.owedMmk).toBe(-5_000); // overpaid: the form warns, the server allows it
+    expect((await http.get(sum).set(A).expect(200)).body).toMatchObject({ paidOutMmk: 5_000, owedMmk: -5_000 });
+  });
 });
