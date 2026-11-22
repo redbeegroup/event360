@@ -90,9 +90,12 @@ class FakeApi extends Event360Api {
   };
   bool failWaitlist = false;
   int offeredSeats = 2;
+  int waitlistCalls = 0;
+  int standingOffered = 0;
 
   @override
   Future<WaitlistCounts> waitlistCounts(String orgId, String eventId) async {
+    waitlistCalls++;
     if (failWaitlist) throw ApiException(500, 'down');
     return WaitlistCounts.fromJson(waitlist);
   }
@@ -171,7 +174,7 @@ class FakeApi extends Event360Api {
   Future<EventDashboard> eventDashboard(String orgId, String eventId) async => EventDashboard.fromJson({
         'totals': {'views': 120, 'orders': 9, 'ticketsSold': 13, 'capacity': 300, 'revenueMmk': 138000, 'discountMmk': 57000, 'checkedIn': 9, 'conversion': 7.5},
         'ticketTypes': [
-          {'name': 'Standing', 'sold': 4, 'quota': 200, 'priceMmk': 0},
+          {'name': 'Standing', 'sold': 4, 'quota': 200, 'priceMmk': 0, if (standingOffered > 0) 'seats': {'available': 0, 'held': 0, 'guest': 0, 'sold': 0, 'comp': 0, 'offered': standingOffered}},
           {'name': 'VIP deck', 'sold': 3, 'quota': 20, 'priceMmk': 35000, 'seats': {'available': 11, 'held': 2, 'guest': 3, 'sold': 3, 'comp': 1, 'offered': offeredSeats}},
         ],
         'checkinsByGate': [],
@@ -531,6 +534,37 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('offered seats are summed over ticket types', (tester) async {
+      await openOverview(tester, (a) {
+        a.offeredSeats = 2;
+        a.standingOffered = 3;
+      });
+      final tile = find.ancestor(of: find.text('Held for waitlist offers'), matching: find.byType(StatTile));
+      expect(find.descendant(of: tile, matching: find.text('5')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('pull to refresh fetches the waitlist again', (tester) async {
+      final api = await openOverview(tester, (_) {});
+      final before = api.waitlistCalls;
+      expect(before, greaterThan(0));
+      await tester.drag(find.byKey(const Key('sold')), const Offset(0, 400));
+      await tester.pumpAndSettle();
+      expect(api.waitlistCalls, greaterThan(before));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('card stays hidden when no type has anyone waiting or offered', (tester) async {
+      await openOverview(tester, (a) => a.waitlist = {
+            'total': 3,
+            'ticketTypes': [
+              {'id': 't1', 'name': 'Standing', 'waiting': 0, 'offered': 0},
+            ],
+          });
+      expect(find.byKey(const Key('waitlistCard'), skipOffstage: false), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('type name follows the app language', (tester) async {
       await openOverview(tester, (_) {}, lang: 'my');
       expect(find.descendant(of: find.byKey(const Key('waitlistCard'), skipOffstage: false), matching: find.text('ရပ်ကြည့်', skipOffstage: false), skipOffstage: false), findsOneWidget);
@@ -658,8 +692,10 @@ void main() {
       expect(find.byKey(const Key('sold')), findsOneWidget, reason: '$lang overview');
       expect(find.byType(StatTile), findsNWidgets(10), reason: '$lang tiles: 4 totals + 5 seat counts + offered');
       expect(tester.takeException(), isNull, reason: '$lang overview');
-      await tester.drag(find.byType(Scrollable).last, const Offset(0, -2000));
+      await tester.drag(find.byKey(const Key('sold')), const Offset(0, -3000)); // Scrollable.last is the horizontal tab bar, not the page
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('waitlistCard')), findsOneWidget, reason: '$lang waitlist card reached');
+      expect(find.byType(E360Badge), findsWidgets, reason: '$lang recent order reached');
       expect(tester.takeException(), isNull, reason: '$lang overview scrolled');
       // Every other tab too
       for (final k in ['tabGuests', 'tabSeats', 'tabDoor', 'tabAnnounce', 'tabPromos']) {

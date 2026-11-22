@@ -125,7 +125,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               for (final g in att.byGate)
                 ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.door_front_door_outlined), title: Text(g.gate ?? t.noGate), trailing: Text(formatAmount(g.checkedIn, lang))),
             ],
-            if (waitlist != null && waitlist.total > 0) ...[
+            if (waitlist != null && waitlist.types.any((w) => w.waiting + w.offered > 0)) ...[
               const SizedBox(height: 12),
               Container(
                 key: const Key('waitlistCard'),
