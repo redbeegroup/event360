@@ -414,6 +414,58 @@ class Event360Api {
   Future<void> setPromoActive(String orgId, String eventId, String promoId, bool active) =>
       _call(() => _dio.patch('/organizations/$orgId/events/$eventId/promo-codes/$promoId', data: {'isActive': active}), (_) {});
 
+  // ───── Event night: attendees, seating, guest tickets, waitlist ─────
+
+  Future<List<Attendee>> attendees(String orgId, String eventId) => _call(
+        () => _dio.get('/organizations/$orgId/events/$eventId/attendees'),
+        (d) => (d as List).map((x) => Attendee.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  Future<OrgSeating> orgSeating(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/seating'), (d) => OrgSeating.fromJson(d as Map<String, dynamic>));
+
+  Future<List<GuestTicket>> guestTickets(String orgId, String eventId) => _call(
+        () => _dio.get('/organizations/$orgId/events/$eventId/seating/guests'),
+        (d) => (d as List).map((x) => GuestTicket.fromJson(x as Map<String, dynamic>)).toList(),
+      );
+
+  /// Like [_call], but a 409 carrying `takenSeats` becomes [SeatsChanged].
+  Future<T> _seatsCall<T>(Future<Response<dynamic>> Function() send, T Function(dynamic data) parse) async {
+    try {
+      return await _call(send, parse);
+    } on ApiException catch (e) {
+      if (e.status == 409 && e.takenSeats.isNotEmpty) throw SeatsChanged(e.message, e.takenSeats);
+      rethrow;
+    }
+  }
+
+  Future<int> holdSeats(String orgId, String eventId, List<String> seats, String label) => _seatsCall(
+        () => _dio.post('/organizations/$orgId/events/$eventId/seating/hold', data: {'seats': seats, 'label': label}),
+        (d) => ((d as Map<String, dynamic>)['held'] as num).toInt(),
+      );
+
+  Future<int> releaseSeats(String orgId, String eventId, List<String> seats) => _seatsCall(
+        () => _dio.post('/organizations/$orgId/events/$eventId/seating/release', data: {'seats': seats}),
+        (d) => ((d as Map<String, dynamic>)['released'] as num).toInt(),
+      );
+
+  /// Issues complimentary tickets for [seats]; returns how many were issued.
+  Future<int> issueGuestTickets(String orgId, String eventId, List<String> seats, {required String guestName, required String phone, String? label}) => _seatsCall(
+        () => _dio.post('/organizations/$orgId/events/$eventId/seating/comps', data: {
+          'seats': seats,
+          'guestName': guestName,
+          'phone': phone,
+          if (label != null && label.isNotEmpty) 'label': label,
+        }),
+        (d) => ((d as Map<String, dynamic>)['tickets'] as List).length,
+      );
+
+  Future<void> revokeGuestTicket(String orgId, String eventId, String ticketId) =>
+      _call(() => _dio.post('/organizations/$orgId/events/$eventId/seating/comps/$ticketId/revoke'), (_) {});
+
+  Future<WaitlistCounts> waitlistCounts(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/waitlist'), (d) => WaitlistCounts.fromJson(d as Map<String, dynamic>));
+
   Future<Inbox> organizerNotifications() =>
       _call(() => _dio.get('/me/notifications', queryParameters: {'audience': 'organizer'}), (d) => Inbox.fromJson(d as Map<String, dynamic>));
 

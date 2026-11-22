@@ -72,10 +72,13 @@ class DashboardTotals {
 
 /// Seat counts for one ticket type of a seated event.
 class SeatCounts {
-  const SeatCounts({required this.available, required this.held, required this.guest, required this.sold, required this.comp});
+  const SeatCounts({required this.available, required this.held, required this.guest, required this.sold, required this.comp, this.offered = 0});
   final int available, held, guest, sold, comp;
-  factory SeatCounts.fromJson(Map<String, dynamic> j) =>
-      SeatCounts(available: _i(j['available']), held: _i(j['held']), guest: _i(j['guest']), sold: _i(j['sold']), comp: _i(j['comp']));
+
+  /// Seats held for a live waitlist offer.
+  final int offered;
+  factory SeatCounts.fromJson(Map<String, dynamic> j) => SeatCounts(
+      available: _i(j['available']), held: _i(j['held']), guest: _i(j['guest']), sold: _i(j['sold']), comp: _i(j['comp']), offered: _i(j['offered']));
 }
 
 class EventDashboard {
@@ -88,7 +91,7 @@ class EventDashboard {
     final all = [for (final t in ticketTypes) if (t.seats != null) t.seats!];
     if (all.isEmpty) return null;
     int sum(int Function(SeatCounts) f) => all.fold(0, (a, c) => a + f(c));
-    return SeatCounts(available: sum((c) => c.available), held: sum((c) => c.held), guest: sum((c) => c.guest), sold: sum((c) => c.sold), comp: sum((c) => c.comp));
+    return SeatCounts(available: sum((c) => c.available), held: sum((c) => c.held), guest: sum((c) => c.guest), sold: sum((c) => c.sold), comp: sum((c) => c.comp), offered: sum((c) => c.offered));
   }
   final List<({String gate, int count})> byGate;
   final List<({String day, int orders, int revenueMmk})> daily;
@@ -192,4 +195,153 @@ class PromoCodeInfo {
         orders: _i(j['orders']),
         discountGivenMmk: _i(j['discountGivenMmk']),
       );
+}
+
+/// One ticket on an event's attendee list.
+class Attendee {
+  Attendee({
+    required this.id,
+    required this.status,
+    required this.createdAt,
+    required this.isComplimentary,
+    required this.ticketTypeName,
+    this.seatLabel,
+    this.seatLabelMy,
+    this.guestName,
+    this.holderName,
+    this.phone,
+  });
+  final String id, status;
+  final DateTime createdAt;
+  final String? seatLabel, seatLabelMy, guestName, holderName, phone;
+  final bool isComplimentary;
+  final String ticketTypeName;
+
+  /// The holder's name, else the guest's, else the phone number, else ''.
+  String get displayName {
+    for (final v in [holderName, guestName, phone]) {
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return '';
+  }
+
+  bool get isIn => status == 'CHECKED_IN';
+  bool get isValid => status == 'VALID';
+  bool get isDead => !isIn && !isValid;
+
+  factory Attendee.fromJson(Map<String, dynamic> j) {
+    final holder = j['holder'] as Map<String, dynamic>?;
+    return Attendee(
+      id: j['id'] as String,
+      status: j['status'] as String,
+      createdAt: _dt(j['createdAt']),
+      seatLabel: j['seatLabel'] as String?,
+      seatLabelMy: j['seatLabelMy'] as String?,
+      isComplimentary: j['isComplimentary'] == true,
+      guestName: j['guestName'] as String?,
+      holderName: holder?['displayName'] as String?,
+      phone: holder?['phone'] as String?,
+      ticketTypeName: (j['ticketType'] as Map<String, dynamic>?)?['name'] as String? ?? '',
+    );
+  }
+}
+
+/// One seat of an event's seat map, organizer view.
+class OrgSeat {
+  const OrgSeat({required this.seatKey, required this.status, this.ticketTypeId, this.holdLabel});
+
+  /// AVAILABLE | CHECKOUT_HOLD | WAITLIST_HOLD | GUEST_HOLD | SOLD | UNSOLD
+  final String seatKey, status;
+  final String? ticketTypeId, holdLabel;
+  factory OrgSeat.fromJson(Map<String, dynamic> j) => OrgSeat(
+        seatKey: j['seatKey'] as String,
+        status: j['status'] as String,
+        ticketTypeId: j['ticketTypeId'] as String?,
+        holdLabel: j['holdLabel'] as String?,
+      );
+}
+
+/// Seat map, seat states and per-type counts of an event (organizer view).
+class OrgSeating {
+  const OrgSeating({required this.layout, required this.seats, required this.colors, required this.counts});
+  final Map<String, dynamic>? layout;
+  final List<OrgSeat> seats;
+
+  /// Ticket type id -> '#rrggbb'.
+  final Map<String, String> colors;
+  final Map<String, SeatCounts> counts;
+  bool get hasMap => layout != null;
+
+  factory OrgSeating.fromJson(Map<String, dynamic> j) => OrgSeating(
+        layout: j['layout'] as Map<String, dynamic>?,
+        seats: [for (final s in (j['seats'] as List? ?? const []).cast<Map<String, dynamic>>()) OrgSeat.fromJson(s)],
+        colors: {for (final e in ((j['colors'] as Map?) ?? const {}).entries) e.key as String: e.value as String},
+        counts: {for (final e in ((j['counts'] as Map?) ?? const {}).entries) e.key as String: SeatCounts.fromJson(e.value as Map<String, dynamic>)},
+      );
+}
+
+/// A complimentary guest ticket (phone is masked by the server).
+class GuestTicket {
+  const GuestTicket({
+    required this.id,
+    required this.guestName,
+    required this.phone,
+    required this.seatKey,
+    required this.status,
+    required this.checkedIn,
+    this.seatLabel,
+    this.seatLabelMy,
+    this.label,
+  });
+  final String id, guestName, phone, seatKey, status;
+  final String? seatLabel, seatLabelMy, label;
+  final bool checkedIn;
+  bool get canRevoke => status == 'VALID' && !checkedIn;
+
+  factory GuestTicket.fromJson(Map<String, dynamic> j) => GuestTicket(
+        id: j['id'] as String,
+        guestName: j['guestName'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+        seatKey: j['seatKey'] as String? ?? '',
+        status: j['status'] as String,
+        checkedIn: j['checkedIn'] == true,
+        seatLabel: j['seatLabel'] as String?,
+        seatLabelMy: j['seatLabelMy'] as String?,
+        label: j['label'] as String?,
+      );
+}
+
+class WaitlistTypeCount {
+  const WaitlistTypeCount({required this.id, required this.name, required this.waiting, required this.offered, this.nameMy});
+  final String id, name;
+  final String? nameMy;
+  final int waiting, offered;
+  factory WaitlistTypeCount.fromJson(Map<String, dynamic> j) => WaitlistTypeCount(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        nameMy: j['nameMy'] as String?,
+        waiting: _i(j['waiting']),
+        offered: _i(j['offered']),
+      );
+}
+
+/// Waitlist size per ticket type of an event.
+class WaitlistCounts {
+  const WaitlistCounts({required this.types, required this.total});
+  final List<WaitlistTypeCount> types;
+  final int total;
+  factory WaitlistCounts.fromJson(Map<String, dynamic> j) => WaitlistCounts(
+        types: [for (final t in (j['ticketTypes'] as List? ?? const []).cast<Map<String, dynamic>>()) WaitlistTypeCount.fromJson(t)],
+        total: _i(j['total']),
+      );
+}
+
+/// Thrown by hold/release/comps on HTTP 409 carrying `takenSeats`: those seats changed under the organizer.
+class SeatsChanged implements Exception {
+  const SeatsChanged(this.message, this.takenSeats);
+  final String message;
+  final List<String> takenSeats;
+
+  @override
+  String toString() => message;
 }
