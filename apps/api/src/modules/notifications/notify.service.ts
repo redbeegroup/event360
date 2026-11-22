@@ -11,6 +11,7 @@ export type NotificationKind =
   | 'event_cancelled'
   | 'live_now'
   | 'order_refunded'
+  | 'order_paid_sold_out'
   | 'announcement'
   | 'ticket_received'
   | 'waitlist_offer'
@@ -106,27 +107,35 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     return this.background(this.holders(eventId).then((ids) => this.deliver(ids, n)));
   }
 
+  /** The inbox row for one user; also used by callers that store the notice inside their own transaction. */
+  inboxRow(userId: string, n: NoticeText) {
+    return {
+      userId,
+      kind: n.kind,
+      title: n.title.slice(0, 200),
+      titleMy: n.titleMy?.slice(0, 200) ?? null,
+      body: n.body.slice(0, 1000),
+      bodyMy: n.bodyMy?.slice(0, 1000) ?? null,
+      link: n.link ?? null,
+      eventId: n.eventId ?? null,
+      audience: n.audience ?? 'attendee',
+    };
+  }
+
   /** Returns how many users got the notice. */
   async deliver(userIds: string[], n: NoticeText): Promise<number> {
     if (!userIds.length) return 0;
     for (let i = 0; i < userIds.length; i += 1000) {
-      await this.prisma.notification.createMany({
-        data: userIds.slice(i, i + 1000).map((userId) => ({
-          userId,
-          kind: n.kind,
-          title: n.title.slice(0, 200),
-          titleMy: n.titleMy?.slice(0, 200) ?? null,
-          body: n.body.slice(0, 1000),
-          bodyMy: n.bodyMy?.slice(0, 1000) ?? null,
-          link: n.link ?? null,
-          eventId: n.eventId ?? null,
-          audience: n.audience ?? 'attendee',
-        })),
-      });
+      await this.prisma.notification.createMany({ data: userIds.slice(i, i + 1000).map((userId) => this.inboxRow(userId, n)) });
     }
+    await this.pushAndSms(userIds, n);
+    return userIds.length;
+  }
+
+  /** Push (and SMS, when the notice has a text) without an inbox row: for notices whose row is already stored. Never throws. */
+  async pushAndSms(userIds: string[], n: NoticeText) {
     await this.pushTo(userIds, n).catch((e) => this.logger.warn(`push: ${(e as Error).message}`));
     if (n.sms) await this.smsTo(userIds, n.sms).catch((e) => this.logger.warn(`sms: ${(e as Error).message}`));
-    return userIds.length;
   }
 
   private async pushTo(userIds: string[], n: NoticeText) {
@@ -212,6 +221,25 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** The money arrived after the tickets were gone: inbox and push (no SMS), the refund follows. */
+  orderPaidSoldOut(orderId: string) {
+    return this.background(this.buildOrderPaidSoldOut(orderId));
+  }
+
+  private async buildOrderPaidSoldOut(orderId: string) {
+    const o = await this.prisma.order.findUnique({ where: { id: orderId }, include: { event: { select: { id: true, title: true, titleMy: true } } } });
+    if (!o) return;
+    return this.toUsers([o.userId], {
+      kind: 'order_paid_sold_out',
+      title: 'Payment received, tickets sold out',
+      titleMy: 'ငွေလက်ခံရရှိပါပြီ၊ လက်မှတ်များ ကုန်သွားပါပြီ',
+      body: `We received your payment for ${o.event.title}, but the tickets had sold out. A refund is on its way.`,
+      bodyMy: `${o.event.titleMy || o.event.title} အတွက် သင့်ငွေပေးချေမှုကို လက်ခံရရှိခဲ့သော်လည်း လက်မှတ်များ ကုန်သွားခဲ့ပါသည်။ ငွေပြန်အမ်းပေးမည် ဖြစ်ပါသည်။`,
+      link: '/tickets',
+      eventId: o.event.id,
+    });
+  }
+
   eventCancelled(e: { id: string; title: string; titleMy: string | null; startsAt: Date }) {
     return this.toEventHolders(e.id, {
       kind: 'event_cancelled',
@@ -258,6 +286,7 @@ export class NotifyService implements OnModuleInit, OnModuleDestroy {
     const due = await this.prisma.event.findMany({
       where: { status: 'PUBLISHED', reminderSentAt: null, startsAt: { gt: now, lte: new Date(now.getTime() + 24 * 3600e3) } },
       include: { venue: { select: { name: true } } },
+      orderBy: { startsAt: 'asc' },
       take: 50,
     });
     let sent = 0;

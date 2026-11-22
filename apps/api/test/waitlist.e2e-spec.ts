@@ -1182,4 +1182,136 @@ run('Waitlist', () => {
     expect(await entry(js.body.entryId)).toMatchObject({ status: 'PURCHASED', orderId: cs.body.id });
     await expectSeatCounters(s.vip);
   });
+
+  describe('offer notices that survive a crash', () => {
+    const settings = () => app.get(SettingsService) as any;
+    const smsOn = () => jest.spyOn(settings(), 'stored').mockResolvedValue({ provider: 'smspoh', apiKey: 'KEY-wl', apiSecretSealed: settings().box.seal('SECRET-wl'), senderId: 'Event360', enabled: true, testMode: true });
+    afterEach(() => jest.spyOn(settings(), 'stored').mockResolvedValue({ provider: 'smspoh' }));
+
+    /** A line of one: H holds the only ticket, W waits. Returns once H released it (not yet offered). */
+    async function line(title: string) {
+      const ev = await standing(title, 1, 1);
+      const [H, W] = [await consumer(), await consumer()];
+      const held = await order(H.H, ev.id, items(ev.type, 1)).expect(201);
+      const j = await join(W.H, ev.type, 1).expect(201);
+      await http.post(`/v1/orders/${held.body.id}/cancel`).set(H.H).expect(200);
+      return { ev, H, W, entryId: j.body.entryId as string, sms: () => smsCalls.filter((c) => c.to === `95${W.phone.slice(1)}`) };
+    }
+    const offerRows = (userId: string) => prisma.notification.findMany({ where: { userId, kind: 'waitlist_offer' } });
+
+    it('the inbox row is stored with the offer; a crash before sending is retried once, with no second row', async () => {
+      smsOn();
+      const l = await line('NoticeCrash');
+      // The process dies after the offer committed, before anything was marked or sent
+      const mark = jest.spyOn(prisma.waitlistEntry, 'updateMany').mockRejectedValueOnce(new Error('crash'));
+      await expect(wl.assignOffers()).rejects.toThrow('crash');
+      mark.mockRestore();
+      expect(await entry(l.entryId)).toMatchObject({ status: 'OFFERED', offerNotifiedAt: null });
+      expect(await offerRows(l.W.id)).toHaveLength(1);
+      expect(l.sms()).toHaveLength(0);
+      // The next pass sends it, exactly once
+      await sweepWaitlist();
+      expect((await entry(l.entryId)).offerNotifiedAt).not.toBeNull();
+      expect(l.sms()).toHaveLength(1);
+      expect(await offerRows(l.W.id)).toHaveLength(1);
+      await sweepWaitlist();
+      await sweepWaitlist();
+      expect(l.sms()).toHaveLength(1);
+      expect(await offerRows(l.W.id)).toHaveLength(1);
+    });
+
+    it('an offer sent in the same pass is marked after sending, and a reopened offer sends no SMS', async () => {
+      smsOn();
+      const l = await line('NoticeReopen');
+      await sweepWaitlist();
+      expect(l.sms()).toHaveLength(1);
+      expect((await entry(l.entryId)).offerNotifiedAt).not.toBeNull();
+      const co = await order(l.W.H, l.ev.id, { ...items(l.ev.type, 1), waitlistEntryId: l.entryId }).expect(201);
+      await http.post(`/v1/orders/${co.body.id}/cancel`).set(l.W.H).expect(200); // reopens the same offer
+      expect(await entry(l.entryId)).toMatchObject({ status: 'OFFERED', orderId: co.body.id });
+      await sweepWaitlist();
+      expect(l.sms()).toHaveLength(1);
+      expect(await offerRows(l.W.id)).toHaveLength(1);
+    });
+
+    it('a lapsed offer that was never sent is not sent late', async () => {
+      smsOn();
+      const l = await line('NoticeLapsed');
+      const mark = jest.spyOn(prisma.waitlistEntry, 'updateMany').mockRejectedValueOnce(new Error('crash'));
+      await expect(wl.assignOffers()).rejects.toThrow('crash');
+      mark.mockRestore();
+      await prisma.waitlistEntry.update({ where: { id: l.entryId }, data: { offerExpiresAt: new Date(Date.now() - 1000) } });
+      await wl.assignOffers();
+      expect(l.sms()).toHaveLength(0);
+    });
+  });
+
+  describe('late payment after the offer ran out', () => {
+    /** W's offer was reopened by cancelling a checkout whose payment was started; returns the entry and the payment. */
+    async function reopenedWithPayment(title: string) {
+      const ev = await standing(title, 1, 1);
+      const [H, W] = [await consumer(), await consumer()];
+      const held = await order(H.H, ev.id, items(ev.type, 1)).expect(201);
+      const j = await join(W.H, ev.type, 1).expect(201);
+      await http.post(`/v1/orders/${held.body.id}/cancel`).set(H.H).expect(200);
+      await sweepWaitlist();
+      const co = await order(W.H, ev.id, { ...items(ev.type, 1), waitlistEntryId: j.body.entryId }).expect(201);
+      const paymentId = await payFor(W.H, co.body.id);
+      await http.post(`/v1/orders/${co.body.id}/cancel`).set(W.H).expect(200);
+      expect(await entry(j.body.entryId)).toMatchObject({ status: 'OFFERED', orderId: co.body.id });
+      return { ev, W, entryId: j.body.entryId as string, orderId: co.body.id as string, paymentId };
+    }
+    const expireNow = async (entryId: string) => {
+      await prisma.waitlistEntry.update({ where: { id: entryId }, data: { offerExpiresAt: new Date(Date.now() - 1000) } });
+      await sweepWaitlist();
+    };
+    const notices = (userId: string, kinds: string[]) => prisma.notification.findMany({ where: { userId, kind: { in: kinds } } });
+
+    it('the expiry notice says the tickets were released when a payment is still in flight', async () => {
+      const r = await reopenedWithPayment('ExpiryPaying');
+      await expireNow(r.entryId);
+      const n = await notices(r.W.id, ['waitlist_offer_expired']);
+      expect(n).toHaveLength(1);
+      expect(n[0]).toMatchObject({
+        title: 'Your reserved tickets were released',
+        body: `Your reserved tickets for ExpiryPaying ${tag} were released. If your payment still goes through, we'll issue tickets if any are left, or refund you.`,
+      });
+      expect(n[0].bodyMy).toBeTruthy();
+    });
+
+    it('the closing notice says the same; no notice when the order is already paid', async () => {
+      const r = await reopenedWithPayment('ClosePaying');
+      await prisma.ticketType.update({ where: { id: r.ev.type }, data: { salesEndAt: new Date(Date.now() - 1000) } });
+      await sweepWaitlist();
+      expect(await notices(r.W.id, ['waitlist_closed'])).toHaveLength(0);
+      expect((await notices(r.W.id, ['waitlist_offer_expired']))[0]).toMatchObject({ title: 'Your reserved tickets were released' });
+
+      const paid = await reopenedWithPayment('ExpiryPaid');
+      await prisma.order.update({ where: { id: paid.orderId }, data: { status: 'PAID', paidAt: new Date() } });
+      await expireNow(paid.entryId);
+      expect(await notices(paid.W.id, ['waitlist_offer_expired', 'waitlist_closed'])).toHaveLength(0);
+    });
+
+    it('money that arrives with no tickets left tells the buyer once', async () => {
+      const ev = await standing('PaidSoldOut', 1, 1);
+      const [P, Q] = [await consumer(), await consumer()];
+      const o = await order(P.H, ev.id, items(ev.type, 1)).expect(201);
+      const payId = await payFor(P.H, o.body.id);
+      await expireHold(prisma, pay, o.body.id);
+      await order(Q.H, ev.id, items(ev.type, 1)).expect(201); // the ticket is gone
+      const cb = pay.mock.callbackFor(payId, 'SUCCEEDED', 5_000n);
+      await http.post('/v1/payments/webhook/mock').set('x-mock-signature', cb.signature).send(cb.body).expect(200);
+      await http.post('/v1/payments/webhook/mock').set('x-mock-signature', cb.signature).send(cb.body).expect(200); // duplicate
+      await app.get(NotifyService).idle();
+      const n = await prisma.notification.findMany({ where: { userId: P.id, kind: 'order_paid_sold_out' } });
+      expect(n).toHaveLength(1);
+      expect(n[0]).toMatchObject({
+        title: 'Payment received, tickets sold out',
+        body: `We received your payment for PaidSoldOut ${tag}, but the tickets had sold out. A refund is on its way.`,
+        link: '/tickets',
+      });
+      expect(n[0].bodyMy).toBeTruthy();
+      expect(await prisma.notification.count({ where: { userId: P.id, kind: 'ticket_confirmed' } })).toBe(0);
+    });
+  });
 });

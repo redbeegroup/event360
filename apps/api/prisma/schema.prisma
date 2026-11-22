@@ -1164,18 +1164,20 @@ enum WaitlistStatus {
 /// A buyer in line for a sold-out ticket type. Position is the order of (createdAt, id) among WAITING entries.
 /// At most one WAITING/OFFERED entry per user and type (partial unique index in the migration).
 model WaitlistEntry {
-  id             String         @id @default(uuid()) @db.Uuid
-  ticketTypeId   String         @map("ticket_type_id") @db.Uuid
-  userId         String         @map("user_id") @db.Uuid
-  quantity       Int
-  status         WaitlistStatus @default(WAITING)
+  id              String         @id @default(uuid()) @db.Uuid
+  ticketTypeId    String         @map("ticket_type_id") @db.Uuid
+  userId          String         @map("user_id") @db.Uuid
+  quantity        Int
+  status          WaitlistStatus @default(WAITING)
   /// Tickets (standing) or seats (seated) reserved for this entry while OFFERED.
-  offeredQty     Int            @default(0) @map("offered_qty")
-  offeredAt      DateTime?      @map("offered_at")
-  offerExpiresAt DateTime?      @map("offer_expires_at")
-  orderId        String?        @map("order_id") @db.Uuid
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  offeredQty      Int            @default(0) @map("offered_qty")
+  offeredAt       DateTime?      @map("offered_at")
+  offerExpiresAt  DateTime?      @map("offer_expires_at")
+  /// Set (claimed) once the offer's push and SMS have been handed out; the inbox notice is written with the offer.
+  offerNotifiedAt DateTime?      @map("offer_notified_at")
+  orderId         String?        @map("order_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   ticketType TicketType  @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)

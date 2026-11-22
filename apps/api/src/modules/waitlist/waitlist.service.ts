@@ -22,6 +22,38 @@ export function lineState(t: { salesEndAt: Date | null; event: { status: string;
   if (['CANCELLED', 'COMPLETED'].includes(t.event.status) || t.event.startsAt <= now || (t.salesEndAt && t.salesEndAt <= now)) return 'closed';
   return t.event.status === 'PUBLISHED' ? 'open' : 'paused';
 }
+const ORDER_PAYMENTS = { select: { status: true, payments: { select: { status: true } } } } as const;
+const OFFER_INCLUDE = { ticketType: { select: { name: true, nameMy: true, event: { select: { id: true, title: true, titleMy: true } } } } } as const;
+
+/** The expired/closed notice for a buyer whose payment is still in flight: the reservation is gone, the payment may land. */
+const releasedWhilePaying = (ev: { id: string; title: string; titleMy: string | null }) => ({
+  kind: 'waitlist_offer_expired' as const,
+  title: 'Your reserved tickets were released',
+  titleMy: 'သင့်အတွက် ထိန်းထားသော လက်မှတ်များကို ပြန်လွှတ်လိုက်ပါပြီ',
+  body: `Your reserved tickets for ${ev.title} were released. If your payment still goes through, we'll issue tickets if any are left, or refund you.`,
+  bodyMy: `${ev.titleMy || ev.title} အတွက် သင့်အတွက် ထိန်းထားသော လက်မှတ်များကို ပြန်လွှတ်လိုက်ပါပြီ။ သင့်ငွေပေးချေမှု ဆက်လက် အောင်မြင်ပါက လက်မှတ်ကျန်သေးလျှင် ထုတ်ပေးပါမည်၊ မကျန်တော့ပါက ငွေပြန်အမ်းပေးပါမည်။`,
+  link: `/event/${ev.id}`,
+  eventId: ev.id,
+});
+
+/** The waitlist_offer notice (same text for its stored inbox row and for its push/SMS). */
+const offerNotice = (
+  e: { offeredQty: number; offerExpiresAt: Date | null; ticketType: { name: string; nameMy: string | null; event: { id: string; title: string; titleMy: string | null } } },
+  sms: boolean,
+) => {
+  const ev = e.ticketType.event;
+  const until = e.offerExpiresAt!;
+  return {
+    kind: 'waitlist_offer' as const,
+    title: 'Tickets are available for you',
+    titleMy: 'သင့်အတွက် လက်မှတ် ရနိုင်ပါပြီ',
+    body: `${e.offeredQty} ${e.ticketType.name} ticket(s) for ${ev.title} are held for you until ${when(until)}. Buy them before then.`,
+    bodyMy: `${ev.titleMy || ev.title} အတွက် ${e.ticketType.nameMy || e.ticketType.name} လက်မှတ် ${e.offeredQty} စောင်ကို ${when(until, 'my')} အထိ သင့်အတွက် ထိန်းထားပါသည်။ ထိုအချိန်မတိုင်မီ ဝယ်ယူပါ။`,
+    link: `/event/${ev.id}`,
+    eventId: ev.id,
+    ...(sms ? { sms: `Tickets for ${short(ev.title, 60)} are available for you until ${when(until)}. Open Event 360.` } : {}),
+  };
+};
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
@@ -269,7 +301,7 @@ export class WaitlistService {
 
   /**
    * Offers reserved stock to WAITING entries, in line order, type by type (one transaction each), then sends the
-   * offers. Also gives back stock nobody is waiting for, and reserves public stock a type's line still wants (seats
+   * offers' push and SMS (their inbox notices are stored with the offers). Also gives back stock nobody is waiting for, and reserves public stock a type's line still wants (seats
    * newly free after a join raced a release).
    */
   async assignOffers(now = new Date()) {
@@ -284,7 +316,7 @@ export class WaitlistService {
         this.logger.warn(`waitlist offers for ${id}: ${(e as Error).message}`);
       }
     }
-    if (offers.length) await this.notifyOffers(offers);
+    await this.notifyOffers(now); // also offers an earlier pass stored but did not get to send
     return { offered: offers.length, released };
   }
 
@@ -380,6 +412,9 @@ export class WaitlistService {
         UPDATE waitlist_entries SET status = 'OFFERED', offered_qty = ${qty}, offered_at = ${now}, offer_expires_at = ${expires}, updated_at = now()
         WHERE id = ${e.id}::uuid AND status = 'WAITING'`;
       if (n !== 1) continue;
+      // The inbox notice commits with the offer (a plain insert: no lock that conflicts with the lock order); push and SMS follow
+      const row = await tx.waitlistEntry.findUniqueOrThrow({ where: { id: e.id }, include: OFFER_INCLUDE });
+      await tx.notification.create({ data: this.notify.inboxRow(row.userId, offerNotice(row, false)) });
       out.push({ id: e.id, qty });
       left -= qty;
     }
@@ -421,27 +456,25 @@ export class WaitlistService {
 
   // ───────────── notifications ─────────────
 
-  /** One notice per offer: inbox and push always; SMS when SMS is enabled and "Waitlist SMS" is on. */
-  private async notifyOffers(entryIds: string[]) {
+  /**
+   * One notice per offer: the inbox row is stored with the offer; this sends push, and SMS when SMS is enabled and
+   * "Waitlist SMS" is on. Each live offer not yet sent is claimed first (never two SMS for one offer; a crash after the
+   * claim loses that offer's push and SMS only), then sent. A reopened offer keeps its mark, so it is not sent again.
+   */
+  private async notifyOffers(now: Date) {
     const rows = await this.prisma.waitlistEntry.findMany({
-      where: { id: { in: entryIds }, status: 'OFFERED' },
-      include: { ticketType: { select: { name: true, nameMy: true, event: { select: { id: true, title: true, titleMy: true } } } } },
+      where: { status: 'OFFERED', offerNotifiedAt: null, offerExpiresAt: { gt: now } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      include: OFFER_INCLUDE,
+      take: 200,
     });
+    if (!rows.length) return;
     const cfg = await this.sms.settingsConfig().catch(() => null);
     const sms = !!cfg?.enabled && cfg.waitlistSms !== false;
     for (const e of rows) {
-      const ev = e.ticketType.event;
-      const until = e.offerExpiresAt!;
-      void this.notify.toUsers([e.userId], {
-        kind: 'waitlist_offer',
-        title: 'Tickets are available for you',
-        titleMy: 'သင့်အတွက် လက်မှတ် ရနိုင်ပါပြီ',
-        body: `${e.offeredQty} ${e.ticketType.name} ticket(s) for ${ev.title} are held for you until ${when(until)}. Buy them before then.`,
-        bodyMy: `${ev.titleMy || ev.title} အတွက် ${e.ticketType.nameMy || e.ticketType.name} လက်မှတ် ${e.offeredQty} စောင်ကို ${when(until, 'my')} အထိ သင့်အတွက် ထိန်းထားပါသည်။ ထိုအချိန်မတိုင်မီ ဝယ်ယူပါ။`,
-        link: `/event/${ev.id}`,
-        eventId: ev.id,
-        ...(sms ? { sms: `Tickets for ${short(ev.title, 60)} are available for you until ${when(until)}. Open Event 360.` } : {}),
-      });
+      const claim = await this.prisma.waitlistEntry.updateMany({ where: { id: e.id, status: 'OFFERED', offerNotifiedAt: null }, data: { offerNotifiedAt: now } });
+      if (claim.count !== 1) continue;
+      await this.notify.pushAndSms([e.userId], offerNotice(e, sms)).catch((err) => this.logger.warn(`waitlist offer notice ${e.id}: ${(err as Error).message}`));
     }
   }
 
@@ -464,15 +497,24 @@ export class WaitlistService {
     });
   }
 
+  /** Where the entry's checkout payment stands: nothing to say (PAID), still in flight, or no payment. */
+  private paymentState(e: { order: { status: string; payments: { status: string }[] } | null }): 'paid' | 'in_flight' | 'none' {
+    if (!e.order) return 'none';
+    if (e.order.status === 'PAID' || e.order.status === 'CONFIRMED') return 'paid';
+    return e.order.payments.some((p) => p.status === 'INITIATED' || p.status === 'PENDING') ? 'in_flight' : 'none';
+  }
+
   /** Inbox only (no SMS): the offer's time ran out. */
   private async notifyExpired(entryIds: string[]) {
     const rows = await this.prisma.waitlistEntry.findMany({
       where: { id: { in: entryIds } },
-      include: { ticketType: { select: { event: { select: { id: true, title: true, titleMy: true } } } } },
+      include: { order: ORDER_PAYMENTS, ticketType: { select: { event: { select: { id: true, title: true, titleMy: true } } } } },
     });
     for (const e of rows) {
+      const state = this.paymentState(e);
+      if (state === 'paid') continue; // they bought it after all
       const ev = e.ticketType.event;
-      void this.notify.toUsers([e.userId], {
+      void this.notify.toUsers([e.userId], state === 'in_flight' ? releasedWhilePaying(ev) : {
         kind: 'waitlist_offer_expired',
         title: 'Your offer expired',
         titleMy: 'သင့်ကမ်းလှမ်းချက် သက်တမ်းကုန်ပါပြီ',
@@ -487,11 +529,13 @@ export class WaitlistService {
   private async notifyClosed(entries: { id: string; user_id: string }[]) {
     const rows = await this.prisma.waitlistEntry.findMany({
       where: { id: { in: entries.map((e) => e.id) } },
-      include: { ticketType: { select: { name: true, nameMy: true, event: { select: { id: true, title: true, titleMy: true } } } } },
+      include: { order: ORDER_PAYMENTS, ticketType: { select: { name: true, nameMy: true, event: { select: { id: true, title: true, titleMy: true } } } } },
     });
     for (const e of rows) {
+      const state = this.paymentState(e);
+      if (state === 'paid') continue;
       const ev = e.ticketType.event;
-      void this.notify.toUsers([e.userId], {
+      void this.notify.toUsers([e.userId], state === 'in_flight' ? releasedWhilePaying(ev) : {
         kind: 'waitlist_closed',
         title: "Tickets didn't become available",
         titleMy: 'လက်မှတ် ပြန်မရနိုင်ခဲ့ပါ',

@@ -614,7 +614,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
    */
   async settle(paymentId: string, amountMmk?: bigint) {
     const txOpts = await this.seatedTx((await this.prisma.payment.findUnique({ where: { id: paymentId }, select: { orderId: true } }))?.orderId);
-    const issuedFor = await this.prisma.$transaction(async (tx) => {
+    const settled = await this.prisma.$transaction(async (tx) => {
       const pay = await tx.payment.findUnique({ where: { id: paymentId } });
       if (!pay?.orderId) return;
       const seatedIn = await this.seatedEvent(tx, pay.orderId);
@@ -736,12 +736,14 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         { account: ACC.payable(order.event.organizationId), credit: order.totalMmk - order.commissionMmk },
         { account: ACC.commission, credit: order.commissionMmk },
       ]);
-      return issued ? order.id : null;
+      return { orderId: order.id, issued };
     }, txOpts);
-    if (issuedFor) {
-      void this.notify.ticketConfirmed(issuedFor);
-      const o = await this.prisma.order.findUnique({ where: { id: issuedFor }, select: { eventId: true } });
+    if (settled?.issued) {
+      void this.notify.ticketConfirmed(settled.orderId);
+      const o = await this.prisma.order.findUnique({ where: { id: settled.orderId }, select: { eventId: true } });
       if (o) void this.notify.checkSales(o.eventId, true);
+    } else if (settled) {
+      void this.notify.orderPaidSoldOut(settled.orderId); // paid, nothing issued: the refund is flagged
     }
   }
 
