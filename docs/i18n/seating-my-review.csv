@@ -432,3 +432,6 @@
 "seatsViewGuests","Guest tickets ({count})","ဧည့်သည်လက်မှတ် ({count})","organizer app"
 "legendSelected","Selected","ရွေးထားသည်","organizer app"
 "ticketsIssued","{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}","ဧည့်သည်လက်မှတ် {count} စောင် ထုတ်ပေးပြီး","organizer app"
+"seatsOffered","Held for waitlist offers","စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်အတွက် ထားသည်","organizer app"
+"waitlistTitle","Waitlist","စောင့်ဆိုင်းစာရင်း","organizer app"
+"waitlistLine","{waiting} waiting · {offered} with an offer","စောင့်နေသူ {waiting} ဦး · ကမ်းလှမ်းချက်ရသူ {offered} ဦး","organizer app"

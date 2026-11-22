@@ -373,6 +373,24 @@ abstract class L10n {
   /// **'Complimentary'**
   String get seatsComp;
 
+  /// No description provided for @seatsOffered.
+  ///
+  /// In en, this message translates to:
+  /// **'Held for waitlist offers'**
+  String get seatsOffered;
+
+  /// No description provided for @waitlistTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Waitlist'**
+  String get waitlistTitle;
+
+  /// No description provided for @waitlistLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{waiting} waiting · {offered} with an offer'**
+  String waitlistLine(String waiting, String offered);
+
   /// No description provided for @byGate.
   ///
   /// In en, this message translates to:

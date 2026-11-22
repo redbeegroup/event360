@@ -45,6 +45,19 @@
   "seatsGuest": "Held for guests",
   "seatsSold": "Sold",
   "seatsComp": "Complimentary",
+  "seatsOffered": "Held for waitlist offers",
+  "waitlistTitle": "Waitlist",
+  "waitlistLine": "{waiting} waiting · {offered} with an offer",
+  "@waitlistLine": {
+    "placeholders": {
+      "waiting": {
+        "type": "String"
+      },
+      "offered": {
+        "type": "String"
+      }
+    }
+  },
   "byGate": "Check-ins by gate",
   "recentOrders": "Recent orders",
   "noOrders": "No orders yet.",

@@ -148,6 +148,17 @@ class L10nEn extends L10n {
   String get seatsComp => 'Complimentary';
 
   @override
+  String get seatsOffered => 'Held for waitlist offers';
+
+  @override
+  String get waitlistTitle => 'Waitlist';
+
+  @override
+  String waitlistLine(String waiting, String offered) {
+    return '$waiting waiting · $offered with an offer';
+  }
+
+  @override
   String get byGate => 'Check-ins by gate';
 
   @override

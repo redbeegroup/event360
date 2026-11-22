@@ -51,6 +51,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
     ref.invalidate(dashboardProvider(widget.k));
     ref.invalidate(attendanceProvider(widget.k));
     ref.invalidate(recentOrdersProvider(widget.k));
+    ref.invalidate(waitlistProvider(widget.k));
     if (mounted) setState(() => _updated = DateTime.now());
   }
 
@@ -62,6 +63,8 @@ class _OverviewState extends ConsumerState<OverviewTab> {
     final dash = ref.watch(dashboardProvider(widget.k));
     final att = ref.watch(attendanceProvider(widget.k)).value;
     final orders = ref.watch(recentOrdersProvider(widget.k)).value ?? const <RecentOrder>[];
+    // A failing waitlist request only hides the card
+    final waitlist = ref.watch(waitlistProvider(widget.k)).value;
     return dash.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, __) => loadError(t, _refresh),
@@ -111,7 +114,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               LayoutBuilder(builder: (_, c) {
                 final w = (c.maxWidth - 2 * 10) / 3;
                 return Wrap(key: const Key('seatCounts'), spacing: 10, runSpacing: 10, children: [
-                  for (final (label, n) in [(t.seatsAvailable, st.available), (t.seatsHeld, st.held), (t.seatsGuest, st.guest), (t.seatsSold, st.sold), (t.seatsComp, st.comp)])
+                  for (final (label, n) in [(t.seatsAvailable, st.available), (t.seatsHeld, st.held), (t.seatsGuest, st.guest), (t.seatsSold, st.sold), (t.seatsComp, st.comp), if (st.offered > 0) (t.seatsOffered, st.offered)])
                     SizedBox(width: w, child: StatTile(label: label, value: formatAmount(n, lang), small: true)),
                 ]);
               }),
@@ -121,6 +124,25 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               Text(t.byGate, style: theme.textTheme.titleMedium),
               for (final g in att.byGate)
                 ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.door_front_door_outlined), title: Text(g.gate ?? t.noGate), trailing: Text(formatAmount(g.checkedIn, lang))),
+            ],
+            if (waitlist != null && waitlist.total > 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                key: const Key('waitlistCard'),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: theme.colorScheme.outlineVariant)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(t.waitlistTitle, style: theme.textTheme.titleMedium),
+                  for (final w in waitlist.types.where((w) => w.waiting + w.offered > 0))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(lang == 'my' && (w.nameMy ?? '').isNotEmpty ? w.nameMy! : w.name),
+                        Text(t.waitlistLine(formatAmount(w.waiting, lang), formatAmount(w.offered, lang)), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      ]),
+                    ),
+                ]),
+              ),
             ],
             const SizedBox(height: 12),
             Text(t.recentOrders, style: theme.textTheme.titleMedium),

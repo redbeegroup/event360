@@ -80,6 +80,23 @@ class FakeApi extends Event360Api {
   /// Seat map: off for an event without one.
   bool hasMap = true;
 
+  /// Waitlist counts; set `total` to 0 to hide the card. [failWaitlist] makes the request fail.
+  Map<String, dynamic> waitlist = {
+    'total': 14,
+    'ticketTypes': [
+      {'id': 't1', 'name': 'Standing', 'nameMy': 'ရပ်ကြည့်', 'waiting': 12, 'offered': 2},
+      {'id': 't2', 'name': 'VIP deck', 'nameMy': null, 'waiting': 0, 'offered': 0},
+    ],
+  };
+  bool failWaitlist = false;
+  int offeredSeats = 2;
+
+  @override
+  Future<WaitlistCounts> waitlistCounts(String orgId, String eventId) async {
+    if (failWaitlist) throw ApiException(500, 'down');
+    return WaitlistCounts.fromJson(waitlist);
+  }
+
   /// The next hold / release / issue flips this seat to SOLD and fails with [SeatsChanged].
   String? nextSeatsChanged;
 
@@ -155,7 +172,7 @@ class FakeApi extends Event360Api {
         'totals': {'views': 120, 'orders': 9, 'ticketsSold': 13, 'capacity': 300, 'revenueMmk': 138000, 'discountMmk': 57000, 'checkedIn': 9, 'conversion': 7.5},
         'ticketTypes': [
           {'name': 'Standing', 'sold': 4, 'quota': 200, 'priceMmk': 0},
-          {'name': 'VIP deck', 'sold': 3, 'quota': 20, 'priceMmk': 35000, 'seats': {'available': 11, 'held': 2, 'guest': 3, 'sold': 3, 'comp': 1}},
+          {'name': 'VIP deck', 'sold': 3, 'quota': 20, 'priceMmk': 35000, 'seats': {'available': 11, 'held': 2, 'guest': 3, 'sold': 3, 'comp': 1, 'offered': offeredSeats}},
         ],
         'checkinsByGate': [],
         'daily': [],
@@ -405,7 +422,7 @@ class FakePush implements PushClient {
   Future<void> deleteToken() async {}
 }
 
-Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push, String lang = 'en', Size size = const Size(1236, 2745), double dpr = 3, bool eventOpen = false}) async {
+Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role = 'ORG_OWNER', PushClient? push, String lang = 'en', Size size = const Size(1236, 2745), double dpr = 3, bool eventOpen = false, void Function(FakeApi)? configure}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = dpr;
   addTearDown(tester.view.reset);
@@ -416,6 +433,7 @@ Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role 
   final api = FakeApi(store)
     ..role = role
     ..eventOpen = eventOpen;
+  configure?.call(api);
   await tester.pumpWidget(ProviderScope(overrides: [
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
@@ -468,9 +486,56 @@ void main() {
       expect(tile, findsOneWidget, reason: label);
       expect(find.descendant(of: tile, matching: find.text(n)), findsOneWidget, reason: label);
     }
-    await tester.scrollUntilVisible(find.text('2 × · 30,000 MMK'), 200, scrollable: find.byType(Scrollable).last);
+    final offered = find.ancestor(of: find.text('Held for waitlist offers'), matching: find.byType(StatTile));
+    expect(find.descendant(of: offered, matching: find.text('2')), findsOneWidget);
+    // Waitlist card: only types with someone waiting or holding an offer
+    final card = find.byKey(const Key('waitlistCard'), skipOffstage: false);
+    expect(card, findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('12 waiting · 2 with an offer', skipOffstage: false), skipOffstage: false), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('Standing', skipOffstage: false), skipOffstage: false), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('VIP deck', skipOffstage: false), skipOffstage: false), findsNothing);
+    await tester.drag(find.byKey(const Key('sold')), const Offset(0, -2000)); // scrollUntilVisible cannot find a row that is built but off screen
+    await tester.pumpAndSettle();
     expect(find.text('2 × · 30,000 MMK'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); // stop the refresh timer
+  });
+
+  group('waitlist card', () {
+    Future<FakeApi> openOverview(WidgetTester tester, void Function(FakeApi) setup, {String lang = 'en'}) async {
+      late FakeApi api;
+      await pumpApp(tester, lang: lang, configure: (a) {
+        api = a;
+        setup(a);
+      });
+      await tester.tap(find.byKey(const Key('event-e1')));
+      await tester.pumpAndSettle();
+      return api;
+    }
+
+    testWidgets('hidden when nobody is waiting, and no offered tile at zero', (tester) async {
+      await openOverview(tester, (a) {
+        a.waitlist = {'total': 0, 'ticketTypes': []};
+        a.offeredSeats = 0;
+      });
+      expect(find.byKey(const Key('sold')), findsOneWidget);
+      expect(find.byKey(const Key('waitlistCard')), findsNothing);
+      expect(find.text('Held for waitlist offers'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a failing waitlist request hides the card, Overview still works', (tester) async {
+      await openOverview(tester, (a) => a.failWaitlist = true);
+      expect(find.byKey(const Key('sold')), findsOneWidget);
+      expect(find.byKey(const Key('waitlistCard')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('type name follows the app language', (tester) async {
+      await openOverview(tester, (_) {}, lang: 'my');
+      expect(find.descendant(of: find.byKey(const Key('waitlistCard'), skipOffstage: false), matching: find.text('ရပ်ကြည့်', skipOffstage: false), skipOffstage: false), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   testWidgets('door: create a crew code (QR shown once) and revoke it', (tester) async {
@@ -562,7 +627,7 @@ void main() {
       await tester.tap(find.text('Inya Lake Live o2'));
       await tester.pumpAndSettle();
       final badge = find.byWidgetPredicate((w) => w is E360Badge && w.label == label, skipOffstage: false);
-      await tester.drag(find.byType(Scrollable).last, const Offset(0, -2000));
+      await tester.drag(find.byKey(const Key('sold')), const Offset(0, -2000));
       await tester.pumpAndSettle();
       expect(badge, findsOneWidget, reason: lang);
       expect(find.byWidgetPredicate((w) => w is E360Badge && w.label == 'PAID', skipOffstage: false), findsNothing, reason: lang);
@@ -591,7 +656,7 @@ void main() {
       await tester.tap(find.byKey(const Key('event-e1')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('sold')), findsOneWidget, reason: '$lang overview');
-      expect(find.byType(StatTile), findsNWidgets(9), reason: '$lang tiles: 4 totals + 5 seat counts');
+      expect(find.byType(StatTile), findsNWidgets(10), reason: '$lang tiles: 4 totals + 5 seat counts + offered');
       expect(tester.takeException(), isNull, reason: '$lang overview');
       await tester.drag(find.byType(Scrollable).last, const Offset(0, -2000));
       await tester.pumpAndSettle();

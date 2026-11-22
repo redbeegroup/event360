@@ -148,6 +148,17 @@ class L10nMy extends L10n {
   String get seatsComp => 'အခမဲ့';
 
   @override
+  String get seatsOffered => 'စောင့်ဆိုင်းစာရင်း ကမ်းလှမ်းချက်အတွက် ထားသည်';
+
+  @override
+  String get waitlistTitle => 'စောင့်ဆိုင်းစာရင်း';
+
+  @override
+  String waitlistLine(String waiting, String offered) {
+    return 'စောင့်နေသူ $waiting ဦး · ကမ်းလှမ်းချက်ရသူ $offered ဦး';
+  }
+
+  @override
   String get byGate => 'ဂိတ်အလိုက် ဝင်ရောက်မှု';
 
   @override
