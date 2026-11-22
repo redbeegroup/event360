@@ -25,7 +25,7 @@ Future<void> openRow(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
 }
 
-Map<String, dynamic> a_row(String id) => {'id': id, 'status': 'VALID', 'createdAt': '2026-11-20T04:00:00.000Z', 'isComplimentary': false, 'ticketType': {'name': 'Standing'}};
+Map<String, dynamic> aRow(String id) => {'id': id, 'status': 'VALID', 'createdAt': '2026-11-20T04:00:00.000Z', 'isComplimentary': false, 'ticketType': {'name': 'Standing'}};
 
 Finder status(String id, String label) => find.descendant(of: find.byKey(Key('guestRow-$id')), matching: find.text(label.toUpperCase()));
 
@@ -213,7 +213,7 @@ void main() {
       a.attendeesList
         ..clear()
         ..addAll([
-          for (final id in ['z2', 'z3', 'z1']) {...a_row(id), 'holder': {'displayName': 'Same Name', 'phone': null}},
+          for (final id in ['z2', 'z3', 'z1']) {...aRow(id), 'holder': {'displayName': 'Same Name', 'phone': null}},
         ]);
     });
     final ys = [for (final id in ['z1', 'z2', 'z3']) tester.getTopLeft(find.byKey(Key('guestRow-$id'))).dy];
