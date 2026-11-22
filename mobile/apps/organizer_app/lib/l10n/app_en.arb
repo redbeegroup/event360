@@ -202,5 +202,73 @@
       }
     }
   },
-  "checkInRefusedGeneric": "Can't check in this ticket"
+  "checkInRefusedGeneric": "Can't check in this ticket",
+  "tabSeats": "Seats",
+  "seatsSelected": "{count, plural, =1{1 seat selected} other{{count} seats selected}}",
+  "@seatsSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clear": "Clear",
+  "holdForGuests": "Hold for guests",
+  "holdLabelField": "Label (e.g. Sponsor)",
+  "releaseSeats": "Release",
+  "releaseConfirm": "{count, plural, =1{Put 1 seat back on sale?} other{Put {count} seats back on sale?}}",
+  "@releaseConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "issueGuestTickets": "Issue guest tickets",
+  "guestNameField": "Guest name",
+  "guestPhoneField": "Guest phone",
+  "guestLabelField": "Label (optional)",
+  "issueHelp": "The guest finds the tickets in the Event 360 app after signing in with this number. No SMS is sent.",
+  "issueConfirmText": "{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {count} guest tickets to {phone}?}}",
+  "@issueConfirmText": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "seatsMixedHint": "Select only free seats or only held seats",
+  "seatsNoTypeHint": "Some held seats have no ticket type",
+  "seatsTooMany": "Select 200 seats or fewer",
+  "seatsChanged": "Some of those seats changed. The map has been updated.",
+  "heldLabel": "Held: {label}",
+  "@heldLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "legendAvailable": "On sale",
+  "legendHeld": "Held for guests",
+  "legendSold": "Sold",
+  "legendGuest": "Guest tickets",
+  "guestList": "Guest tickets",
+  "revokeGuestConfirm": "Revoke the guest ticket for {name}?",
+  "@revokeGuestConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guestRevoked": "Revoked",
+  "phoneInvalid": "Enter a Myanmar mobile number",
+  "viewOnlySeats": "You can view seats but not change them",
+  "seatsZoomHint": "Zoom in to select seats",
+  "fieldRequired": "Required",
+  "noGuestTickets": "No guest tickets yet"
 }

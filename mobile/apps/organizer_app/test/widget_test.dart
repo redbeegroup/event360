@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/providers.dart';
 import 'package:organizer_app/app/push.dart';
+import 'package:organizer_app/l10n/app_localizations.dart';
 import 'package:organizer_app/main.dart';
 import 'package:organizer_app/screens/event_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,41 @@ Map<String, dynamic> _att(String id, String status, String? name, String? phone,
       'ticketType': {'name': type},
     };
 
+/// 3 rows x 6 seats at 24-unit spacing; small enough that the whole map is already tappable (zoom >= 1.6) on a phone.
+Map<String, dynamic> seatLayoutJson() => {
+      'width': 200,
+      'height': 140,
+      'sections': [
+        {
+          'key': 'A',
+          'name': 'Stalls',
+          'kind': 'SEATED',
+          'x': 30,
+          'y': 30,
+          'rows': [
+            for (final r in ['1', '2', '3'])
+              {
+                'label': r,
+                'seats': [for (var n = 1; n <= 6; n++) {'n': n}],
+              },
+          ],
+        },
+      ],
+    };
+
+Map<String, dynamic> _seat(String key, String status, {String? type = 't1', String? label}) => {'seatKey': key, 'status': status, 'ticketTypeId': type, 'holdLabel': label};
+
+Map<String, dynamic> _guest(String id, String name, String seat, {String status = 'VALID', bool checkedIn = false}) => {
+      'id': id,
+      'guestName': name,
+      'phone': '09•••567',
+      'seatKey': seat,
+      'seatLabel': 'Stalls · Row ${seat.split(':')[1]} · Seat ${seat.split(':')[2]}',
+      'status': status,
+      'checkedIn': checkedIn,
+      'label': 'VIP',
+    };
+
 class FakeApi extends Event360Api {
   FakeApi(this.store) : super(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'http://fake'), store);
   final MemoryTokenStore store;
@@ -42,6 +78,37 @@ class FakeApi extends Event360Api {
   bool failCheckIn = false;
   bool crashCheckIn = false;
   String? refuseWith;
+  /// Seat map: off for an event without one.
+  bool hasMap = true;
+
+  /// The next hold / release / issue flips this seat to SOLD and fails with [SeatsChanged].
+  String? nextSeatsChanged;
+
+  /// While set, the seating request waits for it (the Seats tab then shows up late).
+  Completer<void>? seatingGate;
+
+  /// The server rejects the phone number of the next issue with 400.
+  bool rejectPhone = false;
+  final seatRows = <Map<String, dynamic>>[
+    _seat('A:1:1', 'AVAILABLE'),
+    _seat('A:1:2', 'AVAILABLE'),
+    _seat('A:1:3', 'AVAILABLE'),
+    _seat('A:1:4', 'SOLD'),
+    _seat('A:1:5', 'GUEST_HOLD', label: 'Sponsor'),
+    _seat('A:1:6', 'GUEST_HOLD', label: 'Sponsor'),
+    _seat('A:2:1', 'AVAILABLE'),
+    _seat('A:2:2', 'AVAILABLE'),
+    _seat('A:2:3', 'UNSOLD', type: null),
+    _seat('A:2:4', 'GUEST_HOLD', label: 'Press'),
+    _seat('A:2:5', 'GUEST_HOLD', type: null, label: 'Sponsor'),
+    _seat('A:2:6', 'SOLD'),
+    for (var n = 1; n <= 5; n++) _seat('A:3:$n', 'AVAILABLE'),
+    _seat('A:3:6', 'SOLD'),
+  ];
+  final guestRows = <Map<String, dynamic>>[
+    _guest('g1', 'Daw Mya', 'A:1:4'),
+    _guest('g2', 'U Hla', 'A:3:6', checkedIn: true),
+  ];
   final attendeesList = <Map<String, dynamic>>[
     _att('a1', 'VALID', 'Aung Min', '09 912 345 67', seat: 'Balcony · Row C · Seat 12'),
     _att('a2', 'VALID', 'Zaw Win', '09771111222'),
@@ -190,6 +257,85 @@ class FakeApi extends Event360Api {
     return _crewTicket(attendeesList[i]);
   }
 
+  void _setSeat(String key, String status, {String? label}) {
+    final i = seatRows.indexWhere((r) => r['seatKey'] == key);
+    seatRows[i] = {...seatRows[i], 'status': status, 'holdLabel': label};
+  }
+
+  void _seatsConflict() {
+    final key = nextSeatsChanged;
+    if (key == null) return;
+    nextSeatsChanged = null;
+    _setSeat(key, 'SOLD');
+    throw SeatsChanged('Some seats are no longer available', [key]);
+  }
+
+  @override
+  Future<OrgSeating> orgSeating(String orgId, String eventId) async {
+    await seatingGate?.future;
+    int n(bool Function(Map<String, dynamic>) f) => seatRows.where(f).length;
+    final comp = guestRows.where((g) => g['status'] == 'VALID').length;
+    return OrgSeating.fromJson({
+      'layout': hasMap ? seatLayoutJson() : null,
+      'seats': hasMap ? seatRows : [],
+      'colors': {'t1': '#2f6fed'},
+      'counts': {
+        't1': {
+          'available': n((r) => r['status'] == 'AVAILABLE'),
+          'held': 0,
+          'offered': 0,
+          'guest': n((r) => r['status'] == 'GUEST_HOLD'),
+          'sold': n((r) => r['status'] == 'SOLD') - comp,
+          'comp': comp,
+        },
+      },
+    });
+  }
+
+  @override
+  Future<List<GuestTicket>> guestTickets(String orgId, String eventId) async => guestRows.map(GuestTicket.fromJson).toList();
+
+  @override
+  Future<int> holdSeats(String orgId, String eventId, List<String> seats, String label) async {
+    calls.add('hold:${seats.join(',')}:$label');
+    _seatsConflict();
+    for (final s in seats) {
+      _setSeat(s, 'GUEST_HOLD', label: label);
+    }
+    return seats.length;
+  }
+
+  @override
+  Future<int> releaseSeats(String orgId, String eventId, List<String> seats) async {
+    calls.add('release:${seats.join(',')}');
+    _seatsConflict();
+    for (final s in seats) {
+      _setSeat(s, 'AVAILABLE');
+    }
+    return seats.length;
+  }
+
+  @override
+  Future<int> issueGuestTickets(String orgId, String eventId, List<String> seats, {required String guestName, required String phone, String? label}) async {
+    calls.add('issue:${seats.join(',')}:$guestName:$phone:${label ?? ''}');
+    _seatsConflict();
+    if (rejectPhone) throw ApiException(400, 'Invalid phone number');
+    for (final s in seats) {
+      _setSeat(s, 'SOLD');
+      guestRows.add({..._guest('g${guestRows.length + 1}', guestName, s), 'label': label});
+    }
+    return seats.length;
+  }
+
+  @override
+  Future<void> revokeGuestTicket(String orgId, String eventId, String ticketId) async {
+    calls.add('revokeGuest:$ticketId');
+    final i = guestRows.indexWhere((g) => g['id'] == ticketId);
+    if (guestRows[i]['checkedIn'] == true) throw ApiException(409, 'Already checked in');
+    guestRows[i] = {...guestRows[i], 'status': 'VOID'};
+    _setSeat(guestRows[i]['seatKey'] as String, 'GUEST_HOLD', label: 'Sponsor');
+  }
+
   @override
   Future<Inbox> organizerNotifications() async => Inbox.fromJson({
         'items': [
@@ -207,6 +353,28 @@ class FakeApi extends Event360Api {
 
   @override
   Future<void> removeDevice(String pushToken) async => devices.removeWhere((d) => d.endsWith(':$pushToken'));
+}
+
+/// Taps a seat of the fixture map where it is drawn (the whole map is zoomed in enough to select).
+Future<void> tapSeat(WidgetTester t, String key) async {
+  final seat = SeatLayout.fromJson(seatLayoutJson()).seatByKey(key)!;
+  final map = find.byKey(const Key('seatMap'));
+  final tl = t.getTopLeft(map);
+  final scale = (t.getBottomRight(map).dx - tl.dx) / 200;
+  await t.tapAt(tl + seat.pos * scale);
+  await t.pumpAndSettle();
+}
+
+Future<void> tapSeats(WidgetTester t, List<String> keys) async {
+  for (final k in keys) {
+    await tapSeat(t, k);
+  }
+}
+
+/// Scrolls the Seats tab page by dragging its "Guest tickets" heading (a drag on the map would pan the map).
+Future<void> scrollSeatsPage(WidgetTester t, [double dy = -400]) async {
+  await t.drag(find.text(L10n.of(t.element(find.byType(Scaffold).first)).guestList), Offset(0, dy));
+  await t.pumpAndSettle();
 }
 
 class FakePush implements PushClient {
@@ -418,7 +586,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$lang overview scrolled');
       // Every other tab too
-      for (final k in ['tabGuests', 'tabDoor', 'tabAnnounce', 'tabPromos']) {
+      for (final k in ['tabGuests', 'tabSeats', 'tabDoor', 'tabAnnounce', 'tabPromos']) {
         await tester.ensureVisible(find.byKey(Key(k)));
         await tester.tap(find.byKey(Key(k)));
         await tester.pumpAndSettle();
@@ -510,6 +678,67 @@ void main() {
     'guests tab, search with no match': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       await openTab(t, 'tabGuests');
       await t.enterText(find.byKey(const Key('guestSearch')), 'zzzz');
+      await t.pumpAndSettle();
+    }),
+    'seats tab, map': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabSeats')),
+    'seats tab, view only': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabSeats')),
+    'seats tab, guest list': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await scrollSeatsPage(t, -500);
+    }),
+    'seats tab, free seats selected': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:3:1', 'A:3:2']);
+    }),
+    'seats tab, held seats selected with Issue and Release': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:1:5', 'A:1:6']);
+    }),
+    'seats tab, held seat without ticket type': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:1:5', 'A:2:5']);
+    }),
+    'seats tab, mixed selection': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:3:1', 'A:1:5']);
+    }),
+    'seats tab, hold sheet': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:3:1', 'A:3:2']);
+      await t.tap(find.byKey(const Key('seatsHold')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('holdSubmit'))); // label missing
+      await t.pumpAndSettle();
+    }),
+    'seats tab, issue sheet with errors': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await t.tap(find.byKey(const Key('seatsIssue')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('guestPhone')), '123');
+      await t.tap(find.byKey(const Key('issueSubmit')));
+      await t.pumpAndSettle();
+    }),
+    'seats tab, issue confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await t.tap(find.byKey(const Key('seatsIssue')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('guestName')), 'Daw Aye Aye Khin');
+      await t.enterText(find.byKey(const Key('guestPhone')), '09 123 456 789');
+      await t.tap(find.byKey(const Key('issueSubmit')));
+      await t.pumpAndSettle();
+    }),
+    'seats tab, release confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await tapSeats(t, ['A:1:5', 'A:1:6']);
+      await t.tap(find.byKey(const Key('seatsRelease')));
+      await t.pumpAndSettle();
+    }),
+    'seats tab, revoke confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSeats');
+      await scrollSeatsPage(t, -500);
+      await t.tap(find.byKey(const Key('guestRevoke-g1')));
       await t.pumpAndSettle();
     }),
     'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),

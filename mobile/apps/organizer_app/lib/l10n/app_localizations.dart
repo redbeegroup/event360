@@ -780,6 +780,186 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Can\'t check in this ticket'**
   String get checkInRefusedGeneric;
+
+  /// No description provided for @tabSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Seats'**
+  String get tabSeats;
+
+  /// No description provided for @seatsSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 seat selected} other{{count} seats selected}}'**
+  String seatsSelected(int count);
+
+  /// No description provided for @clear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get clear;
+
+  /// No description provided for @holdForGuests.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold for guests'**
+  String get holdForGuests;
+
+  /// No description provided for @holdLabelField.
+  ///
+  /// In en, this message translates to:
+  /// **'Label (e.g. Sponsor)'**
+  String get holdLabelField;
+
+  /// No description provided for @releaseSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'Release'**
+  String get releaseSeats;
+
+  /// No description provided for @releaseConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Put 1 seat back on sale?} other{Put {count} seats back on sale?}}'**
+  String releaseConfirm(int count);
+
+  /// No description provided for @issueGuestTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'Issue guest tickets'**
+  String get issueGuestTickets;
+
+  /// No description provided for @guestNameField.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest name'**
+  String get guestNameField;
+
+  /// No description provided for @guestPhoneField.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest phone'**
+  String get guestPhoneField;
+
+  /// No description provided for @guestLabelField.
+  ///
+  /// In en, this message translates to:
+  /// **'Label (optional)'**
+  String get guestLabelField;
+
+  /// No description provided for @issueHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The guest finds the tickets in the Event 360 app after signing in with this number. No SMS is sent.'**
+  String get issueHelp;
+
+  /// No description provided for @issueConfirmText.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {count} guest tickets to {phone}?}}'**
+  String issueConfirmText(int count, String phone);
+
+  /// No description provided for @seatsMixedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select only free seats or only held seats'**
+  String get seatsMixedHint;
+
+  /// No description provided for @seatsNoTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Some held seats have no ticket type'**
+  String get seatsNoTypeHint;
+
+  /// No description provided for @seatsTooMany.
+  ///
+  /// In en, this message translates to:
+  /// **'Select 200 seats or fewer'**
+  String get seatsTooMany;
+
+  /// No description provided for @seatsChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Some of those seats changed. The map has been updated.'**
+  String get seatsChanged;
+
+  /// No description provided for @heldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Held: {label}'**
+  String heldLabel(String label);
+
+  /// No description provided for @legendAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'On sale'**
+  String get legendAvailable;
+
+  /// No description provided for @legendHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Held for guests'**
+  String get legendHeld;
+
+  /// No description provided for @legendSold.
+  ///
+  /// In en, this message translates to:
+  /// **'Sold'**
+  String get legendSold;
+
+  /// No description provided for @legendGuest.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest tickets'**
+  String get legendGuest;
+
+  /// No description provided for @guestList.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest tickets'**
+  String get guestList;
+
+  /// No description provided for @revokeGuestConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke the guest ticket for {name}?'**
+  String revokeGuestConfirm(String name);
+
+  /// No description provided for @guestRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoked'**
+  String get guestRevoked;
+
+  /// No description provided for @phoneInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a Myanmar mobile number'**
+  String get phoneInvalid;
+
+  /// No description provided for @viewOnlySeats.
+  ///
+  /// In en, this message translates to:
+  /// **'You can view seats but not change them'**
+  String get viewOnlySeats;
+
+  /// No description provided for @seatsZoomHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom in to select seats'**
+  String get seatsZoomHint;
+
+  /// No description provided for @fieldRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get fieldRequired;
+
+  /// No description provided for @noGuestTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'No guest tickets yet'**
+  String get noGuestTickets;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

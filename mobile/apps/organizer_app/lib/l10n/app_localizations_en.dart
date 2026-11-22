@@ -381,4 +381,124 @@ class L10nEn extends L10n {
 
   @override
   String get checkInRefusedGeneric => 'Can\'t check in this ticket';
+
+  @override
+  String get tabSeats => 'Seats';
+
+  @override
+  String seatsSelected(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seats selected',
+      one: '1 seat selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get clear => 'Clear';
+
+  @override
+  String get holdForGuests => 'Hold for guests';
+
+  @override
+  String get holdLabelField => 'Label (e.g. Sponsor)';
+
+  @override
+  String get releaseSeats => 'Release';
+
+  @override
+  String releaseConfirm(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Put $count seats back on sale?',
+      one: 'Put 1 seat back on sale?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get issueGuestTickets => 'Issue guest tickets';
+
+  @override
+  String get guestNameField => 'Guest name';
+
+  @override
+  String get guestPhoneField => 'Guest phone';
+
+  @override
+  String get guestLabelField => 'Label (optional)';
+
+  @override
+  String get issueHelp =>
+      'The guest finds the tickets in the Event 360 app after signing in with this number. No SMS is sent.';
+
+  @override
+  String issueConfirmText(int count, String phone) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Issue $count guest tickets to $phone?',
+      one: 'Issue 1 guest ticket to $phone?',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get seatsMixedHint => 'Select only free seats or only held seats';
+
+  @override
+  String get seatsNoTypeHint => 'Some held seats have no ticket type';
+
+  @override
+  String get seatsTooMany => 'Select 200 seats or fewer';
+
+  @override
+  String get seatsChanged =>
+      'Some of those seats changed. The map has been updated.';
+
+  @override
+  String heldLabel(String label) {
+    return 'Held: $label';
+  }
+
+  @override
+  String get legendAvailable => 'On sale';
+
+  @override
+  String get legendHeld => 'Held for guests';
+
+  @override
+  String get legendSold => 'Sold';
+
+  @override
+  String get legendGuest => 'Guest tickets';
+
+  @override
+  String get guestList => 'Guest tickets';
+
+  @override
+  String revokeGuestConfirm(String name) {
+    return 'Revoke the guest ticket for $name?';
+  }
+
+  @override
+  String get guestRevoked => 'Revoked';
+
+  @override
+  String get phoneInvalid => 'Enter a Myanmar mobile number';
+
+  @override
+  String get viewOnlySeats => 'You can view seats but not change them';
+
+  @override
+  String get seatsZoomHint => 'Zoom in to select seats';
+
+  @override
+  String get fieldRequired => 'Required';
+
+  @override
+  String get noGuestTickets => 'No guest tickets yet';
 }

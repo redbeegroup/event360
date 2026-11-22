@@ -382,4 +382,109 @@ class L10nMy extends L10n {
 
   @override
   String get checkInRefusedGeneric => 'ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်နိုင်ပါ';
+
+  @override
+  String get tabSeats => 'ထိုင်ခုံများ';
+
+  @override
+  String seatsSelected(int count) {
+    return 'ခုံ $count ခု ရွေးထားသည်';
+  }
+
+  @override
+  String get clear => 'ရှင်းမည်';
+
+  @override
+  String get holdForGuests => 'ဧည့်သည်အတွက် ထိန်းထားမည်';
+
+  @override
+  String get holdLabelField => 'အမည်တပ်ရန် (ဥပမာ - ပံ့ပိုးသူ)';
+
+  @override
+  String get releaseSeats => 'ပြန်လွှတ်မည်';
+
+  @override
+  String releaseConfirm(int count) {
+    return 'ခုံ $count ခုကို ပြန်လည်ရောင်းချနိုင်အောင် လွှတ်မလား။';
+  }
+
+  @override
+  String get issueGuestTickets => 'ဧည့်သည်လက်မှတ် ထုတ်ပေးမည်';
+
+  @override
+  String get guestNameField => 'ဧည့်သည်အမည်';
+
+  @override
+  String get guestPhoneField => 'ဧည့်သည်ဖုန်းနံပါတ်';
+
+  @override
+  String get guestLabelField => 'အမည်တပ်ရန် (မဖြည့်လည်းရသည်)';
+
+  @override
+  String get issueHelp =>
+      'ဧည့်သည်သည် ဤနံပါတ်ဖြင့် ဝင်ပြီးနောက် Event 360 အက်ပ်တွင် လက်မှတ်များကို တွေ့ရမည်။ SMS မပို့ပါ။';
+
+  @override
+  String issueConfirmText(int count, String phone) {
+    return 'ဧည့်သည်လက်မှတ် $count စောင်ကို $phone သို့ ထုတ်ပေးမလား။';
+  }
+
+  @override
+  String get seatsMixedHint =>
+      'ရောင်းချနေသောခုံများသာ သို့မဟုတ် ထိန်းထားသောခုံများသာ ရွေးပါ';
+
+  @override
+  String get seatsNoTypeHint =>
+      'ထိန်းထားသောခုံအချို့တွင် လက်မှတ်အမျိုးအစား မသတ်မှတ်ရသေးပါ';
+
+  @override
+  String get seatsTooMany => 'ခုံ 200 သို့မဟုတ် ထို့ထက်နည်းအောင် ရွေးပါ';
+
+  @override
+  String get seatsChanged =>
+      'ခုံအချို့ ပြောင်းလဲသွားပါပြီ။ မြေပုံကို ပြန်လည်ပြင်ဆင်ထားသည်။';
+
+  @override
+  String heldLabel(String label) {
+    return 'ထိန်းထားသည် - $label';
+  }
+
+  @override
+  String get legendAvailable => 'ရောင်းချနေသည်';
+
+  @override
+  String get legendHeld => 'ဧည့်သည်အတွက် ထိန်းထား';
+
+  @override
+  String get legendSold => 'ရောင်းပြီး';
+
+  @override
+  String get legendGuest => 'ဧည့်သည်လက်မှတ်';
+
+  @override
+  String get guestList => 'ဧည့်သည်လက်မှတ်များ';
+
+  @override
+  String revokeGuestConfirm(String name) {
+    return '$name ၏ ဧည့်သည်လက်မှတ်ကို ရုပ်သိမ်းမလား။';
+  }
+
+  @override
+  String get guestRevoked => 'ရုပ်သိမ်းပြီး';
+
+  @override
+  String get phoneInvalid => 'မြန်မာမိုဘိုင်းဖုန်းနံပါတ် ထည့်ပါ';
+
+  @override
+  String get viewOnlySeats =>
+      'ခုံများကို ကြည့်ရှုနိုင်သော်လည်း မပြောင်းလဲနိုင်ပါ';
+
+  @override
+  String get seatsZoomHint => 'ခုံရွေးရန် ချဲ့ကြည့်ပါ';
+
+  @override
+  String get fieldRequired => 'လိုအပ်သည်';
+
+  @override
+  String get noGuestTickets => 'ဧည့်သည်လက်မှတ် မရှိသေးပါ';
 }
