@@ -116,4 +116,67 @@ void main() {
     expect(after.shouldRepaint(before), isTrue);
     expect(after.selected, {3});
   });
+
+  testWidgets('viewport size change leaves the camera where it is', (tester) async {
+    Widget app(double w) => MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: w,
+              height: 500,
+              child: SeatMapView(
+                layout: layout,
+                states: List.filled(layout.seats.length, SeatState.available),
+                colors: List.filled(layout.seats.length, Colors.blue),
+                controller: ctl,
+              ),
+            ),
+          ),
+        );
+    await tester.pumpWidget(app(390));
+    ctl.zoomTo(layout.sections.first.bounds);
+    await tester.pumpAndSettle();
+    final before = tester.getTopLeft(find.byKey(const Key('seatMap')));
+    final scale = ctl.scale;
+    await tester.pumpWidget(app(300));
+    await tester.pumpAndSettle();
+    expect(ctl.scale, scale);
+    expect(tester.getTopLeft(find.byKey(const Key('seatMap'))), before);
+  });
+
+  testWidgets('onScaleChanged reports after a zoom', (tester) async {
+    await pump(tester);
+    expect(scales, isEmpty);
+    ctl.zoomTo(layout.sections.first.bounds);
+    await tester.pumpAndSettle();
+    expect(scales, isNotEmpty);
+    expect(scales.last, closeTo(ctl.scale, 1e-9));
+    expect(scales.last, greaterThanOrEqualTo(kSeatTapScale));
+  });
+
+  testWidgets('overlay sees the fit scale on the first frame', (tester) async {
+    final tiny = SeatLayout.fromJson({
+      'width': 100,
+      'height': 100,
+      'sections': [section('A', 10)],
+    });
+    final seen = <double>[];
+    await tester.pumpWidget(MaterialApp(
+      home: SizedBox(
+        width: 390,
+        height: 500,
+        child: SeatMapView(
+          layout: tiny,
+          states: List.filled(tiny.seats.length, SeatState.available),
+          colors: List.filled(tiny.seats.length, Colors.blue),
+          overlayBuilder: (context, scale) {
+            seen.add(scale);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    ));
+    expect(seen, isNotEmpty);
+    expect(seen.every((s) => s >= kSeatTapScale), isTrue, reason: '$seen');
+  });
 }

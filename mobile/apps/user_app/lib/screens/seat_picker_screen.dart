@@ -69,7 +69,6 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   bool _loadFailed = false;
   String? _notice; // e.g. "just taken"
   String? _error;
-  double _scale = 0.3; // the map's zoom, for the "zoom in to pick seats" hint
   bool _reloadQueued = false;
 
   @override
@@ -103,10 +102,6 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
   void _startPolling() {
     _poll?.cancel();
     _poll = Timer.periodic(widget.pollInterval, (_) => _load());
-  }
-
-  void _onScale(double s) {
-    if ((s - _scale).abs() > 0.02 && mounted) setState(() => _scale = s);
   }
 
   // ───── Waitlist offer ─────
@@ -489,43 +484,39 @@ class _SeatPickerScreenState extends ConsumerState<SeatPickerScreen> with Widget
         if (offer != null) OfferCountdown(entry: offer, onExpired: () => ref.invalidate(waitlistProvider)),
         _Legend(types: d.types, lang: lang, reserved: _reserved.isNotEmpty),
         Expanded(
-          child: Stack(children: [
-              Positioned.fill(
-                child: ColoredBox(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  child: SeatMapView(
-                    layout: l,
-                    states: _states,
-                    colors: _colors,
-                    selected: _selected.toSet(),
-                    reserved: _reserved,
-                    lang: lang,
-                    controller: _map,
-                    ink: theme.colorScheme.onSurface,
-                    onScaleChanged: _onScale,
-                    onSeatTap: (i) => _toggle(l.seats[i]),
-                  ),
-                ),
-              ),
-              if (_scale < kSeatTapScale)
-                Positioned(
-                  top: 8,
-                  left: 12,
-                  right: 12,
-                  child: IgnorePointer(
-                    child: Center(
-                      child: Material(
-                        color: theme.colorScheme.inverseSurface.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          child: Text(t.zoomToPick, key: const Key('zoomHint'), style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 13)),
+          child: ColoredBox(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: SeatMapView(
+              layout: l,
+              states: _states,
+              colors: _colors,
+              selected: _selected.toSet(),
+              reserved: _reserved,
+              lang: lang,
+              controller: _map,
+              ink: theme.colorScheme.onSurface,
+              onSeatTap: (i) => _toggle(l.seats[i]),
+              overlayBuilder: (context, scale) => scale >= kSeatTapScale
+                  ? const SizedBox.shrink()
+                  : Positioned(
+                      top: 8,
+                      left: 12,
+                      right: 12,
+                      child: IgnorePointer(
+                        child: Center(
+                          child: Material(
+                            color: theme.colorScheme.inverseSurface.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              child: Text(t.zoomToPick, key: const Key('zoomHint'), style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 13)),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ]),
+            ),
+          ),
         ),
         _BottomBar(
           layout: l,

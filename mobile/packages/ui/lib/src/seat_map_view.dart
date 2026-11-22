@@ -11,19 +11,24 @@ import 'seat_map_painter.dart';
 /// Seats are tappable from this zoom (screen px per layout unit); below it a tap on a section zooms into it.
 const double kSeatTapScale = 1.6;
 
+// Same as the SeatMapPainter constructor defaults.
+const Color _defaultStage = Color(0xFFCFCBE0);
+const Color _defaultTaken = Color(0xFFBDBDBD);
+
 /// Lets the owner of a [SeatMapView] move its camera and read the zoom.
 class SeatMapViewController {
   _SeatMapViewState? _state;
 
   /// Animates to [layoutRect] (layout units), never below the zoom where seats are tappable; when the rect is
   /// too big for that (a large section) it centres on [focus] instead. No-op before the first layout.
+  /// Must not be called during build.
   void zoomTo(Rect layoutRect, {Offset? focus}) => _state?._zoomTo(layoutRect, focus: focus);
 
-  /// Jumps back to the whole map fitted in the viewport.
+  /// Jumps back to the whole map fitted in the viewport. Must not be called during build.
   void fit() => _state?._fitAll();
 
-  /// Current zoom, screen px per layout unit (0 while not attached).
-  double get scale => _state?._scale ?? 0;
+  /// Live zoom, screen px per layout unit (0 while not attached).
+  double get scale => _state?._zoom ?? 0;
 }
 
 /// Draws a [SeatLayout] in an `InteractiveViewer`. First layout fits the whole map; a tap below
@@ -40,6 +45,7 @@ class SeatMapView extends StatefulWidget {
     this.controller,
     this.onSeatTap,
     this.onScaleChanged,
+    this.overlayBuilder,
     this.highlightSection,
     this.ink,
     this.stageColor,
@@ -57,8 +63,12 @@ class SeatMapView extends StatefulWidget {
   /// Index in [SeatLayout.seats]; only called when zoomed in to [kSeatTapScale] or more.
   final void Function(int seatIndex)? onSeatTap;
 
-  /// The zoom changed (screen px per layout unit); also called once after the first fit.
+  /// The zoom changed (screen px per layout unit).
   final void Function(double scale)? onScaleChanged;
+
+  /// Drawn over the map (a direct child of the view's Stack, so it may return a `Positioned`) and rebuilt with
+  /// the current zoom, already correct on the first frame. Taps pass through only if it ignores pointers.
+  final Widget Function(BuildContext context, double scale)? overlayBuilder;
   final String? highlightSection;
 
   /// Defaults: the theme's onSurface, and the painter's own stage / taken colours.
@@ -128,10 +138,6 @@ class _SeatMapViewState extends State<SeatMapView> with SingleTickerProviderStat
       _placed = true;
       _scale = fit; // before the controller notifies, so the listener doesn't setState during build
       _transform.value = _fitMatrix();
-      // The owner may show things from the zoom (a hint): tell it the starting zoom once the frame is built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onScaleChanged?.call(_scale);
-      });
     }
   }
 
@@ -192,7 +198,7 @@ class _SeatMapViewState extends State<SeatMapView> with SingleTickerProviderStat
     final l = widget.layout;
     return LayoutBuilder(builder: (context, c) {
       _place(Size(c.maxWidth, c.maxHeight));
-      return InteractiveViewer(
+      final viewer = InteractiveViewer(
         transformationController: _transform,
         constrained: false,
         minScale: _fit,
@@ -213,13 +219,16 @@ class _SeatMapViewState extends State<SeatMapView> with SingleTickerProviderStat
               lang: widget.lang,
               scale: _scale,
               ink: widget.ink ?? Theme.of(context).colorScheme.onSurface,
-              stageColor: widget.stageColor ?? SeatMapPainter.defaultStageColor,
-              takenColor: widget.takenColor ?? SeatMapPainter.defaultTakenColor,
+              stageColor: widget.stageColor ?? _defaultStage,
+              takenColor: widget.takenColor ?? _defaultTaken,
               highlightSection: widget.highlightSection,
             ),
           ),
         ),
       );
+      final overlay = widget.overlayBuilder;
+      if (overlay == null) return viewer;
+      return Stack(fit: StackFit.expand, children: [viewer, overlay(context, _scale)]);
     });
   }
 }
