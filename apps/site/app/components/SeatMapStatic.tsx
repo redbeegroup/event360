@@ -18,6 +18,14 @@ const safeColor = (c: string) => (/^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '#6c2bd9')
 export function SeatMapStatic({ seats, lang, t }: { seats: PublicSeats; lang: Lang; t: Dict }) {
   const { layout, types } = seats;
   const list = expandSeats(layout);
+  // Labels of seated sections in the right half end at the section's right edge, so long names grow inward
+  // instead of running off the picture.
+  const rightEdge = new Map<string, number>();
+  for (const s of list) {
+    const key = s.seatKey.slice(0, s.seatKey.indexOf(':'));
+    rightEdge.set(key, Math.max(rightEdge.get(key) ?? -Infinity, s.x));
+  }
+  const endAnchored = (sec: { kind: string; key: string; x: number }) => sec.kind !== 'STANDING' && sec.x > layout.width / 2 && rightEdge.has(sec.key);
   return (
     <div className="seatmap">
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={t.seatMapAlt} style={{ width: '100%', height: 'auto' }}>
@@ -35,9 +43,9 @@ export function SeatMapStatic({ seats, lang, t }: { seats: PublicSeats; lang: La
               <rect x={sec.x} y={sec.y} width={sec.w ?? 200} height={sec.h ?? 100} transform={sec.rotation ? `rotate(${sec.rotation} ${sec.x} ${sec.y})` : undefined} fill="#e8e4f5" stroke="#8b86a3" strokeDasharray="6 4" />
             )}
             <text
-              x={sec.x + (sec.kind === 'STANDING' ? (sec.w ?? 200) / 2 : 0)}
+              x={endAnchored(sec) ? Math.min(rightEdge.get(sec.key)! + SEAT_RADIUS, layout.width - 4) : sec.x + (sec.kind === 'STANDING' ? (sec.w ?? 200) / 2 : 0)}
               y={sec.kind === 'STANDING' ? sec.y + (sec.h ?? 100) / 2 : sec.y - 14}
-              textAnchor={sec.kind === 'STANDING' ? 'middle' : 'start'}
+              textAnchor={sec.kind === 'STANDING' ? 'middle' : endAnchored(sec) ? 'end' : 'start'}
               fontSize={14}
               fontWeight={600}
               fill="#3a3550"
