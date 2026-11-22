@@ -175,7 +175,9 @@ run('Notifications', () => {
     const soon = new Date(Date.now() + 20 * 3600e3);
     // (the unverified organizer's edits sent it back to review; reminders are for live listings)
     await prisma.event.update({ where: { id: eventId }, data: { status: 'PUBLISHED', startsAt: soon, endsAt: new Date(soon.getTime() + 3600e3), reminderSentAt: null } });
-    expect(await notify.sendReminders()).toBeGreaterThanOrEqual(1);
+    // Other events in the shared database may be due too (the batch is limited): settle them first, so only this one is left
+    await prisma.event.updateMany({ where: { id: { not: eventId }, status: 'PUBLISHED', reminderSentAt: null, startsAt: { gt: new Date(), lte: new Date(Date.now() + 24 * 3600e3) } }, data: { reminderSentAt: new Date() } });
+    expect(await notify.sendReminders()).toBe(1);
     expect(await notify.sendReminders()).toBe(0);
     await notify.idle();
     const r = (await inbox(B1.h)).items.filter((x: any) => x.kind === 'event_reminder' && x.eventId === eventId);
