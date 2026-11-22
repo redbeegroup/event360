@@ -1,6 +1,9 @@
 # Organizer app: event night — design
 
-Date: 2026-11-22. Status: awaiting approval.
+Date: 2026-11-22. Status: approved and built.
+
+Change during the build: the Seats tab has two views switched at the top, **Map** and **Guest tickets (N)**, instead of a
+guest list under the map. The map takes over finger drags, which made a list below it hard to reach on a phone.
 
 ## Why
 
