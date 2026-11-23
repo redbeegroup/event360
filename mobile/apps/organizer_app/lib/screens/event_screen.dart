@@ -9,11 +9,12 @@ import 'event/door_tab.dart';
 import 'event/guests_tab.dart';
 import 'event/overview_tab.dart';
 import 'event/promos_tab.dart';
+import 'event/sales_tab.dart';
 import 'event/seats_tab.dart';
 
 export 'event/overview_tab.dart' show StatTile, orderStatusLabel;
 
-/// One event: live overview, guests, seats (only with a seat map), door codes, announcements and promo codes.
+/// One event: live overview, guests, seats (only with a seat map), sales, door codes, announcements and promo codes.
 class EventScreen extends ConsumerStatefulWidget {
   const EventScreen({super.key, required this.eventId});
   final String eventId;
@@ -57,6 +58,12 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     return next;
   }
 
+  void _openSales() {
+    final c = _tabs;
+    final i = _ids.indexOf('sales');
+    if (c != null && i >= 0) c.animateTo(i);
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = L10n.of(context);
@@ -69,7 +76,7 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     // A failed fetch keeps the tab (with a retry) rather than hiding it on an event that has a map.
     final seating = ref.watch(orgSeatingProvider(k));
     final hasSeats = seating.hasValue ? seating.value!.hasMap : seating.hasError;
-    final ids = ['overview', 'guests', if (hasSeats) 'seats', 'door', 'announce', 'promos'];
+    final ids = ['overview', 'guests', if (hasSeats) 'seats', 'sales', 'door', 'announce', 'promos'];
     final controller = _controllerFor(ids);
     return Scaffold(
       appBar: AppBar(
@@ -78,15 +85,17 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
           Tab(key: const Key('tabOverview'), text: t.tabOverview),
           Tab(key: const Key('tabGuests'), text: t.tabGuests),
           if (hasSeats) Tab(key: const Key('tabSeats'), text: t.tabSeats),
+          Tab(key: const Key('tabSales'), text: t.tabSales),
           Tab(key: const Key('tabDoor'), text: t.tabDoor),
           Tab(key: const Key('tabAnnounce'), text: t.tabAnnounce),
           Tab(key: const Key('tabPromos'), text: t.tabPromos),
         ]),
       ),
       body: TabBarView(controller: controller, children: [
-        OverviewTab(k: k),
+        OverviewTab(k: k, onAllOrders: _openSales),
         GuestsTab(k: k, canEdit: org.canEdit, event: event),
         if (hasSeats) SeatsTab(k: k, canEdit: org.canEdit),
+        SalesTab(k: k),
         DoorTab(k: k, canEdit: org.canEdit),
         AnnounceTab(k: k, canEdit: org.canEdit),
         PromosTab(k: k, canEdit: org.canEdit),

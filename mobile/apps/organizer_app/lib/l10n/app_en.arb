@@ -305,5 +305,128 @@
         "type": "int"
       }
     }
+  },
+  "tabSales": "Sales",
+  "paidOrders": "Paid orders",
+  "grossSales": "Gross sales",
+  "grossCaption": "Paid orders only, after discounts",
+  "commission": "Commission",
+  "netToYou": "Net to you",
+  "refundedLine": "{count} · {amount}",
+  "@refundedLine": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "refunded": "Refunded",
+  "noPaidTickets": "This event has no paid tickets",
+  "nextPriceLine": "Next price {amount} on {date}",
+  "@nextPriceLine": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "soldOf": "{sold} of {quota} sold",
+  "@soldOf": {
+    "placeholders": {
+      "sold": {
+        "type": "String"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "allOrders": "All orders",
+  "orderSearchHint": "Search name, phone or order number",
+  "filterAll": "All",
+  "filterPaid": "Paid",
+  "filterRefunded": "Refunded",
+  "filterPending": "Waiting for payment",
+  "filterIncomplete": "Not completed",
+  "orderNumber": "Order {number}",
+  "@orderNumber": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "walkUp": "Walk-up",
+  "beingReviewed": "Being reviewed",
+  "reviewNote": "Event 360 is reviewing this payment. If money needs to go back to the buyer, we will refund it.",
+  "holdUntil": "Hold ends {time}",
+  "@holdUntil": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ordersEmpty": "No orders yet",
+  "ordersNoMatch": "No orders match",
+  "loadMoreFailed": "Couldn't load more. Tap to retry.",
+  "orderCreated": "Ordered {time}",
+  "@orderCreated": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "orderPaid": "Paid {time}",
+  "@orderPaid": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "subtotal": "Subtotal",
+  "discount": "Discount",
+  "discountPromo": "Discount ({code})",
+  "@discountPromo": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "discountGroup": "Group discount",
+  "total": "Total",
+  "payments": "Payments",
+  "refunds": "Refunds",
+  "refundInProgress": "Refund in progress",
+  "refundByHand": "Event 360 is returning it by hand",
+  "refundDone": "Refunded",
+  "wholeOrderRefund": "Refunds are always for the whole order.",
+  "ticketsCheckedIn": "{inCount} of {total} tickets checked in",
+  "@ticketsCheckedIn": {
+    "placeholders": {
+      "inCount": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "seatsLine": "Seats: {seats}",
+  "@seatsLine": {
+    "placeholders": {
+      "seats": {
+        "type": "String"
+      }
+    }
   }
 }

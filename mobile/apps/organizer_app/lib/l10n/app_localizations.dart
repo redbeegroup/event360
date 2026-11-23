@@ -1008,6 +1008,252 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}'**
   String ticketsIssued(int count);
+
+  /// No description provided for @tabSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales'**
+  String get tabSales;
+
+  /// No description provided for @paidOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid orders'**
+  String get paidOrders;
+
+  /// No description provided for @grossSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Gross sales'**
+  String get grossSales;
+
+  /// No description provided for @grossCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid orders only, after discounts'**
+  String get grossCaption;
+
+  /// No description provided for @commission.
+  ///
+  /// In en, this message translates to:
+  /// **'Commission'**
+  String get commission;
+
+  /// No description provided for @netToYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Net to you'**
+  String get netToYou;
+
+  /// No description provided for @refundedLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} · {amount}'**
+  String refundedLine(String count, String amount);
+
+  /// No description provided for @refunded.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get refunded;
+
+  /// No description provided for @noPaidTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'This event has no paid tickets'**
+  String get noPaidTickets;
+
+  /// No description provided for @nextPriceLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Next price {amount} on {date}'**
+  String nextPriceLine(String amount, String date);
+
+  /// No description provided for @soldOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{sold} of {quota} sold'**
+  String soldOf(String sold, String quota);
+
+  /// No description provided for @allOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'All orders'**
+  String get allOrders;
+
+  /// No description provided for @orderSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search name, phone or order number'**
+  String get orderSearchHint;
+
+  /// No description provided for @filterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get filterAll;
+
+  /// No description provided for @filterPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get filterPaid;
+
+  /// No description provided for @filterRefunded.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get filterRefunded;
+
+  /// No description provided for @filterPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for payment'**
+  String get filterPending;
+
+  /// No description provided for @filterIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Not completed'**
+  String get filterIncomplete;
+
+  /// No description provided for @orderNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Order {number}'**
+  String orderNumber(String number);
+
+  /// No description provided for @walkUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Walk-up'**
+  String get walkUp;
+
+  /// No description provided for @beingReviewed.
+  ///
+  /// In en, this message translates to:
+  /// **'Being reviewed'**
+  String get beingReviewed;
+
+  /// No description provided for @reviewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Event 360 is reviewing this payment. If money needs to go back to the buyer, we will refund it.'**
+  String get reviewNote;
+
+  /// No description provided for @holdUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold ends {time}'**
+  String holdUntil(String time);
+
+  /// No description provided for @ordersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No orders yet'**
+  String get ordersEmpty;
+
+  /// No description provided for @ordersNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No orders match'**
+  String get ordersNoMatch;
+
+  /// No description provided for @loadMoreFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load more. Tap to retry.'**
+  String get loadMoreFailed;
+
+  /// No description provided for @orderCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Ordered {time}'**
+  String orderCreated(String time);
+
+  /// No description provided for @orderPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid {time}'**
+  String orderPaid(String time);
+
+  /// No description provided for @subtotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtotal'**
+  String get subtotal;
+
+  /// No description provided for @discount.
+  ///
+  /// In en, this message translates to:
+  /// **'Discount'**
+  String get discount;
+
+  /// No description provided for @discountPromo.
+  ///
+  /// In en, this message translates to:
+  /// **'Discount ({code})'**
+  String discountPromo(String code);
+
+  /// No description provided for @discountGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Group discount'**
+  String get discountGroup;
+
+  /// No description provided for @total.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get total;
+
+  /// No description provided for @payments.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments'**
+  String get payments;
+
+  /// No description provided for @refunds.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunds'**
+  String get refunds;
+
+  /// No description provided for @refundInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Refund in progress'**
+  String get refundInProgress;
+
+  /// No description provided for @refundByHand.
+  ///
+  /// In en, this message translates to:
+  /// **'Event 360 is returning it by hand'**
+  String get refundByHand;
+
+  /// No description provided for @refundDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get refundDone;
+
+  /// No description provided for @wholeOrderRefund.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunds are always for the whole order.'**
+  String get wholeOrderRefund;
+
+  /// No description provided for @ticketsCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'{inCount} of {total} tickets checked in'**
+  String ticketsCheckedIn(String inCount, String total);
+
+  /// No description provided for @seatsLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Seats: {seats}'**
+  String seatsLine(String seats);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

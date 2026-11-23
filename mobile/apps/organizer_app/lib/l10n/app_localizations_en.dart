@@ -537,4 +537,148 @@ class L10nEn extends L10n {
     );
     return '$_temp0';
   }
+
+  @override
+  String get tabSales => 'Sales';
+
+  @override
+  String get paidOrders => 'Paid orders';
+
+  @override
+  String get grossSales => 'Gross sales';
+
+  @override
+  String get grossCaption => 'Paid orders only, after discounts';
+
+  @override
+  String get commission => 'Commission';
+
+  @override
+  String get netToYou => 'Net to you';
+
+  @override
+  String refundedLine(String count, String amount) {
+    return '$count · $amount';
+  }
+
+  @override
+  String get refunded => 'Refunded';
+
+  @override
+  String get noPaidTickets => 'This event has no paid tickets';
+
+  @override
+  String nextPriceLine(String amount, String date) {
+    return 'Next price $amount on $date';
+  }
+
+  @override
+  String soldOf(String sold, String quota) {
+    return '$sold of $quota sold';
+  }
+
+  @override
+  String get allOrders => 'All orders';
+
+  @override
+  String get orderSearchHint => 'Search name, phone or order number';
+
+  @override
+  String get filterAll => 'All';
+
+  @override
+  String get filterPaid => 'Paid';
+
+  @override
+  String get filterRefunded => 'Refunded';
+
+  @override
+  String get filterPending => 'Waiting for payment';
+
+  @override
+  String get filterIncomplete => 'Not completed';
+
+  @override
+  String orderNumber(String number) {
+    return 'Order $number';
+  }
+
+  @override
+  String get walkUp => 'Walk-up';
+
+  @override
+  String get beingReviewed => 'Being reviewed';
+
+  @override
+  String get reviewNote =>
+      'Event 360 is reviewing this payment. If money needs to go back to the buyer, we will refund it.';
+
+  @override
+  String holdUntil(String time) {
+    return 'Hold ends $time';
+  }
+
+  @override
+  String get ordersEmpty => 'No orders yet';
+
+  @override
+  String get ordersNoMatch => 'No orders match';
+
+  @override
+  String get loadMoreFailed => 'Couldn\'t load more. Tap to retry.';
+
+  @override
+  String orderCreated(String time) {
+    return 'Ordered $time';
+  }
+
+  @override
+  String orderPaid(String time) {
+    return 'Paid $time';
+  }
+
+  @override
+  String get subtotal => 'Subtotal';
+
+  @override
+  String get discount => 'Discount';
+
+  @override
+  String discountPromo(String code) {
+    return 'Discount ($code)';
+  }
+
+  @override
+  String get discountGroup => 'Group discount';
+
+  @override
+  String get total => 'Total';
+
+  @override
+  String get payments => 'Payments';
+
+  @override
+  String get refunds => 'Refunds';
+
+  @override
+  String get refundInProgress => 'Refund in progress';
+
+  @override
+  String get refundByHand => 'Event 360 is returning it by hand';
+
+  @override
+  String get refundDone => 'Refunded';
+
+  @override
+  String get wholeOrderRefund => 'Refunds are always for the whole order.';
+
+  @override
+  String ticketsCheckedIn(String inCount, String total) {
+    return '$inCount of $total tickets checked in';
+  }
+
+  @override
+  String seatsLine(String seats) {
+    return 'Seats: $seats';
+  }
 }

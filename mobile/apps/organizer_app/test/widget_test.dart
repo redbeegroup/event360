@@ -372,6 +372,125 @@ class FakeApi extends Event360Api {
     _setSeat(guestRows[i]['seatKey'] as String, 'GUEST_HOLD', label: 'Sponsor');
   }
 
+  // ───── Sales tab ─────
+
+  /// The `/sales` payload; set `ticketTypes` to free types only for an event with no paid tickets.
+  Map<String, dynamic> sales = {
+    'ticketTypes': [
+      {'id': 't2', 'name': 'VIP deck', 'priceMmk': 35000, 'basePriceMmk': 30000, 'nextPrice': {'priceMmk': 40000, 'startsAt': '2026-12-01T05:00:00.000Z'}, 'quota': 20, 'sold': 3, 'revenueMmk': 100000},
+      {'id': 't3', 'name': 'Standing', 'priceMmk': 15000, 'basePriceMmk': 15000, 'nextPrice': null, 'quota': 200, 'sold': 40, 'revenueMmk': 600000},
+      {'id': 't1', 'name': 'Free pass', 'priceMmk': 0, 'basePriceMmk': 0, 'nextPrice': null, 'quota': 50, 'sold': 5, 'revenueMmk': 0},
+    ],
+    'paidOrders': 43,
+    'grossMmk': 700000,
+    'commissionMmk': 35000,
+    'netMmk': 665000,
+    'refundedOrders': 2,
+    'refundedMmk': 50000,
+  };
+  int salesCalls = 0;
+
+  /// 75 orders, newest first: o001 has neither name nor phone, o002 has only a phone, o003 is flagged for review,
+  /// o005 waits for payment, o010 is "Abc Person", o011 "Abby Person".
+  late final List<Map<String, dynamic>> ordersData = [
+    for (var i = 1; i <= 75; i++)
+      {
+        'id': 'o${i.toString().padLeft(3, '0')}',
+        'number': 'E360-${i.toString().padLeft(4, '0')}',
+        'status': i % 5 == 0 ? 'PENDING_PAYMENT' : i % 5 == 4 ? (i % 10 == 4 ? 'REFUNDED' : 'EXPIRED') : 'PAID',
+        'needsReview': i == 3,
+        'createdAt': DateTime.utc(2026, 11, 22, 10).subtract(Duration(minutes: i * 7)).toIso8601String(),
+        'paidAt': i % 5 == 0 ? null : DateTime.utc(2026, 11, 22, 10).subtract(Duration(minutes: i * 7 - 1)).toIso8601String(),
+        'holdExpiresAt': i % 5 == 0 ? DateTime.utc(2026, 11, 22, 11, 30).toIso8601String() : null,
+        'totalMmk': 10000 * (i % 7 + 1),
+        'discountMmk': 0,
+        'quantity': i % 3 + 1,
+        'buyer': {
+          'name': i == 1 || i == 2 ? null : i == 10 ? 'Abc Person' : i == 11 ? 'Abby Person' : i == 3 ? 'Flagged Buyer' : 'Buyer ${i.toString().padLeft(3, '0')}',
+          'phone': i == 1 ? null : '0979•••${(100 + i)}',
+        },
+      },
+  ];
+
+  /// Every `eventOrders` request, as sent.
+  final orderCalls = <({String? status, String? q, String? cursor, int limit})>[];
+
+  /// A request for this `q` waits for its completer (a slow answer).
+  final ordersGates = <String, Completer<void>>{};
+
+  /// The next orders request fails (no connection).
+  bool failOrdersOnce = false;
+
+  /// Refund state shown in the order sheet.
+  String refundStatus = 'PENDING';
+
+  @override
+  Future<EventSales> eventSales(String orgId, String eventId) async {
+    salesCalls++;
+    return EventSales.fromJson(sales);
+  }
+
+  @override
+  Future<OrgOrderPage> eventOrders(String orgId, String eventId, {String? status, String? q, String? cursor, int limit = 30}) async {
+    orderCalls.add((status: status, q: q, cursor: cursor, limit: limit));
+    final gate = q == null ? null : ordersGates[q];
+    if (gate != null) await gate.future;
+    if (failOrdersOnce) {
+      failOrdersOnce = false;
+      throw ApiException(null, 'No connection');
+    }
+    const groups = {
+      'paid': ['PAID', 'CONFIRMED'],
+      'refunded': ['REFUNDED'],
+      'pending': ['PENDING_PAYMENT'],
+      'incomplete': ['FAILED', 'EXPIRED', 'CANCELLED'],
+    };
+    final needle = q?.toLowerCase();
+    final all = [
+      for (final o in ordersData)
+        if ((status == null || groups[status]!.contains(o['status'])) &&
+            (needle == null || '${(o['buyer'] as Map)['name']} ${o['number']}'.toLowerCase().contains(needle)))
+          o,
+    ];
+    final from = cursor == null ? 0 : int.parse(cursor);
+    final page = all.skip(from).take(limit).toList();
+    final next = from + limit < all.length ? '${from + limit}' : null;
+    return OrgOrderPage.fromJson({'orders': page, 'nextCursor': next});
+  }
+
+  @override
+  Future<OrgOrderDetail> eventOrder(String orgId, String eventId, String orderId) async {
+    final row = ordersData.firstWhere((o) => o['id'] == orderId);
+    return OrgOrderDetail.fromJson({
+      ...row,
+      'discountMmk': 5000,
+      'subtotalMmk': (row['totalMmk'] as int) + 5000,
+      'commissionMmk': 1500,
+      'promoCode': 'EARLY20',
+      'groupDiscountBp': null,
+      'items': [
+        {
+          'name': 'VIP deck',
+          'nameMy': null,
+          'quantity': 2,
+          'unitPriceMmk': 35000,
+          'seats': [
+            {'label': 'Stalls · Row 1 · Seat 4', 'labelMy': null},
+            {'label': 'Stalls · Row 1 · Seat 5', 'labelMy': null},
+          ],
+        },
+      ],
+      'payments': [
+        {'provider': 'KBZPAY', 'status': 'FAILED', 'createdAt': '2026-11-22T09:00:00.000Z'},
+        {'provider': 'WAVEPAY', 'status': 'SUCCEEDED', 'createdAt': '2026-11-22T09:05:00.000Z'},
+      ],
+      'refunds': [
+        {'status': refundStatus, 'amountMmk': row['totalMmk'], 'createdAt': '2026-11-22T12:00:00.000Z', 'completedAt': null},
+      ],
+      'tickets': {'total': 2, 'valid': 1, 'checkedIn': 1, 'void': 0},
+    });
+  }
+
   @override
   Future<Inbox> organizerNotifications() async => Inbox.fromJson({
         'items': [
@@ -585,6 +704,8 @@ void main() {
     final api = await pumpApp(tester);
     await tester.tap(find.text('Inya Lake Live o1'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('tabDoor')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tabDoor')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('codeLabel')), 'Volunteers');
@@ -653,6 +774,8 @@ void main() {
     await pumpApp(tester, role: 'ORG_FINANCE');
     await tester.tap(find.text('Inya Lake Live o1'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('tabDoor')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tabDoor')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('createCode')), findsNothing);
@@ -707,7 +830,7 @@ void main() {
       expect(find.byType(E360Badge), findsWidgets, reason: '$lang recent order reached');
       expect(tester.takeException(), isNull, reason: '$lang overview scrolled');
       // Every other tab too
-      for (final k in ['tabGuests', 'tabSeats', 'tabDoor', 'tabAnnounce', 'tabPromos']) {
+      for (final k in ['tabGuests', 'tabSeats', 'tabSales', 'tabDoor', 'tabAnnounce', 'tabPromos']) {
         await tester.ensureVisible(find.byKey(Key(k)));
         await tester.tap(find.byKey(Key(k)));
         await tester.pumpAndSettle();
@@ -861,6 +984,31 @@ void main() {
       await openGuestTickets(t);
       await t.tap(find.byKey(const Key('guestRevoke-g1')));
       await t.pumpAndSettle();
+    }),
+    'sales tab, totals and list with a flagged order': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabSales')),
+    'sales tab, view only (finance)': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabSales')),
+    'sales tab, filter and search': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSales');
+      await t.ensureVisible(find.byKey(const Key('orderFilter-pending')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('orderFilter-pending')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('orderSearch')), 'zzzz');
+      await t.pump(const Duration(milliseconds: 400));
+      await t.pumpAndSettle();
+    }),
+    'sales tab, order sheet': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabSales');
+      await t.scrollUntilVisible(find.byKey(const Key('orderRow-o003')), 200, scrollable: find.descendant(of: find.byKey(const Key('orderList')), matching: find.byType(Scrollable)).first);
+      await t.ensureVisible(find.byKey(const Key('orderRow-o003')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('orderRow-o003')));
+      await t.pumpAndSettle();
+    }),
+    'sales tab, no paid tickets': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
+      app.sales = {...app.sales, 'ticketTypes': [], 'paidOrders': 0};
+      await openTab(t, 'tabSales');
     }),
     'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),
     'announce tab, confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {

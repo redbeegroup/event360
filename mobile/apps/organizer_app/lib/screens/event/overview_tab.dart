@@ -25,8 +25,11 @@ String orderStatusLabel(L10n t, String s) => switch (s) {
 // ───────────── Overview ─────────────
 
 class OverviewTab extends ConsumerStatefulWidget {
-  const OverviewTab({super.key, required this.k});
+  const OverviewTab({super.key, required this.k, this.onAllOrders});
   final EventKey k;
+
+  /// Opens the Sales tab (the event screen owns the tab controller).
+  final VoidCallback? onAllOrders;
   @override
   ConsumerState<OverviewTab> createState() => _OverviewState();
 }
@@ -145,7 +148,10 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               ),
             ],
             const SizedBox(height: 12),
-            Text(t.recentOrders, style: theme.textTheme.titleMedium),
+            Row(children: [
+              Expanded(child: Text(t.recentOrders, style: theme.textTheme.titleMedium)),
+              if (widget.onAllOrders != null) TextButton(key: const Key('allOrdersLink'), onPressed: widget.onAllOrders, child: Text(t.allOrders)),
+            ]),
             if (orders.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(t.noOrders)),
             for (final o in orders.take(10))
               ListTile(

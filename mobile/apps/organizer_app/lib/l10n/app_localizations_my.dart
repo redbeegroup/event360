@@ -517,4 +517,149 @@ class L10nMy extends L10n {
   String ticketsIssued(int count) {
     return 'ဧည့်သည်လက်မှတ် $count စောင် ထုတ်ပေးပြီး';
   }
+
+  @override
+  String get tabSales => 'ရောင်းချမှု';
+
+  @override
+  String get paidOrders => 'ငွေပေးချေပြီး အော်ဒါများ';
+
+  @override
+  String get grossSales => 'စုစုပေါင်း ရောင်းရငွေ';
+
+  @override
+  String get grossCaption => 'ငွေပေးချေပြီး အော်ဒါများသာ၊ လျှော့စျေး နုတ်ပြီး';
+
+  @override
+  String get commission => 'ကော်မရှင်';
+
+  @override
+  String get netToYou => 'သင့်ထံ ရမည့်ငွေ';
+
+  @override
+  String refundedLine(String count, String amount) {
+    return '$count · $amount';
+  }
+
+  @override
+  String get refunded => 'ငွေပြန်အမ်းပြီး';
+
+  @override
+  String get noPaidTickets => 'ဤပွဲတွင် ငွေပေးဝယ်ရသော လက်မှတ် မရှိပါ';
+
+  @override
+  String nextPriceLine(String amount, String date) {
+    return '$date တွင် စျေးနှုန်း $amount ဖြစ်မည်';
+  }
+
+  @override
+  String soldOf(String sold, String quota) {
+    return '$quota ထဲက $sold ရောင်းပြီး';
+  }
+
+  @override
+  String get allOrders => 'အော်ဒါအားလုံး';
+
+  @override
+  String get orderSearchHint => 'အမည်၊ ဖုန်း သို့ အော်ဒါနံပါတ် ရှာရန်';
+
+  @override
+  String get filterAll => 'အားလုံး';
+
+  @override
+  String get filterPaid => 'ငွေပေးချေပြီး';
+
+  @override
+  String get filterRefunded => 'ငွေပြန်အမ်းပြီး';
+
+  @override
+  String get filterPending => 'ငွေပေးချေရန် စောင့်နေ';
+
+  @override
+  String get filterIncomplete => 'မပြီးစီးသော';
+
+  @override
+  String orderNumber(String number) {
+    return 'အော်ဒါ $number';
+  }
+
+  @override
+  String get walkUp => 'ပွဲနေရာတွင် ဝယ်သူ';
+
+  @override
+  String get beingReviewed => 'စစ်ဆေးနေဆဲ';
+
+  @override
+  String get reviewNote =>
+      'Event 360 က ဤငွေပေးချေမှုကို စစ်ဆေးနေပါသည်။ ဝယ်သူထံ ငွေပြန်ပေးရန် လိုအပ်ပါက ကျွန်ုပ်တို့ ပြန်အမ်းပေးပါမည်။';
+
+  @override
+  String holdUntil(String time) {
+    return '$time တွင် သိမ်းထားချိန် ကုန်မည်';
+  }
+
+  @override
+  String get ordersEmpty => 'အော်ဒါ မရှိသေးပါ';
+
+  @override
+  String get ordersNoMatch => 'ကိုက်ညီသော အော်ဒါ မရှိပါ';
+
+  @override
+  String get loadMoreFailed => 'ထပ်မံ မရယူနိုင်ပါ။ ထပ်ကြိုးစားရန် နှိပ်ပါ။';
+
+  @override
+  String orderCreated(String time) {
+    return 'မှာယူချိန် $time';
+  }
+
+  @override
+  String orderPaid(String time) {
+    return 'ငွေပေးချေချိန် $time';
+  }
+
+  @override
+  String get subtotal => 'ခွဲပေါင်း';
+
+  @override
+  String get discount => 'လျှော့စျေး';
+
+  @override
+  String discountPromo(String code) {
+    return 'လျှော့စျေး ($code)';
+  }
+
+  @override
+  String get discountGroup => 'အုပ်စုလျှော့စျေး';
+
+  @override
+  String get total => 'စုစုပေါင်း';
+
+  @override
+  String get payments => 'ငွေပေးချေမှုများ';
+
+  @override
+  String get refunds => 'ငွေပြန်အမ်းမှုများ';
+
+  @override
+  String get refundInProgress => 'ငွေပြန်အမ်းနေဆဲ';
+
+  @override
+  String get refundByHand => 'Event 360 က ကိုယ်တိုင် ပြန်အမ်းပေးနေပါသည်';
+
+  @override
+  String get refundDone => 'ငွေပြန်အမ်းပြီး';
+
+  @override
+  String get wholeOrderRefund =>
+      'ငွေပြန်အမ်းခြင်းသည် အော်ဒါတစ်ခုလုံးအတွက်သာ ဖြစ်ပါသည်။';
+
+  @override
+  String ticketsCheckedIn(String inCount, String total) {
+    return 'လက်မှတ် $total စောင်ထဲမှ $inCount စောင် ဝင်ပြီး';
+  }
+
+  @override
+  String seatsLine(String seats) {
+    return 'ခုံ: $seats';
+  }
 }
