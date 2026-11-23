@@ -121,6 +121,15 @@ class FakeApi extends Event360Api {
   /// The seating request fails (no connection).
   bool failSeating = false;
 
+  /// Requests fail with this error while it is set (dashboard, guests list, seating).
+  Object? dashboardError, attendeesError, seatingError, holdError;
+
+  /// The server ended the session: the tokens are gone and the client tells the app, as the real client does after a 401 that the refresh could not fix.
+  Future<void> expireSession() async {
+    await store.clear();
+    onSessionExpired?.call();
+  }
+
   /// The server rejects the phone number of the next issue with 400.
   bool rejectPhone = false;
   final seatRows = <Map<String, dynamic>>[
@@ -180,7 +189,12 @@ class FakeApi extends Event360Api {
       ];
 
   @override
-  Future<EventDashboard> eventDashboard(String orgId, String eventId) async => EventDashboard.fromJson({
+  Future<EventDashboard> eventDashboard(String orgId, String eventId) async {
+    if (dashboardError != null) throw dashboardError!;
+    return _dashboard();
+  }
+
+  EventDashboard _dashboard() => EventDashboard.fromJson({
         'totals': {'views': 120, 'orders': 9, 'ticketsSold': 13, 'capacity': 300, 'revenueMmk': 138000, 'discountMmk': 57000, 'checkedIn': 9, 'conversion': 7.5},
         'ticketTypes': [
           {'name': 'Standing', 'sold': 4, 'quota': 200, 'priceMmk': 0, if (standingOffered > 0) 'seats': {'available': 0, 'held': 0, 'guest': 0, 'sold': 0, 'comp': 0, 'offered': standingOffered}},
@@ -251,7 +265,10 @@ class FakeApi extends Event360Api {
   }
 
   @override
-  Future<List<Attendee>> attendees(String orgId, String eventId) async => attendeesList.map(Attendee.fromJson).toList();
+  Future<List<Attendee>> attendees(String orgId, String eventId) async {
+    if (attendeesError != null) throw attendeesError!;
+    return attendeesList.map(Attendee.fromJson).toList();
+  }
 
   final checkedInAt = DateTime.utc(2026, 11, 22, 10, 15);
 
@@ -308,6 +325,7 @@ class FakeApi extends Event360Api {
   @override
   Future<OrgSeating> orgSeating(String orgId, String eventId) async {
     await seatingGate?.future;
+    if (seatingError != null) throw seatingError!;
     if (failSeating) throw ApiException(null, 'No connection');
     int n(bool Function(Map<String, dynamic>) f) => seatRows.where(f).length;
     final comp = guestRows.where((g) => g['status'] == 'VALID').length;
@@ -336,6 +354,7 @@ class FakeApi extends Event360Api {
     calls.add('hold:${seats.join(',')}:$label');
     await actionGate?.future;
     if (crashHold) throw StateError('boom');
+    if (holdError != null) throw holdError!;
     _seatsConflict();
     for (final s in seats) {
       _setSeat(s, 'GUEST_HOLD', label: label);
@@ -964,6 +983,29 @@ void main() {
       await t.pumpAndSettle();
     }),
     'event overview': (signedIn: true, role: 'ORG_OWNER', then: openEvent),
+    'event overview, connection error with Retry': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      (ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi).dashboardError = ApiException(null, 'x');
+      await openEvent(t);
+    }),
+    'event overview, no access (no Retry)': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      (ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi).dashboardError = ApiException(403, 'x');
+      await openEvent(t);
+    }),
+    'event overview, gone (no Retry)': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      (ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi).dashboardError = ApiException(404, 'x');
+      await openEvent(t);
+    }),
+    'login, session ended': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await (ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi).expireSession();
+      await t.pumpAndSettle();
+    }),
+    'guests tab, earlier data after a failed refresh': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openTab(t, 'tabGuests');
+      final c = ProviderScope.containerOf(t.element(find.byType(OrganizerApp)));
+      (c.read(apiProvider) as FakeApi).attendeesError = ApiException(null, 'x');
+      c.invalidate(attendeesProvider((orgId: 'o1', eventId: 'e1')));
+      await t.pumpAndSettle();
+    }),
     'door tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabDoor')),
     'door tab, view only': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabDoor')),
     'door tab, new code dialog': (signedIn: true, role: 'ORG_OWNER', then: createCode),

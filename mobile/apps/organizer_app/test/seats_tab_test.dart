@@ -280,7 +280,7 @@ void main() {
     await tester.enterText(key('guestLabel'), 'Family');
     await tester.tap(key('issueSubmit'));
     await tester.pumpAndSettle();
-    expect(find.text('Issue 2 guest tickets to 09 123 456 789?'), findsOneWidget);
+    expect(find.text('Issue 2 guest tickets to 09\u00A0123\u00A0456\u00A0789?'), findsOneWidget);
     expect(api.calls.where((c) => c.startsWith('issue')), isEmpty);
     await tester.tap(key('issueConfirm'));
     await tester.pumpAndSettle();

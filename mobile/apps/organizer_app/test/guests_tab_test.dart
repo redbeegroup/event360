@@ -196,7 +196,7 @@ void main() {
         ..clear()
         ..addAll([for (var i = 0; i < 3000; i++) {'id': 'g$i', 'status': i % 3 == 0 ? 'CHECKED_IN' : 'VALID', 'createdAt': '2026-11-20T04:00:00.000Z', 'isComplimentary': false, 'holder': {'displayName': 'Guest ${i.toString().padLeft(4, '0')}', 'phone': '0977${i.toString().padLeft(6, '0')}'}, 'ticketType': {'name': 'Standing'}}]);
     });
-    expect(find.text('1000 of 3000 checked in'), findsOneWidget);
+    expect(find.text('1,000 of 3,000 checked in'), findsOneWidget);
     expect(find.byType(ListTile).evaluate().length, lessThan(40));
     await tester.enterText(find.byKey(const Key('guestSearch')), '0977002999');
     await tester.pumpAndSettle();
