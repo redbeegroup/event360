@@ -401,7 +401,8 @@ class FakeApi extends Event360Api {
         'needsReview': i == 3,
         'createdAt': DateTime.utc(2026, 11, 22, 10).subtract(Duration(minutes: i * 7)).toIso8601String(),
         'paidAt': i % 5 == 0 ? null : DateTime.utc(2026, 11, 22, 10).subtract(Duration(minutes: i * 7 - 1)).toIso8601String(),
-        'holdExpiresAt': i % 5 == 0 ? DateTime.utc(2026, 11, 22, 11, 30).toIso8601String() : null,
+        // o015's hold is still running; the others ran out yesterday
+        'holdExpiresAt': i == 15 ? DateTime.now().toUtc().add(const Duration(minutes: 1)).toIso8601String() : i % 5 == 0 ? DateTime.utc(2026, 11, 22, 11, 30).toIso8601String() : null,
         'totalMmk': 10000 * (i % 7 + 1),
         'discountMmk': 0,
         'quantity': i % 3 + 1,
@@ -418,6 +419,12 @@ class FakeApi extends Event360Api {
   /// A request for this `q` waits for its completer (a slow answer).
   final ordersGates = <String, Completer<void>>{};
 
+  /// A request for this status waits for its completer (a slow answer to an earlier filter).
+  final statusGates = <String, Completer<void>>{};
+
+  /// The next `/sales` request fails (no connection).
+  bool failSalesOnce = false;
+
   /// The next orders request fails (no connection).
   bool failOrdersOnce = false;
 
@@ -427,6 +434,10 @@ class FakeApi extends Event360Api {
   @override
   Future<EventSales> eventSales(String orgId, String eventId) async {
     salesCalls++;
+    if (failSalesOnce) {
+      failSalesOnce = false;
+      throw ApiException(null, 'No connection');
+    }
     return EventSales.fromJson(sales);
   }
 
@@ -435,6 +446,8 @@ class FakeApi extends Event360Api {
     orderCalls.add((status: status, q: q, cursor: cursor, limit: limit));
     final gate = q == null ? null : ordersGates[q];
     if (gate != null) await gate.future;
+    final statusGate = status == null ? null : statusGates[status];
+    if (statusGate != null) await statusGate.future;
     if (failOrdersOnce) {
       failOrdersOnce = false;
       throw ApiException(null, 'No connection');
@@ -872,6 +885,12 @@ void main() {
     await t.pumpAndSettle();
   }
 
+  Future<void> openOrders(WidgetTester t) async {
+    await openTab(t, 'tabSales');
+    await t.tap(find.byKey(const Key('salesViewOrders')));
+    await t.pumpAndSettle();
+  }
+
   Future<void> createCode(WidgetTester t) async {
     await openTab(t, 'tabDoor');
     await t.enterText(find.byKey(const Key('codeLabel')), 'Volunteers for the north side entrance');
@@ -985,10 +1004,11 @@ void main() {
       await t.tap(find.byKey(const Key('guestRevoke-g1')));
       await t.pumpAndSettle();
     }),
-    'sales tab, totals and list with a flagged order': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabSales')),
-    'sales tab, view only (finance)': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabSales')),
-    'sales tab, filter and search': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
-      await openTab(t, 'tabSales');
+    'sales tab, summary': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabSales')),
+    'sales tab, summary, view only (finance)': (signedIn: true, role: 'ORG_FINANCE', then: (t) => openTab(t, 'tabSales')),
+    'sales tab, orders with a flagged order': (signedIn: true, role: 'ORG_OWNER', then: openOrders),
+    'sales tab, orders, filter and search': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      await openOrders(t);
       await t.ensureVisible(find.byKey(const Key('orderFilter-pending')));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const Key('orderFilter-pending')));
@@ -998,17 +1018,22 @@ void main() {
       await t.pumpAndSettle();
     }),
     'sales tab, order sheet': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
-      await openTab(t, 'tabSales');
+      await openOrders(t);
       await t.scrollUntilVisible(find.byKey(const Key('orderRow-o003')), 200, scrollable: find.descendant(of: find.byKey(const Key('orderList')), matching: find.byType(Scrollable)).first);
       await t.ensureVisible(find.byKey(const Key('orderRow-o003')));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const Key('orderRow-o003')));
       await t.pumpAndSettle();
     }),
-    'sales tab, no paid tickets': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+    'sales tab, no paid tickets (summary)': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
       final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
       app.sales = {...app.sales, 'ticketTypes': [], 'paidOrders': 0};
       await openTab(t, 'tabSales');
+    }),
+    'sales tab, no paid tickets (orders)': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
+      app.sales = {...app.sales, 'ticketTypes': [], 'paidOrders': 0};
+      await openOrders(t);
     }),
     'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),
     'announce tab, confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {

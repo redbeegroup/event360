@@ -662,4 +662,25 @@ class L10nMy extends L10n {
   String seatsLine(String seats) {
     return 'ခုံ: $seats';
   }
+
+  @override
+  String get salesViewSummary => 'အနှစ်ချုပ်';
+
+  @override
+  String get salesViewOrders => 'အော်ဒါများ';
+
+  @override
+  String get refreshFailed =>
+      'ပြန်လည်မရယူနိုင်ပါ။ အရင်ရထားသော အချက်အလက်ကို ပြထားပါသည်။';
+
+  @override
+  String holdEnded(String time) {
+    return '$time တွင် သိမ်းထားချိန် ကုန်သွားပြီ';
+  }
+
+  @override
+  String get paymentCash => 'ငွေသား';
+
+  @override
+  String get paymentCard => 'ကတ်';
 }

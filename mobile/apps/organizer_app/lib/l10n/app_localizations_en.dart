@@ -681,4 +681,24 @@ class L10nEn extends L10n {
   String seatsLine(String seats) {
     return 'Seats: $seats';
   }
+
+  @override
+  String get salesViewSummary => 'Summary';
+
+  @override
+  String get salesViewOrders => 'Orders';
+
+  @override
+  String get refreshFailed => 'Couldn\'t refresh. Showing earlier data.';
+
+  @override
+  String holdEnded(String time) {
+    return 'Hold ended $time';
+  }
+
+  @override
+  String get paymentCash => 'Cash';
+
+  @override
+  String get paymentCard => 'Card';
 }

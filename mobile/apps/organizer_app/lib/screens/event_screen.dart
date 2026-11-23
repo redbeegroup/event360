@@ -28,9 +28,14 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
   List<String> _ids = const [];
   // Replaced controllers wait here until the frame is done; disposed with the screen at the latest.
   final _retired = <TabController>[];
+  // Bumped by Overview's "All orders": the Sales tab then shows its Orders view.
+  final _openOrders = ValueNotifier<int>(0);
+  // The Sales tab keeps its search, filter and scroll when the Seats tab appears and the pages are rebuilt.
+  final _salesKey = GlobalKey();
 
   @override
   void dispose() {
+    _openOrders.dispose();
     _tabs?.dispose();
     for (final c in _retired) {
       c.dispose();
@@ -61,7 +66,9 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
   void _openSales() {
     final c = _tabs;
     final i = _ids.indexOf('sales');
-    if (c != null && i >= 0) c.animateTo(i);
+    if (c == null || i < 0) return;
+    _openOrders.value++;
+    c.animateTo(i);
   }
 
   @override
@@ -95,7 +102,7 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
         OverviewTab(k: k, onAllOrders: _openSales),
         GuestsTab(k: k, canEdit: org.canEdit, event: event),
         if (hasSeats) SeatsTab(k: k, canEdit: org.canEdit),
-        SalesTab(k: k),
+        SalesTab(key: _salesKey, k: k, openOrders: _openOrders),
         DoorTab(k: k, canEdit: org.canEdit),
         AnnounceTab(k: k, canEdit: org.canEdit),
         PromosTab(k: k, canEdit: org.canEdit),

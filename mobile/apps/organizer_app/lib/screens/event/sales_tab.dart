@@ -14,6 +14,9 @@ import 'overview_tab.dart' show StatTile, orderStatusLabel;
 /// Localized order status; an unknown value from a newer API shows as it is.
 String orderStatusText(L10n t, String status) => orderStatusLabel(t, status);
 
+/// Inside Sales an order waiting for payment reads like its filter chip.
+String _salesStatus(L10n t, String status) => status == 'PENDING_PAYMENT' ? t.filterPending : orderStatusText(t, status);
+
 /// Refunds are shown in plain words: PENDING and FAILED are still being worked on.
 String refundStateText(L10n t, String status) => switch (status) {
       'PENDING' || 'FAILED' => t.refundInProgress,
@@ -24,21 +27,21 @@ String refundStateText(L10n t, String status) => switch (status) {
 
 String _paymentStatusText(L10n t, String status) => switch (status) {
       'SUCCEEDED' => t.orderStatus_PAID,
-      'INITIATED' || 'PENDING' => t.orderStatus_PENDING_PAYMENT,
+      'INITIATED' || 'PENDING' => t.filterPending,
       'FAILED' => t.orderStatus_FAILED,
       'EXPIRED' => t.orderStatus_EXPIRED,
       'REFUNDED' => t.orderStatus_REFUNDED,
       _ => status,
     };
 
-String _providerText(String code) => switch (code) {
+String _providerText(L10n t, String code) => switch (code) {
       'KBZPAY' => 'KBZPay',
       'WAVEPAY' => 'WavePay',
       'CBPAY' => 'CB Pay',
       'AYAPAY' => 'AYA Pay',
-      'CB_MPGS' => 'Card',
+      'CB_MPGS' => t.paymentCard,
       'MPU' => 'MPU',
-      'CASH' => 'Cash',
+      'CASH' => t.paymentCash,
       _ => code,
     };
 
@@ -58,18 +61,30 @@ String _filterLabel(L10n t, String id) => switch (id) {
 
 E360BadgeKind _statusKind(String status) => status == 'PAID' || status == 'CONFIRMED' ? E360BadgeKind.success : E360BadgeKind.neutral;
 
-/// Sales totals, ticket types and a searchable, paged list of orders. View only.
+/// "Hold ends 6:00 PM" while it runs, "Hold ended ..." after; the date is added when the hold is not on today's date.
+String holdLine(L10n t, DateTime hold, DateTime now, String lang) {
+  final today = toYangon(now), day = toYangon(hold);
+  final sameDay = today.year == day.year && today.month == day.month && today.day == day.day;
+  final text = sameDay ? formatTime(hold, lang) : formatDayTime(hold, lang);
+  return hold.isAfter(now) ? t.holdUntil(text) : t.holdEnded(text);
+}
+
+/// Sales totals and ticket types (Summary), and a searchable, paged list of orders (Orders). View only.
 class SalesTab extends ConsumerStatefulWidget {
-  const SalesTab({super.key, required this.k});
+  const SalesTab({super.key, required this.k, this.openOrders});
   final EventKey k;
+
+  /// Counts requests to show the Orders view (the Overview link); the event screen owns it.
+  final ValueNotifier<int>? openOrders;
   @override
   ConsumerState<SalesTab> createState() => _SalesTabState();
 }
 
-class _SalesTabState extends ConsumerState<SalesTab> {
+class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClientMixin {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   Timer? _timer;
+  bool _showOrders = false;
 
   // Order list state. [_seq] numbers each request series; an answer that is not the latest is dropped.
   String _typed = '';
@@ -84,22 +99,43 @@ class _SalesTabState extends ConsumerState<SalesTab> {
   int _seq = 0;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _scroll.addListener(_maybeLoadMore);
+    // A cached answer from an earlier visit would sit under a fresh order list
+    if (ref.exists(eventSalesProvider(widget.k))) {
+      // (After the frame: this tab can be rebuilt while the page is being built.)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.invalidate(eventSalesProvider(widget.k));
+      });
+    }
+    final n = widget.openOrders;
+    if (n != null) {
+      _showOrders = n.value > 0;
+      n.addListener(_onOpenOrders);
+    }
   }
 
   @override
   void dispose() {
+    widget.openOrders?.removeListener(_onOpenOrders);
     _timer?.cancel();
     _scroll.dispose();
     _search.dispose();
     super.dispose();
   }
 
+  void _onOpenOrders() {
+    if (mounted) setState(() => _showOrders = true);
+  }
+
   String? get _status => _filters.firstWhere((f) => f.$1 == _filter).$2;
 
-  Future<void> _loadFirst({bool keep = false}) async {
+  /// Returns false when the request failed (the earlier rows stay when [keep] is set).
+  Future<bool> _loadFirst({bool keep = false}) async {
     final seq = ++_seq;
     setState(() {
       _loading = true;
@@ -112,20 +148,22 @@ class _SalesTabState extends ConsumerState<SalesTab> {
     });
     try {
       final page = await ref.read(apiProvider).eventOrders(widget.k.orgId, widget.k.eventId, status: _status, q: _query.isEmpty ? null : _query, limit: _pageSize);
-      if (!mounted || seq != _seq) return;
+      if (!mounted || seq != _seq) return true;
       setState(() {
         _rows = _dedupe(const [], page.orders);
         _nextCursor = page.nextCursor;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || seq != _seq) return;
+      if (!mounted || seq != _seq) return true;
       setState(() {
         _loading = false;
         _error = !keep;
       });
+      return false;
     }
     _afterFrame();
+    return true;
   }
 
   Future<void> _loadMore() async {
@@ -194,10 +232,17 @@ class _SalesTabState extends ConsumerState<SalesTab> {
   }
 
   Future<void> _refresh() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = L10n.of(context).refreshFailed;
     ref.invalidate(eventSalesProvider(widget.k));
-    try {
-      await Future.wait([if (_started) _loadFirst(keep: true), ref.read(eventSalesProvider(widget.k).future)]);
-    } catch (_) {}
+    var ok = true;
+    await Future.wait([
+      if (_started) _loadFirst(keep: true).then((v) => ok = ok && v),
+      ref.read(eventSalesProvider(widget.k).future).then((_) {}, onError: (_) {
+        ok = false;
+      }),
+    ]);
+    if (!ok && mounted) messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _open(OrgOrderRow row) {
@@ -211,6 +256,7 @@ class _SalesTabState extends ConsumerState<SalesTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
@@ -219,7 +265,38 @@ class _SalesTabState extends ConsumerState<SalesTab> {
     if (data == null) {
       return sales.hasError ? loadError(t, _refresh) : const Center(child: CircularProgressIndicator());
     }
-    if (!data.hasPaidTypes) {
+    // The list is fetched once the totals say there is something to list.
+    if (data.hasPaidTypes && !_started) {
+      _started = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadFirst();
+      });
+    }
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<bool>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: false, label: Text(t.salesViewSummary, key: const Key('salesViewSummary'), textAlign: TextAlign.center)),
+              ButtonSegment(value: true, label: Text(t.salesViewOrders, key: const Key('salesViewOrders'), textAlign: TextAlign.center)),
+            ],
+            selected: {_showOrders},
+            onSelectionChanged: (v) => setState(() => _showOrders = v.first),
+          ),
+        ),
+      ),
+      Expanded(
+        // Both views stay built, so the search text, the filter and the scroll positions survive switching
+        child: IndexedStack(index: _showOrders ? 1 : 0, children: [_summary(t, lang, theme, data), _orders(t, lang, theme, data)]),
+      ),
+    ]);
+  }
+
+  Widget _summary(L10n t, String lang, ThemeData theme, EventSales s) {
+    if (!s.hasPaidTypes) {
       return RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(padding: const EdgeInsets.all(24), physics: const AlwaysScrollableScrollPhysics(), children: [
@@ -227,30 +304,100 @@ class _SalesTabState extends ConsumerState<SalesTab> {
         ]),
       );
     }
-    // The list is fetched once the totals say there is something to list.
-    if (!_started) {
-      _started = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _loadFirst();
-      });
-    }
-    final footer = _footer(t, theme);
+    Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, valueKey: key == null ? null : Key(key));
+    Widget pair(Widget a, Widget b) => IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]),
+        );
+    final types = s.types.where((x) => x.priceMmk > 0 || x.basePriceMmk > 0).toList();
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.builder(
-        key: const Key('orderList'),
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 16),
-        itemCount: _rows.length + 2,
-        itemBuilder: (_, i) {
-          if (i == 0) return _header(t, lang, theme, data);
-          if (i == _rows.length + 1) return footer;
-          final r = _rows[i - 1];
-          return _OrderTile(row: r, lang: lang, onTap: () => _open(r));
-        },
-      ),
+      child: ListView(key: const Key('salesSummary'), padding: const EdgeInsets.all(12), physics: const AlwaysScrollableScrollPhysics(), children: [
+        Column(key: const Key('salesTotals'), crossAxisAlignment: CrossAxisAlignment.start, children: [
+          pair(tile(t.paidOrders, formatAmount(s.paidOrders, lang), key: 'paidOrders'), tile(t.grossSales, formatMmk(s.grossMmk, lang), key: 'grossSales')),
+          Padding(padding: const EdgeInsets.fromLTRB(4, 6, 4, 0), child: Text(t.grossCaption, style: theme.textTheme.bodySmall)),
+          const SizedBox(height: 10),
+          pair(tile(t.commission, formatMmk(s.commissionMmk, lang), key: 'commission'), tile(t.netToYou, formatMmk(s.netMmk, lang), key: 'net')),
+          const SizedBox(height: 10),
+          tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded'),
+        ]),
+        const SizedBox(height: 16),
+        Text(t.byTicketType, style: theme.textTheme.titleMedium),
+        for (final x in types) _TypeRow(type: x, lang: lang),
+      ]),
     );
+  }
+
+  Widget _orders(L10n t, String lang, ThemeData theme, EventSales s) {
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          key: const Key('orderSearch'),
+          controller: _search,
+          decoration: InputDecoration(
+            hintText: t.orderSearchHint,
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _typed.isEmpty ? null : IconButton(icon: const Icon(Icons.close), onPressed: _clearSearch),
+          ),
+          onChanged: _onSearch,
+        ),
+        const SizedBox(height: 8),
+        // One row that scrolls sideways. The selected fill is the primary colour: the label and the tick must read
+        // on it (as on the Guests filter).
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final f in _filters) ...[
+              FilterChip(
+                key: Key('orderFilter-${f.$1}'),
+                label: Text(_filterLabel(t, f.$1)),
+                selected: _filter == f.$1,
+                labelStyle: _filter == f.$1 ? theme.chipTheme.labelStyle?.copyWith(color: theme.colorScheme.onPrimary) ?? TextStyle(color: theme.colorScheme.onPrimary) : null,
+                checkmarkColor: theme.colorScheme.onPrimary,
+                onSelected: (_) => _setFilter(f.$1),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 4),
+      ]),
+    );
+    if (!s.hasPaidTypes) {
+      return Column(children: [
+        header,
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(padding: const EdgeInsets.all(24), physics: const AlwaysScrollableScrollPhysics(), children: [
+              Text(t.ordersEmpty, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+            ]),
+          ),
+        ),
+      ]);
+    }
+    final footer = _footer(t, theme);
+    return Column(children: [
+      header,
+      const Divider(height: 1),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView.builder(
+            key: const Key('orderList'),
+            controller: _scroll,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 16),
+            itemCount: _rows.length + 1,
+            itemBuilder: (_, i) {
+              if (i == _rows.length) return footer;
+              final r = _rows[i];
+              return _OrderTile(row: r, lang: lang, onTap: () => _open(r));
+            },
+          ),
+        ),
+      ),
+    ]);
   }
 
   Widget _footer(L10n t, ThemeData theme) {
@@ -268,57 +415,6 @@ class _SalesTabState extends ConsumerState<SalesTab> {
       return Padding(padding: const EdgeInsets.all(24), child: Text(filtered ? t.ordersNoMatch : t.ordersEmpty, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium));
     }
     return const SizedBox.shrink();
-  }
-
-  Widget _header(L10n t, String lang, ThemeData theme, EventSales s) {
-    Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, valueKey: key == null ? null : Key(key));
-    Widget pair(Widget a, Widget b) => IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]),
-        );
-    final types = s.types.where((x) => x.priceMmk > 0 || x.basePriceMmk > 0).toList();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Column(key: const Key('salesTotals'), crossAxisAlignment: CrossAxisAlignment.start, children: [
-          pair(tile(t.paidOrders, formatAmount(s.paidOrders, lang), key: 'paidOrders'), tile(t.grossSales, formatMmk(s.grossMmk, lang), key: 'grossSales')),
-          Padding(padding: const EdgeInsets.fromLTRB(4, 6, 4, 0), child: Text(t.grossCaption, style: theme.textTheme.bodySmall)),
-          const SizedBox(height: 10),
-          pair(tile(t.commission, formatMmk(s.commissionMmk, lang), key: 'commission'), tile(t.netToYou, formatMmk(s.netMmk, lang), key: 'net')),
-          const SizedBox(height: 10),
-          tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded'),
-        ]),
-        const SizedBox(height: 16),
-        Text(t.byTicketType, style: theme.textTheme.titleMedium),
-        for (final x in types) _TypeRow(type: x, lang: lang),
-        const SizedBox(height: 16),
-        Text(t.orders, style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('orderSearch'),
-          controller: _search,
-          decoration: InputDecoration(
-            hintText: t.orderSearchHint,
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _typed.isEmpty ? null : IconButton(icon: const Icon(Icons.close), onPressed: _clearSearch),
-          ),
-          onChanged: _onSearch,
-        ),
-        const SizedBox(height: 8),
-        // The selected fill is the primary colour: the label and the tick must read on it (as on the Guests filter).
-        Wrap(spacing: 8, runSpacing: 4, children: [
-          for (final f in _filters)
-            FilterChip(
-              key: Key('orderFilter-${f.$1}'),
-              label: Text(_filterLabel(t, f.$1)),
-              selected: _filter == f.$1,
-              labelStyle: _filter == f.$1 ? theme.chipTheme.labelStyle?.copyWith(color: theme.colorScheme.onPrimary) ?? TextStyle(color: theme.colorScheme.onPrimary) : null,
-              checkmarkColor: theme.colorScheme.onPrimary,
-              onSelected: (_) => _setFilter(f.$1),
-            ),
-        ]),
-        const SizedBox(height: 4),
-      ]),
-    );
   }
 }
 
@@ -385,10 +481,10 @@ class _OrderTile extends StatelessWidget {
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${t.orderNumber(row.number)} · ${formatAmount(row.quantity, lang)} × · ${formatMmk(row.totalMmk, lang)}', maxLines: 2, overflow: TextOverflow.ellipsis),
         Text(formatDayTime(row.createdAt, lang), style: theme.textTheme.bodySmall),
-        if (row.status == 'PENDING_PAYMENT' && hold != null) Text(t.holdUntil(formatTime(hold, lang)), style: theme.textTheme.bodySmall),
+        if (row.status == 'PENDING_PAYMENT' && hold != null) Text(holdLine(t, hold, DateTime.now(), lang), style: theme.textTheme.bodySmall),
         const SizedBox(height: 4),
         Wrap(spacing: 6, runSpacing: 4, children: [
-          E360Badge(orderStatusText(t, row.status), kind: _statusKind(row.status)),
+          E360Badge(_salesStatus(t, row.status), kind: _statusKind(row.status)),
           if (row.needsReview) E360Badge(t.beingReviewed, kind: E360BadgeKind.gold),
         ]),
       ]),
@@ -456,7 +552,7 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
           ]),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4, children: [
-            E360Badge(orderStatusText(t, r.status), kind: _statusKind(r.status)),
+            E360Badge(_salesStatus(t, r.status), kind: _statusKind(r.status)),
             if (r.needsReview) E360Badge(t.beingReviewed, kind: E360BadgeKind.gold),
           ]),
           const SizedBox(height: 12),
@@ -465,7 +561,7 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
           const SizedBox(height: 4),
           Text(t.orderCreated(formatDayTime(r.createdAt, lang)), style: sub),
           if (r.paidAt != null) Text(t.orderPaid(formatDayTime(r.paidAt!, lang)), style: sub),
-          if (r.status == 'PENDING_PAYMENT' && r.holdExpiresAt != null) Text(t.holdUntil(formatTime(r.holdExpiresAt!, lang)), style: sub),
+          if (r.status == 'PENDING_PAYMENT' && r.holdExpiresAt != null) Text(holdLine(t, r.holdExpiresAt!, DateTime.now(), lang), style: sub),
           if (r.needsReview) ...[
             const SizedBox(height: 12),
             Container(
@@ -509,7 +605,7 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${_providerText(p.provider)} · ${_paymentStatusText(t, p.status)}'),
+              Text('${_providerText(t, p.provider)} · ${_paymentStatusText(t, p.status)}'),
               Text(formatDayTime(p.createdAt, lang), style: sub),
             ]),
           ),

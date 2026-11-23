@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/format.dart';
+import 'package:organizer_app/l10n/app_localizations.dart';
+import 'package:organizer_app/screens/event/sales_tab.dart';
 
 import 'widget_test.dart' hide main;
 
@@ -16,18 +18,25 @@ Future<void> goSales(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<FakeApi> openSales(WidgetTester tester, {String role = 'ORG_OWNER', String lang = 'en', void Function(FakeApi)? setup}) async {
+Future<void> goOrders(WidgetTester tester) async {
+  await tester.tap(key('salesViewOrders'));
+  await tester.pumpAndSettle();
+}
+
+/// Opens the Sales tab; on its Orders view unless [orders] is false (the default view is Summary).
+Future<FakeApi> openSales(WidgetTester tester, {String role = 'ORG_OWNER', String lang = 'en', bool orders = true, void Function(FakeApi)? setup}) async {
   final api = await pumpApp(tester, role: role, lang: lang, configure: setup);
   await tester.tap(find.text('Inya Lake Live o1'));
   await tester.pumpAndSettle();
   await goSales(tester);
+  if (orders) await goOrders(tester);
   return api;
 }
 
 Finder listScrollable() => find.descendant(of: key('orderList'), matching: find.byType(Scrollable)).first;
 
 /// Rows (and the header and footer) the list was given; only a few are built.
-int rowCount(WidgetTester tester) => tester.widget<ListView>(key('orderList')).childrenDelegate.estimatedChildCount! - 2;
+int rowCount(WidgetTester tester) => tester.widget<ListView>(key('orderList')).childrenDelegate.estimatedChildCount! - 1;
 
 ScrollPosition position(WidgetTester tester) => tester.state<ScrollableState>(listScrollable()).position;
 
@@ -62,8 +71,9 @@ void main() {
   });
 
   testWidgets('totals, caption and the paid ticket types with next price, sold of quota and revenue', (tester) async {
-    final api = await openSales(tester);
+    final api = await openSales(tester, orders: false);
     expect(key('salesTotals'), findsOneWidget);
+    expect(key('orderSearch'), findsNothing, reason: 'Summary is the default view');
     expect(tester.widget<Text>(key('paidOrders')).data, '43');
     expect(tester.widget<Text>(key('grossSales')).data, '700,000 MMK');
     expect(tester.widget<Text>(key('commission')).data, '35,000 MMK');
@@ -83,11 +93,14 @@ void main() {
   });
 
   testWidgets('an event with no paid types says so and shows neither totals nor the order list', (tester) async {
-    final api = await openSales(tester, setup: (a) => a.sales = {...a.sales, 'ticketTypes': [], 'paidOrders': 0});
+    final api = await openSales(tester, orders: false, setup: (a) => a.sales = {...a.sales, 'ticketTypes': [], 'paidOrders': 0});
     expect(key('noPaidTickets'), findsOneWidget);
     expect(find.text('This event has no paid tickets'), findsOneWidget);
     expect(key('salesTotals'), findsNothing);
-    expect(key('orderSearch'), findsNothing);
+    // The Orders segment is still there and says there are none, without asking the API
+    await goOrders(tester);
+    expect(find.text('No orders yet'), findsOneWidget);
+    expect(key('orderList'), findsNothing);
     expect(api.orderCalls, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
@@ -139,7 +152,7 @@ void main() {
     final onPrimary = Theme.of(tester.element(key('orderFilter-pending'))).colorScheme.onPrimary;
     expect(tester.widget<FilterChip>(key('orderFilter-pending')).labelStyle?.color, onPrimary, reason: 'readable selected label');
     await reveal(tester, 'o005');
-    expect(inRow('o005', 'AWAITING PAYMENT'), findsOneWidget);
+    expect(inRow('o005', 'WAITING FOR PAYMENT'), findsOneWidget);
     for (final f in ['paid', 'refunded', 'incomplete', 'all']) {
       position(tester).jumpTo(0);
       await tester.pump();
@@ -228,10 +241,14 @@ void main() {
     expect(inRow('o002', 'BEING REVIEWED'), findsNothing);
     await reveal(tester, 'o001');
     expect(inRow('o001', 'Walk-up'), findsOneWidget);
+    final t = L10n.of(tester.element(key('orderSearch')));
     await reveal(tester, 'o005');
-    expect(inRow('o005', 'Hold ends ${formatTime(DateTime.utc(2026, 11, 22, 11, 30), 'en')}'), findsOneWidget);
-    expect(inRow('o005', 'WAITING FOR PAYMENT'), findsNothing, reason: 'the status badge reads Awaiting payment');
-    expect(inRow('o005', 'AWAITING PAYMENT'), findsOneWidget);
+    expect(inRow('o005', holdLine(t, DateTime.utc(2026, 11, 22, 11, 30), DateTime.now(), 'en')), findsOneWidget);
+    expect(find.descendant(of: key('orderRow-o005'), matching: find.textContaining('Hold ended ')), findsOneWidget, reason: 'its hold ran out yesterday');
+    expect(find.descendant(of: key('orderRow-o005'), matching: find.textContaining('Hold ended ${formatDayTime(DateTime.utc(2026, 11, 22, 11, 30), 'en').split(' · ').first}')), findsOneWidget, reason: 'with the date');
+    expect(inRow('o005', 'WAITING FOR PAYMENT'), findsOneWidget, reason: 'the badge reads like the chip');
+    await reveal(tester, 'o015');
+    expect(find.descendant(of: key('orderRow-o015'), matching: find.textContaining('Hold ends ')), findsOneWidget);
     await reveal(tester, 'o004');
     expect(inRow('o004', 'REFUNDED'), findsOneWidget);
     expect(find.descendant(of: key('orderRow-o004'), matching: find.textContaining('Hold ends')), findsNothing);
@@ -262,6 +279,7 @@ void main() {
     await tester.tap(find.text('Inya Lake Live o1'));
     await tester.pumpAndSettle();
     await goSales(tester);
+    await goOrders(tester);
     await scrollTo(tester, find.text("Couldn't load. Check your connection."));
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
@@ -344,24 +362,28 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('Overview All orders opens the Sales tab', (tester) async {
-    await pumpApp(tester);
-    await tester.tap(find.text('Inya Lake Live o1'));
-    await tester.pumpAndSettle();
-    expect(key('salesTotals'), findsNothing);
-    await tester.drag(key('sold'), const Offset(0, -3000));
-    await tester.pumpAndSettle();
-    await tester.tap(key('allOrdersLink'));
-    await tester.pumpAndSettle();
-    expect(key('salesTotals'), findsOneWidget);
-    expect(key('orderSearch'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-  });
+  for (final hasMap in [true, false]) {
+    testWidgets('Overview All orders opens the Sales tab on Orders (seat map: $hasMap)', (tester) async {
+      await pumpApp(tester, configure: (a) => a.hasMap = hasMap);
+      await tester.tap(find.text('Inya Lake Live o1'));
+      await tester.pumpAndSettle();
+      expect(key('salesTotals'), findsNothing);
+      await tester.drag(key('sold'), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      await tester.tap(key('allOrdersLink'));
+      await tester.pumpAndSettle();
+      expect(key('orderSearch'), findsOneWidget);
+      expect(key('salesTotals'), findsNothing, reason: 'Orders, not Summary');
+      expect(key('tabSeats'), hasMap ? findsOneWidget : findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('finance and manager both see the Sales tab', (tester) async {
     for (final role in ['ORG_FINANCE', 'ORG_MANAGER']) {
-      await openSales(tester, role: role);
+      await openSales(tester, role: role, orders: false);
       expect(key('salesTotals'), findsOneWidget, reason: role);
+      await goOrders(tester);
       await reveal(tester, 'o001');
       expect(key('orderRow-o001'), findsOneWidget, reason: role);
       await tester.pumpWidget(const SizedBox());
@@ -387,7 +409,121 @@ void main() {
   testWidgets('Myanmar: the tab, chips and sheet read in Myanmar', (tester) async {
     await openSales(tester, lang: 'my');
     expect(find.text('ရောင်းချမှု'), findsOneWidget);
+    expect(find.text('အနှစ်ချုပ်'), findsOneWidget);
     expect(find.text('ငွေပေးချေရန် စောင့်နေ'), findsWidgets);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('re-entering the event shows fresh totals: /sales is fetched again', (tester) async {
+    final api = await openSales(tester, orders: false);
+    expect(api.salesCalls, 1);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Inya Lake Live o1'));
+    await tester.pumpAndSettle();
+    await goSales(tester);
+    expect(api.salesCalls, 2);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed refresh of the orders says so and keeps the earlier rows', (tester) async {
+    final api = await openSales(tester);
+    api.failOrdersOnce = true;
+    await tester.fling(listScrollable(), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't refresh. Showing earlier data."), findsOneWidget);
+    expect(rowCount(tester), 30);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed refresh of the totals says so and keeps the earlier totals', (tester) async {
+    final api = await openSales(tester, orders: false);
+    api.failSalesOnce = true;
+    await tester.fling(key('salesSummary'), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't refresh. Showing earlier data."), findsOneWidget);
+    expect(tester.widget<Text>(key('grossSales')).data, '700,000 MMK');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the typed search, filter and view survive a look at another tab', (tester) async {
+    final api = await openSales(tester);
+    await tester.enterText(key('orderSearch'), 'abc');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(key('orderFilter-paid'));
+    await tester.pumpAndSettle();
+    final calls = api.orderCalls.length;
+    await tester.ensureVisible(key('tabGuests'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('tabGuests'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(key('tabSales'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('tabSales'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(key('orderSearch')).controller!.text, 'abc');
+    expect(tester.widget<FilterChip>(key('orderFilter-paid')).selected, isTrue);
+    expect(api.orderCalls, hasLength(calls), reason: 'nothing was reloaded');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the typed search survives the Seats tab appearing late', (tester) async {
+    final api = await pumpApp(tester);
+    api.seatingGate = Completer<void>();
+    await tester.tap(find.text('Inya Lake Live o1'));
+    await tester.pumpAndSettle();
+    await goSales(tester);
+    await goOrders(tester);
+    await tester.enterText(key('orderSearch'), 'abc');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    api.seatingGate!.complete();
+    await tester.pumpAndSettle();
+    expect(key('tabSeats'), findsOneWidget);
+    expect(tester.widget<TextField>(key('orderSearch')).controller!.text, 'abc');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('with the keyboard up the search field and an order row are both on screen', (tester) async {
+    await pumpApp(tester, size: const Size(390 * 3, 844 * 3));
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300 * 3);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.tap(find.text('Inya Lake Live o1'));
+    await tester.pumpAndSettle();
+    await goSales(tester);
+    await goOrders(tester);
+    final search = tester.getRect(key('orderSearch'));
+    final row = tester.getRect(key('orderRow-o001'));
+    expect(search.bottom, lessThanOrEqualTo(844 - 300));
+    expect(row.top, greaterThanOrEqualTo(search.bottom));
+    expect(row.bottom, lessThanOrEqualTo(844 - 300));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('changing the filter while an earlier filter is still loading keeps the newer rows', (tester) async {
+    final api = await openSales(tester);
+    api.statusGates['paid'] = Completer<void>();
+    await tester.tap(key('orderFilter-paid'));
+    await tester.pump();
+    await tester.tap(key('orderFilter-refunded'));
+    await tester.pumpAndSettle();
+    expect(rowCount(tester), 8, reason: 'refunded rows');
+    api.statusGates['paid']!.complete();
+    await tester.pumpAndSettle();
+    expect(rowCount(tester), 8, reason: 'the slow paid answer was dropped');
+    expect(tester.widget<FilterChip>(key('orderFilter-refunded')).selected, isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('holdLine: ends or ended, with the date when it is not today', (tester) async {
+    await openSales(tester);
+    final t = L10n.of(tester.element(key('orderSearch')));
+    final now = DateTime.utc(2026, 11, 23, 8);
+    expect(holdLine(t, DateTime.utc(2026, 11, 23, 9), now, 'en'), 'Hold ends ${formatTime(DateTime.utc(2026, 11, 23, 9), 'en')}');
+    expect(holdLine(t, DateTime.utc(2026, 11, 23, 7), now, 'en'), 'Hold ended ${formatTime(DateTime.utc(2026, 11, 23, 7), 'en')}');
+    expect(holdLine(t, DateTime.utc(2026, 11, 22, 7), now, 'en'), 'Hold ended ${formatDayTime(DateTime.utc(2026, 11, 22, 7), 'en')}');
+    expect(holdLine(t, DateTime.utc(2026, 11, 24, 7), now, 'en'), 'Hold ends ${formatDayTime(DateTime.utc(2026, 11, 24, 7), 'en')}');
     await tester.pumpWidget(const SizedBox());
   });
 }

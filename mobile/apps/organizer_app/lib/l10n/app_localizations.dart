@@ -1254,6 +1254,42 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Seats: {seats}'**
   String seatsLine(String seats);
+
+  /// No description provided for @salesViewSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary'**
+  String get salesViewSummary;
+
+  /// No description provided for @salesViewOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get salesViewOrders;
+
+  /// No description provided for @refreshFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t refresh. Showing earlier data.'**
+  String get refreshFailed;
+
+  /// No description provided for @holdEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold ended {time}'**
+  String holdEnded(String time);
+
+  /// No description provided for @paymentCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get paymentCash;
+
+  /// No description provided for @paymentCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get paymentCard;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

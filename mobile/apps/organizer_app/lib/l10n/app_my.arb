@@ -191,5 +191,11 @@
   "refundDone": "ငွေပြန်အမ်းပြီး",
   "wholeOrderRefund": "ငွေပြန်အမ်းခြင်းသည် အော်ဒါတစ်ခုလုံးအတွက်သာ ဖြစ်ပါသည်။",
   "ticketsCheckedIn": "လက်မှတ် {total} စောင်ထဲမှ {inCount} စောင် ဝင်ပြီး",
-  "seatsLine": "ခုံ: {seats}"
+  "seatsLine": "ခုံ: {seats}",
+  "salesViewSummary": "အနှစ်ချုပ်",
+  "salesViewOrders": "အော်ဒါများ",
+  "refreshFailed": "ပြန်လည်မရယူနိုင်ပါ။ အရင်ရထားသော အချက်အလက်ကို ပြထားပါသည်။",
+  "holdEnded": "{time} တွင် သိမ်းထားချိန် ကုန်သွားပြီ",
+  "paymentCash": "ငွေသား",
+  "paymentCard": "ကတ်"
 }

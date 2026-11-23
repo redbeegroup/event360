@@ -428,5 +428,18 @@
         "type": "String"
       }
     }
-  }
+  },
+  "salesViewSummary": "Summary",
+  "salesViewOrders": "Orders",
+  "refreshFailed": "Couldn't refresh. Showing earlier data.",
+  "holdEnded": "Hold ended {time}",
+  "@holdEnded": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "paymentCash": "Cash",
+  "paymentCard": "Card"
 }
