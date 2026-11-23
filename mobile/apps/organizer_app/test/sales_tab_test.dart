@@ -18,6 +18,13 @@ Future<void> goSales(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> goOverview(WidgetTester tester) async {
+  await tester.ensureVisible(key('tabOverview'));
+  await tester.pumpAndSettle();
+  await tester.tap(key('tabOverview'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> goOrders(WidgetTester tester) async {
   await tester.tap(key('salesViewOrders'));
   await tester.pumpAndSettle();
@@ -101,6 +108,12 @@ void main() {
     await goOrders(tester);
     expect(find.text('No orders yet'), findsOneWidget);
     expect(key('orderList'), findsNothing);
+    expect(api.orderCalls, isEmpty);
+    // Nothing to search or filter: no field and no chips, so nothing can start a request
+    expect(key('orderSearch'), findsNothing);
+    expect(key('orderFilter-paid'), findsNothing);
+    await tester.drag(key('ordersEmpty'), const Offset(0, -50));
+    await tester.pumpAndSettle();
     expect(api.orderCalls, isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
@@ -379,6 +392,79 @@ void main() {
     });
   }
 
+  Map<String, dynamic> newOrder() => {
+        'id': 'onew',
+        'number': 'E360-9999',
+        'status': 'PAID',
+        'needsReview': false,
+        'createdAt': DateTime.utc(2026, 11, 22, 12).toIso8601String(),
+        'paidAt': DateTime.utc(2026, 11, 22, 12).toIso8601String(),
+        'holdExpiresAt': null,
+        'totalMmk': 10000,
+        'discountMmk': 0,
+        'quantity': 1,
+        'buyer': {'name': 'Fresh Buyer', 'phone': '0979•••999'},
+      };
+
+  testWidgets('All orders after a new order arrived shows it at the top, with fresh totals', (tester) async {
+    final api = await pumpApp(tester);
+    await tester.tap(find.text('Inya Lake Live o1'));
+    await tester.pumpAndSettle();
+    await goSales(tester);
+    await goOrders(tester);
+    expect(key('orderRow-onew'), findsNothing);
+    await goOverview(tester);
+    // The order arrives while the user is on Overview; later than the quiet period
+    api.ordersData.insert(0, newOrder());
+    api.sales = {...api.sales, 'paidOrders': 44};
+    await tester.pump(const Duration(seconds: 6));
+    api.orderCalls.clear();
+    final salesBefore = api.salesCalls;
+    await tester.drag(key('sold'), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    await tester.tap(key('allOrdersLink'));
+    await tester.pumpAndSettle();
+    expect(key('orderRow-onew'), findsOneWidget);
+    expect(inRow('onew', 'Fresh Buyer'), findsOneWidget);
+    expect(api.orderCalls.length, 1, reason: 'one quiet reload of the first page, not two');
+    expect(api.orderCalls.single.cursor, isNull);
+    expect(api.salesCalls, salesBefore + 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('coming back to the Sales tab refetches totals and the first page once; not again within 5 seconds', (tester) async {
+    final api = await openSales(tester, orders: false);
+    expect(api.salesCalls, 1);
+    expect(api.orderCalls.length, 1);
+    await goOverview(tester);
+    api.sales = {...api.sales, 'paidOrders': 44};
+    await goSales(tester);
+    expect(api.salesCalls, 2);
+    expect(api.orderCalls.length, 2);
+    expect(tester.widget<Text>(key('paidOrders')).data, '44');
+    // A quick flip back and forth stays quiet
+    await goOverview(tester);
+    await goSales(tester);
+    expect(api.salesCalls, 2);
+    expect(api.orderCalls.length, 2);
+    await tester.pump(const Duration(seconds: 6));
+    await goOverview(tester);
+    await goSales(tester);
+    expect(api.salesCalls, 3);
+    expect(api.orderCalls.length, 3);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a quiet refetch that fails keeps the rows and shows no error', (tester) async {
+    final api = await openSales(tester);
+    await goOverview(tester);
+    api.failOrdersOnce = true;
+    await goSales(tester);
+    expect(rowCount(tester), 30);
+    expect(find.text('Try again'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('finance and manager both see the Sales tab', (tester) async {
     for (final role in ['ORG_FINANCE', 'ORG_MANAGER']) {
       await openSales(tester, role: role, orders: false);
@@ -441,8 +527,34 @@ void main() {
     api.failSalesOnce = true;
     await tester.fling(key('salesSummary'), const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
-    expect(find.text("Couldn't refresh. Showing earlier data."), findsOneWidget);
+    expect(find.text("Couldn't refresh. Showing earlier data."), findsNWidgets(2), reason: 'the snackbar and the hint in Summary');
     expect(tester.widget<Text>(key('grossSales')).data, '700,000 MMK');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the failed-refresh hint stays in Summary until the next load works', (tester) async {
+    final api = await openSales(tester, orders: false);
+    expect(key('salesRefreshFailed'), findsNothing);
+    api.failSalesOnce = true;
+    await tester.fling(key('salesSummary'), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(key('salesRefreshFailed'), findsOneWidget);
+    expect(tester.widget<Text>(key('salesRefreshFailed')).data, "Couldn't refresh. Showing earlier data.");
+    expect(tester.widget<Text>(key('grossSales')).data, '700,000 MMK');
+    // The snackbar goes; the hint does not
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pumpAndSettle();
+    expect(key('salesRefreshFailed'), findsOneWidget);
+    await tester.fling(key('salesSummary'), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(key('salesRefreshFailed'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the ticket types say their revenue is before discounts', (tester) async {
+    await openSales(tester, orders: false);
+    await tester.scrollUntilVisible(key('revenueCaption'), 200, scrollable: find.descendant(of: key('salesSummary'), matching: find.byType(Scrollable)).first);
+    expect(tester.widget<Text>(key('revenueCaption')).data, 'Ticket revenue is before discounts');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -464,7 +576,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(key('orderSearch')).controller!.text, 'abc');
     expect(tester.widget<FilterChip>(key('orderFilter-paid')).selected, isTrue);
-    expect(api.orderCalls, hasLength(calls), reason: 'nothing was reloaded');
+    // Coming back reloads the first page once, quietly, with the same search and filter
+    expect(api.orderCalls, hasLength(calls + 1));
+    expect(api.orderCalls.last.q, 'abc');
+    expect(api.orderCalls.last.status, 'paid');
     await tester.pumpWidget(const SizedBox());
   });
 

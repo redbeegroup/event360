@@ -561,7 +561,8 @@ class L10nMy extends L10n {
   String get allOrders => 'အော်ဒါအားလုံး';
 
   @override
-  String get orderSearchHint => 'အမည်၊ ဖုန်း သို့ အော်ဒါနံပါတ် ရှာရန်';
+  String get orderSearchHint =>
+      'အမည်၊ ဖုန်းနံပါတ်အပြည့်အစုံ သို့ အော်ဒါနံပါတ် ရှာရန်';
 
   @override
   String get filterAll => 'အားလုံး';
@@ -685,13 +686,13 @@ class L10nMy extends L10n {
   String get paymentCard => 'ကတ်';
 
   @override
-  String get payouts => 'ငွေပေးချေမှုများ';
+  String get payouts => 'ငွေထုတ်ပေးမှုများ';
 
   @override
   String get earned => 'ရရှိငွေ';
 
   @override
-  String get paidOut => 'ပေးချေပြီး';
+  String get paidOut => 'ထုတ်ပေးပြီးငွေ';
 
   @override
   String get owedToYou => 'သင့်ကို ပေးရန်ကျန်';
@@ -712,10 +713,10 @@ class L10nMy extends L10n {
   String get salesBeforeRefunds => 'ငွေပြန်မအမ်းမီ ရောင်းရငွေ';
 
   @override
-  String get payoutHistory => 'ငွေပေးချေမှု မှတ်တမ်း';
+  String get payoutHistory => 'ငွေထုတ်ပေးမှု မှတ်တမ်း';
 
   @override
-  String get noPayouts => 'ငွေပေးချေမှု မရှိသေးပါ။';
+  String get noPayouts => 'ငွေထုတ်ပေးမှု မရှိသေးပါ။';
 
   @override
   String get voided => 'ပယ်ဖျက်ပြီး';
@@ -731,4 +732,18 @@ class L10nMy extends L10n {
 
   @override
   String get noSalesYet => 'ရောင်းရမှု မရှိသေးပါ';
+
+  @override
+  String get revenueCaption =>
+      'လက်မှတ်ရောင်းရငွေသည် လျှော့စျေး မနုတ်မီ ငွေဖြစ်ပါသည်';
+
+  @override
+  String get refundedAmount => 'ပြန်အမ်းငွေ';
+
+  @override
+  String get discountsIncluded =>
+      'ပေးထားသော လျှော့စျေး (ရောင်းရငွေထဲမှ နုတ်ပြီးသား)';
+
+  @override
+  String get balance => 'လက်ကျန်';
 }

@@ -71,8 +71,11 @@ String holdLine(L10n t, DateTime hold, DateTime now, String lang) {
 
 /// Sales totals and ticket types (Summary), and a searchable, paged list of orders (Orders). View only.
 class SalesTab extends ConsumerStatefulWidget {
-  const SalesTab({super.key, required this.k, this.openOrders});
+  const SalesTab({super.key, required this.k, this.openOrders, this.shown});
   final EventKey k;
+
+  /// Counts the times this tab became the visible one again; the event screen owns it.
+  final ValueNotifier<int>? shown;
 
   /// Counts requests to show the Orders view (the Overview link); the event screen owns it.
   final ValueNotifier<int>? openOrders;
@@ -84,7 +87,10 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
   final _search = TextEditingController();
   final _scroll = ScrollController();
   Timer? _timer;
+  // After a quiet refetch the triggers (Orders link, tab shown again) wait this long before the next one.
+  Timer? _cooling;
   bool _showOrders = false;
+  bool _totalsFailed = false;
 
   // Order list state. [_seq] numbers each request series; an answer that is not the latest is dropped.
   String _typed = '';
@@ -117,19 +123,33 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
       _showOrders = n.value > 0;
       n.addListener(_onOpenOrders);
     }
+    widget.shown?.addListener(_quietRefetch);
   }
 
   @override
   void dispose() {
     widget.openOrders?.removeListener(_onOpenOrders);
+    widget.shown?.removeListener(_quietRefetch);
     _timer?.cancel();
+    _cooling?.cancel();
     _scroll.dispose();
     _search.dispose();
     super.dispose();
   }
 
   void _onOpenOrders() {
-    if (mounted) setState(() => _showOrders = true);
+    if (!mounted) return;
+    setState(() => _showOrders = true);
+    _quietRefetch();
+  }
+
+  /// This tab is kept alive, so it would otherwise show what it fetched on the last visit. Totals and the first
+  /// page are fetched again without blanking the rows; at most once every 5 seconds.
+  void _quietRefetch() {
+    if (!mounted || _cooling?.isActive == true) return;
+    _cooling = Timer(const Duration(seconds: 5), () {});
+    ref.invalidate(eventSalesProvider(widget.k));
+    if (_started) _loadFirst(keep: true);
   }
 
   String? get _status => _filters.firstWhere((f) => f.$1 == _filter).$2;
@@ -262,6 +282,12 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
     final theme = Theme.of(context);
     final sales = ref.watch(eventSalesProvider(widget.k));
     final data = sales.value;
+    // The hint stays through the reload that follows, and goes with the next answer that works.
+    if (sales.hasError && sales.hasValue) {
+      _totalsFailed = true;
+    } else if (sales.hasValue && !sales.isLoading) {
+      _totalsFailed = false;
+    }
     if (data == null) {
       return sales.hasError ? loadError(t, _refresh) : const Center(child: CircularProgressIndicator());
     }
@@ -320,9 +346,12 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
           const SizedBox(height: 10),
           tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded'),
         ]),
+        if (_totalsFailed)
+          Padding(padding: const EdgeInsets.fromLTRB(4, 8, 4, 0), child: Text(t.refreshFailed, key: const Key('salesRefreshFailed'), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error))),
         const SizedBox(height: 16),
         Text(t.byTicketType, style: theme.textTheme.titleMedium),
         for (final x in types) _TypeRow(type: x, lang: lang),
+        if (types.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(4, 8, 4, 0), child: Text(t.revenueCaption, key: const Key('revenueCaption'), style: theme.textTheme.bodySmall)),
       ]),
     );
   }
@@ -364,17 +393,13 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
       ]),
     );
     if (!s.hasPaidTypes) {
-      return Column(children: [
-        header,
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(padding: const EdgeInsets.all(24), physics: const AlwaysScrollableScrollPhysics(), children: [
-              Text(t.ordersEmpty, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
-            ]),
-          ),
-        ),
-      ]);
+      // Nothing to search or filter: no field, no chips, so no request can be started from here.
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(padding: const EdgeInsets.all(24), physics: const AlwaysScrollableScrollPhysics(), children: [
+          Text(t.ordersEmpty, key: const Key('ordersEmpty'), textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+        ]),
+      );
     }
     final footer = _footer(t, theme);
     return Column(children: [

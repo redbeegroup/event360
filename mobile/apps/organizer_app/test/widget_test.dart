@@ -447,7 +447,7 @@ class FakeApi extends Event360Api {
         'owedMmk': orgId == 'o2' ? 777000 : 600000,
         'reconciled': true,
         'events': [
-          {'eventId': 'pe1', 'title': orgId == 'o2' ? 'Mandalay Night Market' : 'Inya Lake Live', 'grossMmk': 1700000, 'discountMmk': 100000, 'commissionMmk': 80000, 'refundsMmk': 20000, 'netMmk': 1500000},
+          {'eventId': 'pe1', 'title': orgId == 'o2' ? 'Mandalay Night Market' : 'Inya Lake Live', 'grossMmk': 1600000, 'discountMmk': 100000, 'commissionMmk': 80000, 'refundsMmk': 20000, 'netMmk': 1500000},
           {'eventId': 'pe2', 'title': 'Thingyan Gala', 'grossMmk': 50000, 'discountMmk': 0, 'commissionMmk': 2500, 'refundsMmk': 0, 'netMmk': 47500},
         ],
         'payouts': orgId == 'o2'

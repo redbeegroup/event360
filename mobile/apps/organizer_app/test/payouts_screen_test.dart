@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/router.dart';
+import 'package:organizer_app/l10n/app_localizations.dart';
 import 'package:organizer_app/main.dart';
 
 import 'widget_test.dart' hide main;
@@ -59,21 +60,40 @@ void main() {
     expect(key('reconcileNote'), findsNothing);
   });
 
-  testWidgets('event row shows the net and expands to the four lines', (tester) async {
+  testWidgets('event row shows the net and expands to lines that add up to it', (tester) async {
     await openPayouts(tester);
     expect(find.text('Inya Lake Live'), findsOneWidget);
     expect(textOf(tester, 'payoutNet-pe1'), '1,500,000 MMK');
     expect(find.text('Sales before refunds'), findsNothing);
     await tester.tap(key('payoutEvent-pe1'));
     await tester.pumpAndSettle();
-    expect(find.text('Sales before refunds'), findsOneWidget);
-    expect(find.text('1,700,000 MMK'), findsOneWidget);
-    expect(find.text('Discounts'), findsOneWidget);
-    expect(find.text('100,000 MMK'), findsOneWidget);
-    expect(find.text('Commission'), findsOneWidget);
-    expect(find.text('80,000 MMK'), findsOneWidget);
-    expect(find.text('Refunds'), findsOneWidget);
-    expect(find.text('20,000 MMK'), findsOneWidget);
+    expect(textOf(tester, 'payoutLine-gross-pe1'), '1,600,000 MMK');
+    expect(textOf(tester, 'payoutLine-refunds-pe1'), '− 20,000 MMK');
+    expect(textOf(tester, 'payoutLine-commission-pe1'), '− 80,000 MMK');
+    expect(textOf(tester, 'payoutLine-net-pe1'), '1,500,000 MMK');
+    expect(textOf(tester, 'payoutLine-discounts-pe1'), '100,000 MMK');
+    for (final label in ['Sales before refunds', 'Refunded', 'Commission', 'Net to you', 'Discounts given (already taken off sales)']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    // Discounts come last and are not part of the sum
+    final y = [for (final id in ['gross', 'refunds', 'commission', 'net', 'discounts']) tester.getTopLeft(key('payoutLine-$id-pe1')).dy];
+    expect(y, orderedEquals([...y]..sort()));
+    int n(String id) => int.parse(textOf(tester, 'payoutLine-$id-pe1').replaceAll(RegExp(r'[^0-9]'), ''));
+    expect(n('gross') - n('refunds') - n('commission'), n('net'), reason: 'the displayed lines sum to the displayed net');
+  });
+
+  testWidgets('a debt is labelled Balance and reads "You owe Event 360"', (tester) async {
+    await openPayouts(tester, setup: (a) => a.payoutData = {...a.payoutsFor('o1'), 'owedMmk': -120000});
+    expect(find.text('Balance'), findsOneWidget);
+    expect(textOf(tester, 'payoutTile-owed'), 'You owe Event 360 120,000 MMK');
+  });
+
+  test('Myanmar: payouts and paid out differ from payments and paid', () {
+    final my = lookupL10n(const Locale('my')), en = lookupL10n(const Locale('en'));
+    expect(my.payouts, isNot(my.payments));
+    expect(my.paidOut, isNot(my.filterPaid));
+    expect(my.payoutHistory, isNot(my.payments));
+    expect(en.payouts, isNot(en.payments));
   });
 
   testWidgets('history rows show date, amount, method, reference and note', (tester) async {
@@ -209,7 +229,7 @@ void main() {
   testWidgets('Myanmar: the screen reads in Myanmar', (tester) async {
     await openPayouts(tester, lang: 'my', setup: (a) => a.payoutData = {...a.payoutsFor('o1'), 'owedMmk': -5000, 'reconciled': false});
     expect(find.text('ရရှိငွေ'), findsOneWidget);
-    expect(find.text('ပေးချေပြီး'), findsOneWidget);
+    expect(find.text('ထုတ်ပေးပြီးငွေ'), findsOneWidget);
     expect(textOf(tester, 'payoutTile-owed'), contains('Event 360'));
     expect(key('reconcileNote'), findsOneWidget);
   });

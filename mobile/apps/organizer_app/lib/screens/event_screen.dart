@@ -30,12 +30,17 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
   final _retired = <TabController>[];
   // Bumped by Overview's "All orders": the Sales tab then shows its Orders view.
   final _openOrders = ValueNotifier<int>(0);
+  // Bumped when the Sales tab becomes the visible tab again: it then fetches fresh totals and orders.
+  final _salesShown = ValueNotifier<int>(0);
+  int _lastIndex = 0;
   // The Sales tab keeps its search, filter and scroll when the Seats tab appears and the pages are rebuilt.
   final _salesKey = GlobalKey();
 
   @override
   void dispose() {
+    _tabs?.removeListener(_onTab);
     _openOrders.dispose();
+    _salesShown.dispose();
     _tabs?.dispose();
     for (final c in _retired) {
       c.dispose();
@@ -52,8 +57,11 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
     final current = old == null ? null : _ids[old.index];
     final index = current == null ? 0 : ids.indexOf(current).clamp(0, ids.length - 1);
     final next = TabController(length: ids.length, vsync: this, initialIndex: index);
+    old?.removeListener(_onTab);
     _tabs = next;
     _ids = ids;
+    _lastIndex = next.index;
+    next.addListener(_onTab);
     if (old != null) {
       _retired.add(old);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,6 +69,13 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
       });
     }
     return next;
+  }
+
+  void _onTab() {
+    final c = _tabs;
+    if (c == null) return;
+    if (c.index != _lastIndex && c.index == _ids.indexOf('sales')) _salesShown.value++;
+    _lastIndex = c.index;
   }
 
   void _openSales() {
@@ -102,7 +117,7 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
         OverviewTab(k: k, onAllOrders: _openSales),
         GuestsTab(k: k, canEdit: org.canEdit, event: event),
         if (hasSeats) SeatsTab(k: k, canEdit: org.canEdit),
-        SalesTab(key: _salesKey, k: k, openOrders: _openOrders),
+        SalesTab(key: _salesKey, k: k, openOrders: _openOrders, shown: _salesShown),
         DoorTab(k: k, canEdit: org.canEdit),
         AnnounceTab(k: k, canEdit: org.canEdit),
         PromosTab(k: k, canEdit: org.canEdit),

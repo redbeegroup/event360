@@ -581,7 +581,8 @@ class L10nEn extends L10n {
   String get allOrders => 'All orders';
 
   @override
-  String get orderSearchHint => 'Search name, phone or order number';
+  String get orderSearchHint =>
+      'Search name, full phone number or order number';
 
   @override
   String get filterAll => 'All';
@@ -749,4 +750,16 @@ class L10nEn extends L10n {
 
   @override
   String get noSalesYet => 'No sales yet';
+
+  @override
+  String get revenueCaption => 'Ticket revenue is before discounts';
+
+  @override
+  String get refundedAmount => 'Refunded';
+
+  @override
+  String get discountsIncluded => 'Discounts given (already taken off sales)';
+
+  @override
+  String get balance => 'Balance';
 }

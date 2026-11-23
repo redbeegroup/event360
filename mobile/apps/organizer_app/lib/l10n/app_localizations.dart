@@ -1084,7 +1084,7 @@ abstract class L10n {
   /// No description provided for @orderSearchHint.
   ///
   /// In en, this message translates to:
-  /// **'Search name, phone or order number'**
+  /// **'Search name, full phone number or order number'**
   String get orderSearchHint;
 
   /// No description provided for @filterAll.
@@ -1380,6 +1380,30 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'No sales yet'**
   String get noSalesYet;
+
+  /// No description provided for @revenueCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket revenue is before discounts'**
+  String get revenueCaption;
+
+  /// No description provided for @refundedAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get refundedAmount;
+
+  /// No description provided for @discountsIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Discounts given (already taken off sales)'**
+  String get discountsIncluded;
+
+  /// No description provided for @balance.
+  ///
+  /// In en, this message translates to:
+  /// **'Balance'**
+  String get balance;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

@@ -81,7 +81,7 @@ class _Body extends StatelessWidget {
         pair(tile('payoutTile-earned', t.earned, formatMmk(s.earnedMmk, lang)), tile('payoutTile-paidOut', t.paidOut, formatMmk(s.paidOutMmk, lang))),
         const SizedBox(height: 10),
         owing
-            ? tile('payoutTile-owed', '', t.youOwe(formatMmk(-s.owedMmk, lang)))
+            ? tile('payoutTile-owed', t.balance, t.youOwe(formatMmk(-s.owedMmk, lang)))
             : tile('payoutTile-owed', t.owedToYou, formatMmk(s.owedMmk, lang)),
         const SizedBox(height: 16),
         Text(t.byEvent, style: theme.textTheme.titleMedium),
@@ -111,14 +111,19 @@ class _EventRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     final theme = Theme.of(context);
-    Widget line(String label, int v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            const SizedBox(width: 12),
-            Flexible(child: Text(formatMmk(v, lang), textAlign: TextAlign.end, style: theme.textTheme.bodyMedium)),
-          ]),
-        );
+    // The lines read as a sum: sales before refunds, minus refunded, minus commission, equals net.
+    Widget line(String id, String label, int v, {bool minus = false, bool bold = false, bool quiet = false}) {
+      final style = bold ? theme.textTheme.titleSmall : quiet ? theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant) : theme.textTheme.bodyMedium;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Text(label, style: style)),
+          const SizedBox(width: 12),
+          Flexible(child: Text(minus ? '− ${formatMmk(v, lang)}' : formatMmk(v, lang), key: Key('payoutLine-$id-${row.eventId}'), textAlign: TextAlign.end, style: style)),
+        ]),
+      );
+    }
+
     return ExpansionTile(
       key: Key('payoutEvent-${row.eventId}'),
       tilePadding: EdgeInsets.zero,
@@ -128,10 +133,13 @@ class _EventRow extends StatelessWidget {
       title: Text(row.title, style: theme.textTheme.titleSmall),
       subtitle: Text(formatMmk(row.netMmk, lang), key: Key('payoutNet-${row.eventId}'), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
       children: [
-        line(t.salesBeforeRefunds, row.grossMmk),
-        line(t.discounts, row.discountMmk),
-        line(t.commission, row.commissionMmk),
-        line(t.refunds, row.refundsMmk),
+        line('gross', t.salesBeforeRefunds, row.grossMmk),
+        line('refunds', t.refundedAmount, row.refundsMmk, minus: true),
+        line('commission', t.commission, row.commissionMmk, minus: true),
+        const Divider(height: 12),
+        line('net', t.netToYou, row.netMmk, bold: true),
+        const SizedBox(height: 4),
+        line('discounts', t.discountsIncluded, row.discountMmk, quiet: true),
       ],
     );
   }

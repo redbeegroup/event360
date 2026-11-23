@@ -348,7 +348,7 @@
     }
   },
   "allOrders": "All orders",
-  "orderSearchHint": "Search name, phone or order number",
+  "orderSearchHint": "Search name, full phone number or order number",
   "filterAll": "All",
   "filterPaid": "Paid",
   "filterRefunded": "Refunded",
@@ -463,5 +463,9 @@
   "methodBANK": "Bank transfer",
   "methodOTHER": "Other",
   "reference": "Reference",
-  "noSalesYet": "No sales yet"
+  "noSalesYet": "No sales yet",
+  "revenueCaption": "Ticket revenue is before discounts",
+  "refundedAmount": "Refunded",
+  "discountsIncluded": "Discounts given (already taken off sales)",
+  "balance": "Balance"
 }
