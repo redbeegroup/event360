@@ -504,5 +504,10 @@
   "reasonGuestAlreadyCheckedIn": "This guest has already checked in",
   "reasonGuestAlreadyRevoked": "This ticket was already revoked",
   "reasonGuestTicketNotFound": "Guest ticket not found",
-  "reasonNotCheckedIn": "This ticket is not checked in"
+  "reasonNotCheckedIn": "This ticket is not checked in",
+  "somethingWentWrong": "Something went wrong. Try again.",
+  "promoPercentRange": "Percent must be between 1 and 100",
+  "promoDatesOrder": "The end must be after the start",
+  "announceNotPublished": "Announcements can only be sent for published events",
+  "announceDailyLimit": "You can send at most 3 announcements a day for an event"
 }

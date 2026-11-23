@@ -52,8 +52,9 @@ void main() {
       expect(errorText(en, ApiException(401, 'Unauthorized')), 'Please sign in again');
       expect(errorText(en, ApiException(403, 'Forbidden resource')), 'You no longer have access to this');
       expect(errorText(en, ApiException(404, 'Event not found')), 'This is no longer available');
-      expect(errorText(en, ApiException(500, 'Internal server error')), en.loadError);
-      expect(errorText(en, ApiException(409, 'Some brand new server sentence')), en.loadError);
+      for (final s in [500, 502, 400, 409, 429]) {
+        expect(errorText(en, ApiException(s, 'Some server sentence')), 'Something went wrong. Try again.', reason: '$s');
+      }
     });
     test('by reasonCode', () {
       const texts = {
@@ -76,11 +77,19 @@ void main() {
       // SeatsChanged carries the code too
       expect(errorText(en, const SeatsChanged('x', ['A:1:1'], reasonCode: 'SEATS_NOT_AVAILABLE')), 'Some of those seats are no longer free');
       // an unknown code reads as the generic text, never the server's words
-      expect(errorText(en, ApiException(409, 'raw server english', reasonCode: 'SOMETHING_NEW')), en.loadError);
+      expect(errorText(en, ApiException(409, 'raw server english', reasonCode: 'SOMETHING_NEW')), 'Something went wrong. Try again.');
     });
-    test('network errors and anything else read as the connection text', () {
+    test('promo and announcement codes', () {
+      expect(errorText(en, ApiException(409, 'x', reasonCode: 'PROMO_CODE_EXISTS')), 'This code already exists for the event');
+      expect(errorText(en, ApiException(400, 'x', reasonCode: 'PROMO_PERCENT_RANGE')), 'Percent must be between 1 and 100');
+      expect(errorText(en, ApiException(400, 'x', reasonCode: 'PROMO_DATES_ORDER')), 'The end must be after the start');
+      expect(errorText(en, ApiException(409, 'x', reasonCode: 'ANNOUNCE_NOT_PUBLISHED')), 'Announcements can only be sent for published events');
+      expect(errorText(en, ApiException(409, 'x', reasonCode: 'ANNOUNCE_DAILY_LIMIT')), 'You can send at most 3 announcements a day for an event');
+      expect(errorText(en, ApiException(409, 'x', reasonCode: 'EVENT_ENDED')), 'This event has ended');
+    });
+    test('only network errors read as the connection text', () {
       expect(errorText(en, ApiException(null, 'Network error')), en.loadError);
-      expect(errorText(en, StateError('boom')), en.loadError);
+      expect(errorText(en, StateError('boom')), 'Something went wrong. Try again.');
       expect(errorText(my, ApiException(null, 'Network error')), my.loadError);
     });
     test('only 403 and 404 are final (no Retry)', () {
@@ -136,6 +145,56 @@ void main() {
     });
   });
 
+  group('sign-out', () {
+    testWidgets('the next user does not see or reuse what the last one loaded', (tester) async {
+      final api = await pumpApp(tester);
+      await openEventTab(tester, 'tabGuests');
+      expect(find.text('Aung Min'), findsOneWidget);
+      final d = api.dashboardCalls, a = api.attendeesCalls;
+      await containerOf(tester).read(sessionProvider.notifier).signOut();
+      await tester.pumpAndSettle();
+      expect(find.text('Aung Min'), findsNothing);
+      api.attendeesList.removeWhere((x) => x['id'] == 'a1'); // user B's data differs
+      await tester.enterText(key('email'), 'b@yl.test');
+      await tester.enterText(key('password'), 'secret-123');
+      await tester.tap(key('signIn'));
+      await tester.pumpAndSettle();
+      await openEventTab(tester, 'tabGuests');
+      expect(api.dashboardCalls, greaterThan(d), reason: 'fetched again');
+      expect(api.attendeesCalls, greaterThan(a), reason: 'fetched again');
+      expect(find.text('Aung Min'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('after the session ended too', (tester) async {
+      final api = await pumpApp(tester);
+      await openEventTab(tester, 'tabGuests');
+      final a = api.attendeesCalls;
+      await api.expireSession();
+      await tester.pumpAndSettle();
+      await tester.enterText(key('email'), 'b@yl.test');
+      await tester.enterText(key('password'), 'secret-123');
+      await tester.tap(key('signIn'));
+      await tester.pumpAndSettle();
+      await openEventTab(tester, 'tabGuests');
+      expect(api.attendeesCalls, greaterThan(a));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('signing out on purpose while the session is already dead does not say it ended', (tester) async {
+      final api = await pumpApp(tester);
+      final c = containerOf(tester);
+      await c.read(prefsProvider).setString(pushTokenKey, 'tok');
+      api.sessionDead = true;
+      await c.read(sessionProvider.notifier).signOut();
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in with your organizer account'), findsOneWidget);
+      expect(find.text('Please sign in again'), findsNothing);
+      expect(c.read(sessionEndedProvider), isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   group('load error states', () {
     Future<void> overviewWith(WidgetTester tester, Object error, {String lang = 'en'}) async {
       await pumpApp(tester, lang: lang, configure: (a) => a.dashboardError = error);
@@ -160,6 +219,15 @@ void main() {
       await overviewWith(tester, ApiException(null, 'Network error'));
       expect(find.text("Couldn't load. Check your connection."), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
+      expect(find.byIcon(Icons.wifi_off), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a server error says something went wrong, with Retry and no wifi icon', (tester) async {
+      await overviewWith(tester, ApiException(500, 'Internal server error'));
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byIcon(Icons.wifi_off), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -281,7 +349,7 @@ void main() {
       await tester.tap(key('seatsIssue'));
       await tester.pumpAndSettle();
       await tester.enterText(key('guestName'), 'Daw Aye Aye Khin');
-      await tester.enterText(key('guestPhone'), '09 123 456 789');
+      await tester.enterText(key('guestPhone'), '09 123-456 789');
       await tester.tap(key('issueSubmit'));
       await tester.pumpAndSettle();
       expect(key('issueConfirm'), findsOneWidget);
@@ -289,7 +357,7 @@ void main() {
       expect({for (final b in label.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: label.text.toPlainText().length))) b.top.round()}.length, 1, reason: 'the button label is on one line');
       final p = tester.renderObject<RenderParagraph>(find.descendant(of: key('issueConfirmText'), matching: find.byType(RichText)));
       final text = p.text.toPlainText();
-      final at = text.indexOf('09 123 456 789');
+      final at = text.indexOf('09\u00A0123\u2011456\u00A0789');
       expect(at, greaterThanOrEqualTo(0), reason: text);
       final boxes = p.getBoxesForSelection(TextSelection(baseOffset: at, extentOffset: at + 14));
       expect({for (final b in boxes) b.top.round()}.length, 1, reason: 'the number sits on one line');
@@ -345,7 +413,9 @@ void main() {
       expect(typeAndSeat('Stalls', 'Stalls · Row C · Seat 4'), 'Stalls · Row C · Seat 4');
       expect(typeAndSeat('stalls', 'Stalls · Row C · Seat 4'), 'Stalls · Row C · Seat 4');
       expect(typeAndSeat('VIP', 'Stalls · Row C · Seat 4'), 'VIP · Stalls · Row C · Seat 4');
-      expect(typeAndSeat('Stall', 'Stalls · Row C · Seat 4'), 'Stall · Stalls · Row C · Seat 4', reason: 'a prefix of a longer word is not the same name');
+      expect(typeAndSeat('VIP', 'VIP Lounge · Row A · Seat 1'), 'VIP · VIP Lounge · Row A · Seat 1', reason: 'only the whole first part counts');
+      expect(typeAndSeat(' Stalls ', 'stalls · Row C'), 'stalls · Row C');
+      expect(typeAndSeat('Stall', 'Stalls · Row C · Seat 4'), 'Stall · Stalls · Row C · Seat 4');
       expect(typeAndSeat('Standing', ''), 'Standing');
     });
 

@@ -82,15 +82,28 @@ class SessionNotifier extends AsyncNotifier<List<OrgMembership>?> {
       }
       await ref.read(apiProvider).logout();
     } catch (_) {}
+    _dropCachedData();
+  }
+
+  /// Every data provider watches the API provider: rebuilding it drops what the last user had loaded (sales, guests, seats),
+  /// so the next person to sign in on this device never sees it, even for a moment.
+  void _dropCachedData() {
+    try {
+      ref.invalidate(apiProvider);
+    } catch (_) {}
   }
 
   Future<void> signIn(String email, String password) async {
     await ref.read(apiProvider).passwordLogin(email, password);
+    // Whatever was loaded (or failed to load) before this sign-in belongs to nobody now: start every data provider afresh.
+    _dropCachedData();
     ref.invalidateSelf();
     await future;
   }
 
   Future<void> signOut() async {
+    // Signed out first: a 401 from the calls below (a session that was already over) must not read as "session ended".
+    state = const AsyncData(null);
     final token = ref.read(prefsProvider).getString(pushTokenKey);
     if (token != null) {
       await ref.read(apiProvider).removeDevice(token).catchError((_) {});
@@ -98,7 +111,7 @@ class SessionNotifier extends AsyncNotifier<List<OrgMembership>?> {
       await ref.read(pushProvider).deleteToken().catchError((_) {});
     }
     await ref.read(apiProvider).logout();
-    state = const AsyncData(null);
+    _dropCachedData();
   }
 }
 

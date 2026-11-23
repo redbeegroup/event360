@@ -179,7 +179,7 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
       }
       return _Done(error: errorText(t, e));
     } catch (_) {
-      return _Done(error: t.loadError);
+      return _Done(error: t.somethingWentWrong);
     }
   }
 
@@ -269,15 +269,12 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
   }
 }
 
-/// "Stalls · Row C · Seat 4": a seat label that already starts with the ticket type's name is not given the name again.
+/// "Stalls · Row C · Seat 4": when the first part of the seat label is the ticket type's name (ignoring case) the name is not given again.
 String typeAndSeat(String type, String seat) {
   if (seat.isEmpty) return type;
-  if (type.isEmpty) return seat;
-  if (seat.toLowerCase().startsWith(type.toLowerCase())) {
-    final rest = seat.substring(type.length);
-    if (rest.isEmpty || RegExp(r'^[\s·,\-]').hasMatch(rest)) return seat; // a whole word, not "Stall" in "Stalls"
-  }
-  return '$type · $seat';
+  if (type.trim().isEmpty) return seat;
+  final first = seat.split(' · ').first.trim();
+  return first.toLowerCase() == type.trim().toLowerCase() ? seat : '$type · $seat';
 }
 
 String _seat(String lang, Attendee a) => a.seatLabel == null ? '' : pickLang(lang, a.seatLabel!, a.seatLabelMy);

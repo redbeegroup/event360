@@ -231,5 +231,10 @@
   "reasonGuestAlreadyCheckedIn": "ဤဧည့်သည် ဝင်ပြီးသား ဖြစ်ပါသည်",
   "reasonGuestAlreadyRevoked": "ဤလက်မှတ်ကို ပယ်ဖျက်ပြီးသား ဖြစ်ပါသည်",
   "reasonGuestTicketNotFound": "ဧည့်သည်လက်မှတ် ရှာမတွေ့ပါ",
-  "reasonNotCheckedIn": "ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်ရသေးပါ"
+  "reasonNotCheckedIn": "ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်ရသေးပါ",
+  "somethingWentWrong": "တစ်ခုခု မှားသွားပါသည်။ ထပ်ကြိုးစားပါ",
+  "promoPercentRange": "ရာခိုင်နှုန်းသည် ၁ မှ ၁၀၀ ကြား ဖြစ်ရမည်",
+  "promoDatesOrder": "ပြီးဆုံးချိန်သည် စတင်ချိန်ထက် နောက်ကျရမည်",
+  "announceNotPublished": "ကြေညာချက်ကို ထုတ်ပြန်ပြီးသော ပွဲများအတွက်သာ ပို့နိုင်ပါသည်",
+  "announceDailyLimit": "ပွဲတစ်ခုအတွက် တစ်ရက်လျှင် ကြေညာချက် ၃ ခုအထိသာ ပို့နိုင်ပါသည်"
 }

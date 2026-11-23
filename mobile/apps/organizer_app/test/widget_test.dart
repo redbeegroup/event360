@@ -64,6 +64,13 @@ Map<String, dynamic> _guest(String id, String name, String seat, {String status 
 class FakeApi extends Event360Api {
   FakeApi(this.store) : super(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'http://fake'), store);
   final MemoryTokenStore store;
+
+  /// The real apiProvider builds a new client when it is invalidated; riverpod tells dependents only of a changed value.
+  /// A fake that is never equal to itself lets invalidating the override behave the same way.
+  @override
+  bool operator ==(Object other) => false;
+  @override
+  int get hashCode => identityHashCode(this);
   String role = 'ORG_OWNER';
 
   /// Organizations where the user is only a manager (the first one gets [role]).
@@ -125,6 +132,19 @@ class FakeApi extends Event360Api {
   Object? dashboardError, attendeesError, seatingError, holdError;
 
   /// The server ended the session: the tokens are gone and the client tells the app, as the real client does after a 401 that the refresh could not fix.
+  /// The next removeDevice finds the session already over (as the real client does: the hook, then a 401).
+  bool sessionDead = false;
+  int dashboardCalls = 0, attendeesCalls = 0;
+
+  @override
+  Future<void> removeDevice(String pushToken) async {
+    if (sessionDead) {
+      onSessionExpired?.call();
+      throw ApiException(401, 'Unauthorized');
+    }
+    devices.removeWhere((d) => d.endsWith(':$pushToken'));
+  }
+
   Future<void> expireSession() async {
     await store.clear();
     onSessionExpired?.call();
@@ -190,6 +210,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<EventDashboard> eventDashboard(String orgId, String eventId) async {
+    dashboardCalls++;
     if (dashboardError != null) throw dashboardError!;
     return _dashboard();
   }
@@ -254,7 +275,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<void> createPromoCode(String orgId, String eventId, {required String code, required String kind, required int value, int? maxUses}) async {
-    if (promos.any((p) => p['code'] == code.toUpperCase())) throw ApiException(409, 'This code already exists for the event');
+    if (promos.any((p) => p['code'] == code.toUpperCase())) throw ApiException(409, 'This code already exists for the event', reasonCode: 'PROMO_CODE_EXISTS');
     promos.add({'id': 'p${promos.length}', 'code': code.toUpperCase(), 'kind': kind, 'value': value, 'maxUses': maxUses, 'used': 0, 'isActive': true, 'orders': 0, 'discountGivenMmk': 0});
   }
 
@@ -266,6 +287,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<List<Attendee>> attendees(String orgId, String eventId) async {
+    attendeesCalls++;
     if (attendeesError != null) throw attendeesError!;
     return attendeesList.map(Attendee.fromJson).toList();
   }
@@ -577,8 +599,6 @@ class FakeApi extends Event360Api {
   @override
   Future<void> registerDevice(String pushToken, String platform, {String appId = 'user_app'}) async => devices.add('$appId:$pushToken');
 
-  @override
-  Future<void> removeDevice(String pushToken) async => devices.removeWhere((d) => d.endsWith(':$pushToken'));
 }
 
 /// Taps a seat of the fixture map where it is drawn. When the map is zoomed out (large text leaves it little

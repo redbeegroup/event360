@@ -167,7 +167,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClie
       return _Outcome(_Result.failed, errorText(t, e));
     } catch (_) {
       // Anything unexpected (a parsing error, say) still ends the busy state and lets the sheet close.
-      return _Outcome(_Result.failed, t.loadError);
+      return _Outcome(_Result.failed, t.somethingWentWrong);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -261,7 +261,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClie
         SnackBar(content: Text(errorText(t, e))),
       );
     } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text(t.loadError)));
+      messenger.showSnackBar(SnackBar(content: Text(t.somethingWentWrong)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1018,7 +1018,7 @@ class _IssueSheetState extends State<_IssueSheet> {
         builder: (ctx) => AlertDialog(
           content: Text(
             // The number never breaks across lines: its spaces do not wrap
-            t.issueConfirmText(widget.count, phone.replaceAll(RegExp(r'\s+'), '\u00A0'), _n(context, widget.count)),
+            t.issueConfirmText(widget.count, phone.replaceAll(RegExp(r'\s+'), '\u00A0').replaceAll('-', '\u2011'), _n(context, widget.count)),
             key: const Key('issueConfirmText'),
           ),
           actions: [

@@ -1494,6 +1494,36 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'This ticket is not checked in'**
   String get reasonNotCheckedIn;
+
+  /// No description provided for @somethingWentWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Try again.'**
+  String get somethingWentWrong;
+
+  /// No description provided for @promoPercentRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Percent must be between 1 and 100'**
+  String get promoPercentRange;
+
+  /// No description provided for @promoDatesOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'The end must be after the start'**
+  String get promoDatesOrder;
+
+  /// No description provided for @announceNotPublished.
+  ///
+  /// In en, this message translates to:
+  /// **'Announcements can only be sent for published events'**
+  String get announceNotPublished;
+
+  /// No description provided for @announceDailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'You can send at most 3 announcements a day for an event'**
+  String get announceDailyLimit;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

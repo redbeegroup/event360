@@ -49,8 +49,7 @@ class _PromosState extends ConsumerState<PromosTab> {
       }
       ref.invalidate(promoCodesProvider(widget.k));
     } on ApiException catch (e) {
-      // The one refusal the server gives here is a code that already exists
-      if (mounted) setState(() => _error = e.status == 409 ? L10n.of(context).promoCodeExists : errorText(L10n.of(context), e));
+      if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

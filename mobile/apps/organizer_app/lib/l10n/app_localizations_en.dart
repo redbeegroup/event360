@@ -815,4 +815,21 @@ class L10nEn extends L10n {
 
   @override
   String get reasonNotCheckedIn => 'This ticket is not checked in';
+
+  @override
+  String get somethingWentWrong => 'Something went wrong. Try again.';
+
+  @override
+  String get promoPercentRange => 'Percent must be between 1 and 100';
+
+  @override
+  String get promoDatesOrder => 'The end must be after the start';
+
+  @override
+  String get announceNotPublished =>
+      'Announcements can only be sent for published events';
+
+  @override
+  String get announceDailyLimit =>
+      'You can send at most 3 announcements a day for an event';
 }

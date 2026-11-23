@@ -799,4 +799,21 @@ class L10nMy extends L10n {
 
   @override
   String get reasonNotCheckedIn => 'ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်ရသေးပါ';
+
+  @override
+  String get somethingWentWrong => 'တစ်ခုခု မှားသွားပါသည်။ ထပ်ကြိုးစားပါ';
+
+  @override
+  String get promoPercentRange => 'ရာခိုင်နှုန်းသည် ၁ မှ ၁၀၀ ကြား ဖြစ်ရမည်';
+
+  @override
+  String get promoDatesOrder => 'ပြီးဆုံးချိန်သည် စတင်ချိန်ထက် နောက်ကျရမည်';
+
+  @override
+  String get announceNotPublished =>
+      'ကြေညာချက်ကို ထုတ်ပြန်ပြီးသော ပွဲများအတွက်သာ ပို့နိုင်ပါသည်';
+
+  @override
+  String get announceDailyLimit =>
+      'ပွဲတစ်ခုအတွက် တစ်ရက်လျှင် ကြေညာချက် ၃ ခုအထိသာ ပို့နိုင်ပါသည်';
 }

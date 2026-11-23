@@ -553,7 +553,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls, contains('hold:A:3:1:Sponsor'));
       expect(
-        find.text("Couldn't load. Check your connection."),
+        find.text('Something went wrong. Try again.'),
         findsOneWidget,
       );
       expect(
@@ -579,7 +579,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls, contains('revokeGuest:g1'));
       expect(
-        find.text("Couldn't load. Check your connection."),
+        find.text('Something went wrong. Try again.'),
         findsOneWidget,
       );
       await tester.pump(const Duration(seconds: 5));

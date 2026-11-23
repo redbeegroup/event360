@@ -9,7 +9,7 @@ import '../../l10n/app_localizations.dart';
 Widget loadError(L10n t, VoidCallback retry, [Object? error]) {
   final noRetry = isFinalError(error);
   return MessageView(
-    icon: noRetry ? Icons.info_outline : Icons.wifi_off,
+    icon: noRetry ? Icons.info_outline : (error == null || isNetworkError(error)) ? Icons.wifi_off : Icons.error_outline,
     message: error == null ? t.loadError : errorText(t, error),
     actionLabel: noRetry ? null : t.retry,
     onAction: noRetry ? null : retry,

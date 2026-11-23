@@ -527,3 +527,8 @@
 "reasonGuestAlreadyRevoked","This ticket was already revoked","ဤလက်မှတ်ကို ပယ်ဖျက်ပြီးသား ဖြစ်ပါသည်","organizer app"
 "reasonGuestTicketNotFound","Guest ticket not found","ဧည့်သည်လက်မှတ် ရှာမတွေ့ပါ","organizer app"
 "reasonNotCheckedIn","This ticket is not checked in","ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်ရသေးပါ","organizer app"
+"somethingWentWrong","Something went wrong. Try again.","တစ်ခုခု မှားသွားပါသည်။ ထပ်ကြိုးစားပါ","organizer app"
+"promoPercentRange","Percent must be between 1 and 100","ရာခိုင်နှုန်းသည် ၁ မှ ၁၀၀ ကြား ဖြစ်ရမည်","organizer app"
+"promoDatesOrder","The end must be after the start","ပြီးဆုံးချိန်သည် စတင်ချိန်ထက် နောက်ကျရမည်","organizer app"
+"announceNotPublished","Announcements can only be sent for published events","ကြေညာချက်ကို ထုတ်ပြန်ပြီးသော ပွဲများအတွက်သာ ပို့နိုင်ပါသည်","organizer app"
+"announceDailyLimit","You can send at most 3 announcements a day for an event","ပွဲတစ်ခုအတွက် တစ်ရက်လျှင် ကြေညာချက် ၃ ခုအထိသာ ပို့နိုင်ပါသည်","organizer app"
