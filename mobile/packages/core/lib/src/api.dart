@@ -377,6 +377,20 @@ class Event360Api {
         (d) => ((d as Map<String, dynamic>)['recent'] as List).map((x) => RecentOrder.fromJson(x as Map<String, dynamic>)).toList(),
       );
 
+  Future<EventSales> eventSales(String orgId, String eventId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/sales'), (d) => EventSales.fromJson(d as Map<String, dynamic>));
+
+  Future<OrgOrderPage> eventOrders(String orgId, String eventId, {String? status, String? q, String? cursor, int limit = 30}) => _call(
+        () => _dio.get('/organizations/$orgId/events/$eventId/orders', queryParameters: {if (status != null) 'status': status, if (q != null) 'q': q, if (cursor != null) 'cursor': cursor, 'limit': limit}),
+        (d) => OrgOrderPage.fromJson(d as Map<String, dynamic>),
+      );
+
+  Future<OrgOrderDetail> eventOrder(String orgId, String eventId, String orderId) =>
+      _call(() => _dio.get('/organizations/$orgId/events/$eventId/orders/$orderId'), (d) => OrgOrderDetail.fromJson(d as Map<String, dynamic>));
+
+  Future<PayoutSummary> payoutSummary(String orgId) =>
+      _call(() => _dio.get('/organizations/$orgId/payouts/summary'), (d) => PayoutSummary.fromJson(d as Map<String, dynamic>));
+
   Future<List<CrewCode>> crewCodes(String orgId, String eventId) =>
       _call(() => _dio.get('/organizations/$orgId/events/$eventId/crew-codes'), (d) => (d as List).map((x) => CrewCode.fromJson(x as Map<String, dynamic>)).toList());
 

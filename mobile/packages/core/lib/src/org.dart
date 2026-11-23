@@ -17,6 +17,9 @@ class OrgMembership {
   bool get canEdit => role == 'ORG_OWNER' || role == 'ORG_MANAGER';
   bool get canView => canEdit || role == 'ORG_FINANCE';
 
+  /// Payouts are money owed to the organization: owners and finance only.
+  bool get canSeePayouts => role == 'ORG_OWNER' || role == 'ORG_FINANCE';
+
   factory OrgMembership.fromJson(Map<String, dynamic> j) => OrgMembership(
         id: j['id'] as String,
         name: j['name'] as String,
@@ -344,4 +347,177 @@ class SeatsChanged implements Exception {
 
   @override
   String toString() => message;
+}
+
+class SalesTicketType {
+  SalesTicketType({required this.id, required this.name, required this.priceMmk, required this.basePriceMmk, this.nextPriceMmk, this.nextPriceAt, required this.quota, required this.sold, required this.revenueMmk});
+  final String id, name;
+  final int priceMmk, basePriceMmk, quota, sold, revenueMmk;
+  final int? nextPriceMmk;
+  final DateTime? nextPriceAt;
+  factory SalesTicketType.fromJson(Map<String, dynamic> j) {
+    final next = j['nextPrice'] as Map<String, dynamic>?;
+    return SalesTicketType(
+      id: j['id'] as String,
+      name: j['name'] as String,
+      priceMmk: _i(j['priceMmk']),
+      basePriceMmk: _i(j['basePriceMmk']),
+      nextPriceMmk: next == null ? null : _i(next['priceMmk']),
+      nextPriceAt: next == null ? null : _dtn(next['startsAt']),
+      quota: _i(j['quota']),
+      sold: _i(j['sold']),
+      revenueMmk: _i(j['revenueMmk']),
+    );
+  }
+}
+
+class EventSales {
+  EventSales({required this.types, required this.paidOrders, required this.grossMmk, required this.commissionMmk, required this.netMmk, required this.refundedOrders, required this.refundedMmk});
+  final List<SalesTicketType> types;
+  final int paidOrders, grossMmk, commissionMmk, netMmk, refundedOrders, refundedMmk;
+
+  /// False for a free event, where money figures are not worth showing.
+  bool get hasPaidTypes => types.any((t) => t.priceMmk > 0 || t.basePriceMmk > 0);
+
+  factory EventSales.fromJson(Map<String, dynamic> j) => EventSales(
+        types: [for (final t in (j['ticketTypes'] as List? ?? const []).cast<Map<String, dynamic>>()) SalesTicketType.fromJson(t)],
+        paidOrders: _i(j['paidOrders']),
+        grossMmk: _i(j['grossMmk']),
+        commissionMmk: _i(j['commissionMmk']),
+        netMmk: _i(j['netMmk']),
+        refundedOrders: _i(j['refundedOrders']),
+        refundedMmk: _i(j['refundedMmk']),
+      );
+}
+
+class OrgOrderRow {
+  OrgOrderRow({required this.id, required this.number, required this.status, required this.needsReview, required this.createdAt, this.paidAt, this.holdExpiresAt, required this.totalMmk, required this.discountMmk, required this.quantity, this.buyerName, this.buyerPhone});
+  final String id, number, status;
+  final bool needsReview;
+  final DateTime createdAt;
+  final DateTime? paidAt, holdExpiresAt;
+  final int totalMmk, discountMmk, quantity;
+  final String? buyerName, buyerPhone;
+  factory OrgOrderRow.fromJson(Map<String, dynamic> j) {
+    final b = j['buyer'] as Map<String, dynamic>? ?? const {};
+    return OrgOrderRow(
+      id: j['id'] as String,
+      number: j['number'] as String? ?? '',
+      status: j['status'] as String,
+      needsReview: j['needsReview'] as bool? ?? false,
+      createdAt: _dt(j['createdAt']),
+      paidAt: _dtn(j['paidAt']),
+      holdExpiresAt: _dtn(j['holdExpiresAt']),
+      totalMmk: _i(j['totalMmk']),
+      discountMmk: _i(j['discountMmk']),
+      quantity: _i(j['quantity']),
+      buyerName: b['name'] as String?,
+      buyerPhone: b['phone'] as String?,
+    );
+  }
+}
+
+class OrgOrderPage {
+  OrgOrderPage({required this.orders, this.nextCursor});
+  final List<OrgOrderRow> orders;
+  final String? nextCursor;
+  factory OrgOrderPage.fromJson(Map<String, dynamic> j) => OrgOrderPage(
+        orders: [for (final o in (j['orders'] as List? ?? const []).cast<Map<String, dynamic>>()) OrgOrderRow.fromJson(o)],
+        nextCursor: j['nextCursor'] as String?,
+      );
+}
+
+class OrgOrderItem {
+  OrgOrderItem({required this.name, this.nameMy, required this.quantity, required this.unitPriceMmk, this.seats = const []});
+  final String name;
+  final String? nameMy;
+  final int quantity, unitPriceMmk;
+  final List<({String label, String? labelMy})> seats;
+  factory OrgOrderItem.fromJson(Map<String, dynamic> j) => OrgOrderItem(
+        name: j['name'] as String,
+        nameMy: j['nameMy'] as String?,
+        quantity: _i(j['quantity']),
+        unitPriceMmk: _i(j['unitPriceMmk']),
+        seats: [for (final s in (j['seats'] as List? ?? const []).cast<Map<String, dynamic>>()) (label: s['label'] as String, labelMy: s['labelMy'] as String?)],
+      );
+}
+
+class OrgOrderDetail {
+  OrgOrderDetail({required this.row, required this.subtotalMmk, required this.commissionMmk, this.promoCode, this.groupDiscountBp, required this.items, required this.payments, required this.refunds, required this.ticketsTotal, required this.ticketsValid, required this.ticketsCheckedIn, required this.ticketsVoid});
+  final OrgOrderRow row;
+  final int subtotalMmk, commissionMmk;
+  final String? promoCode;
+  final int? groupDiscountBp;
+  final List<OrgOrderItem> items;
+  final List<({String provider, String status, DateTime createdAt})> payments;
+  final List<({String status, int amountMmk, DateTime createdAt, DateTime? completedAt})> refunds;
+  final int ticketsTotal, ticketsValid, ticketsCheckedIn, ticketsVoid;
+  factory OrgOrderDetail.fromJson(Map<String, dynamic> j) {
+    final t = j['tickets'] as Map<String, dynamic>? ?? const {};
+    return OrgOrderDetail(
+      row: OrgOrderRow.fromJson(j),
+      subtotalMmk: _i(j['subtotalMmk']),
+      commissionMmk: _i(j['commissionMmk']),
+      promoCode: j['promoCode'] as String?,
+      groupDiscountBp: (j['groupDiscountBp'] as num?)?.toInt(),
+      items: [for (final i in (j['items'] as List? ?? const []).cast<Map<String, dynamic>>()) OrgOrderItem.fromJson(i)],
+      payments: [for (final p in (j['payments'] as List? ?? const []).cast<Map<String, dynamic>>()) (provider: p['provider'] as String, status: p['status'] as String, createdAt: _dt(p['createdAt']))],
+      refunds: [for (final r in (j['refunds'] as List? ?? const []).cast<Map<String, dynamic>>()) (status: r['status'] as String, amountMmk: _i(r['amountMmk']), createdAt: _dt(r['createdAt']), completedAt: _dtn(r['completedAt']))],
+      ticketsTotal: _i(t['total']),
+      ticketsValid: _i(t['valid']),
+      ticketsCheckedIn: _i(t['checkedIn']),
+      ticketsVoid: _i(t['void']),
+    );
+  }
+}
+
+class PayoutEventRow {
+  PayoutEventRow({required this.eventId, required this.title, required this.grossMmk, required this.discountMmk, required this.commissionMmk, required this.refundsMmk, required this.netMmk});
+  final String eventId, title;
+  final int grossMmk, discountMmk, commissionMmk, refundsMmk, netMmk;
+  factory PayoutEventRow.fromJson(Map<String, dynamic> j) => PayoutEventRow(
+        eventId: j['eventId'] as String,
+        title: j['title'] as String,
+        grossMmk: _i(j['grossMmk']),
+        discountMmk: _i(j['discountMmk']),
+        commissionMmk: _i(j['commissionMmk']),
+        refundsMmk: _i(j['refundsMmk']),
+        netMmk: _i(j['netMmk']),
+      );
+}
+
+class PayoutRow {
+  PayoutRow({required this.id, required this.method, required this.amountMmk, required this.paidAt, this.reference, this.note, this.voidReason, this.voidedAt});
+  final String id, method;
+  final int amountMmk;
+  final DateTime paidAt;
+  final String? reference, note, voidReason;
+  final DateTime? voidedAt;
+  bool get isVoided => voidedAt != null;
+  factory PayoutRow.fromJson(Map<String, dynamic> j) => PayoutRow(
+        id: j['id'] as String,
+        method: j['method'] as String,
+        amountMmk: _i(j['amountMmk']),
+        paidAt: _dt(j['paidAt']),
+        reference: j['reference'] as String?,
+        note: j['note'] as String?,
+        voidReason: j['voidReason'] as String?,
+        voidedAt: _dtn(j['voidedAt']),
+      );
+}
+
+class PayoutSummary {
+  PayoutSummary({required this.earnedMmk, required this.paidOutMmk, required this.owedMmk, required this.reconciled, required this.events, required this.payouts});
+  final int earnedMmk, paidOutMmk, owedMmk;
+  final bool reconciled;
+  final List<PayoutEventRow> events;
+  final List<PayoutRow> payouts;
+  factory PayoutSummary.fromJson(Map<String, dynamic> j) => PayoutSummary(
+        earnedMmk: _i(j['earnedMmk']),
+        paidOutMmk: _i(j['paidOutMmk']),
+        owedMmk: _i(j['owedMmk']),
+        reconciled: j['reconciled'] as bool? ?? true,
+        events: [for (final e in (j['events'] as List? ?? const []).cast<Map<String, dynamic>>()) PayoutEventRow.fromJson(e)],
+        payouts: [for (final p in (j['payouts'] as List? ?? const []).cast<Map<String, dynamic>>()) PayoutRow.fromJson(p)],
+      );
 }
