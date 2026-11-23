@@ -123,13 +123,13 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
       _showOrders = n.value > 0;
       n.addListener(_onOpenOrders);
     }
-    widget.shown?.addListener(_quietRefetch);
+    widget.shown?.addListener(_onShown);
   }
 
   @override
   void dispose() {
     widget.openOrders?.removeListener(_onOpenOrders);
-    widget.shown?.removeListener(_quietRefetch);
+    widget.shown?.removeListener(_onShown);
     _timer?.cancel();
     _cooling?.cancel();
     _scroll.dispose();
@@ -137,19 +137,24 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
     super.dispose();
   }
 
+  void _onShown() => _quietRefetch();
+
   void _onOpenOrders() {
     if (!mounted) return;
     setState(() => _showOrders = true);
-    _quietRefetch();
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    _quietRefetch(toTop: true);
   }
 
   /// This tab is kept alive, so it would otherwise show what it fetched on the last visit. Totals and the first
   /// page are fetched again without blanking the rows; at most once every 5 seconds.
-  void _quietRefetch() {
+  /// The totals are always fetched; the rows only when the list is at the top (or [toTop]), so a deep scroll is kept.
+  void _quietRefetch({bool toTop = false}) {
     if (!mounted || _cooling?.isActive == true) return;
     _cooling = Timer(const Duration(seconds: 5), () {});
     ref.invalidate(eventSalesProvider(widget.k));
-    if (_started) _loadFirst(keep: true);
+    final atTop = !_scroll.hasClients || _scroll.position.pixels <= 200;
+    if (_started && (toTop || atTop)) _loadFirst(keep: true);
   }
 
   String? get _status => _filters.firstWhere((f) => f.$1 == _filter).$2;

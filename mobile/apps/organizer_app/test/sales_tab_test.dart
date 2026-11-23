@@ -455,6 +455,32 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('returning while scrolled deep refetches totals but keeps rows and scroll; at the top the first page reloads', (tester) async {
+    final api = await openSales(tester);
+    await scrollForMore(tester, api);
+    await scrollForMore(tester, api);
+    final rows = rowCount(tester);
+    final offset = position(tester).pixels;
+    expect(offset, greaterThan(500));
+    api.orderCalls.clear();
+    final salesBefore = api.salesCalls;
+    await goOverview(tester);
+    await goSales(tester);
+    expect(api.salesCalls, salesBefore + 1);
+    expect(api.orderCalls, isEmpty);
+    expect(rowCount(tester), rows);
+    expect(position(tester).pixels, offset);
+    // At the top the first page is loaded again
+    position(tester).jumpTo(0);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await goOverview(tester);
+    await goSales(tester);
+    expect(api.orderCalls.length, 1);
+    expect(api.orderCalls.single.cursor, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a quiet refetch that fails keeps the rows and shows no error', (tester) async {
     final api = await openSales(tester);
     await goOverview(tester);
