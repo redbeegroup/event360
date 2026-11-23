@@ -217,6 +217,50 @@ run('Organizer orders', () => {
       expect(none.body.orders.map((x: any) => x.id)).toEqual([]);
     });
 
+    it('phone search needs four digits: 959 matches nothing, the last four digits match', async () => {
+      const r959 = await list('?q=959&limit=100').expect(200);
+      for (const o of r959.body.orders) expect(o.id.toLowerCase().startsWith('959')).toBe(true);
+      const last4 = namedBuyer.phone.slice(-4);
+      const r = await list(`?q=${last4}&limit=100`).expect(200);
+      expect(r.body.orders.map((o: any) => o.id)).toContain(paid);
+    });
+
+    it('status and name searches page across a boundary without repeats or gaps', async () => {
+      const u = await makeUser(`Crowd ${tag}`);
+      const made: string[] = [];
+      for (let i = 0; i < 7; i++) made.push((await makeOrder({ userId: u.id, createdAt: new Date(Date.now() - 1000 * i) })).id);
+      const walk = async (qs: string) => {
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const r = await http.get(`${url()}?${qs}&limit=3${cursor ? `&cursor=${cursor}` : ''}`).set(O).expect(200);
+          expect(r.body.orders.length).toBeLessThanOrEqual(3);
+          seen.push(...r.body.orders.map((o: any) => o.id));
+          cursor = r.body.nextCursor ?? undefined;
+        } while (cursor);
+        return seen;
+      };
+      const byName = await walk(`q=${encodeURIComponent(`Crowd ${tag}`)}`);
+      expect(byName).toHaveLength(7);
+      expect(new Set(byName)).toEqual(new Set(made));
+      const paidAll = await walk('status=paid');
+      expect(new Set(paidAll).size).toBe(paidAll.length);
+      expect(paidAll).toEqual(expect.arrayContaining(made));
+      const direct = await list('?status=paid&limit=100').expect(200);
+      expect(paidAll).toEqual(direct.body.orders.map((o: any) => o.id));
+    });
+
+    it('detail of a needsReview order: flag set, note nowhere, exact key set, masked buyer', async () => {
+      const r = await http.get(`${url()}/${review}`).set(O).expect(200);
+      expect(r.body.needsReview).toBe(true);
+      expect(JSON.stringify(r.body)).not.toMatch(/SECRET-NOTE|Paid after hold/);
+      expect(Object.keys(r.body).sort()).toEqual(
+        ['buyer', 'commissionMmk', 'createdAt', 'discountMmk', 'groupDiscountBp', 'holdExpiresAt', 'id', 'items', 'needsReview', 'number', 'paidAt', 'payments', 'promoCode', 'quantity', 'refunds', 'status', 'subtotalMmk', 'tickets', 'totalMmk'],
+      );
+      expect(r.body.buyer.phone).toMatch(/^09\d{2}•••\d{3}$/);
+      expect(JSON.stringify(r.body.buyer)).not.toMatch(/\d{8}/);
+    });
+
     it('roles: owner, manager and finance 200; crew and outsider 403', async () => {
       await list('', O).expect(200);
       await list('', M).expect(200);

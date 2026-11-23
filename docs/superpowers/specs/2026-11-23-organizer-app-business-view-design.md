@@ -60,7 +60,7 @@ event is not in that organization.
 - Scope: orders of the event with `totalMmk > 0` and `channel != 'COMP'`.
 - Query: `status` = `paid` (PAID) | `refunded` (REFUNDED) | `pending` (PENDING_PAYMENT) | `incomplete` (FAILED,
   EXPIRED, CANCELLED); omitted = all of those. `q` (trimmed, max 60): matches buyer display name (contains,
-  case-insensitive), buyer phone (digits of `q`, at least 3, contained in the stored number; a leading `09` also
+  case-insensitive), buyer phone (digits of `q`, at least 4, contained in the stored number; a leading `09` also
   matches numbers stored as `+959…`: phones are stored in E.164, so strip the leading `0` before matching), or the
   order number (first 8 characters of the order id, case-insensitive prefix; `id` is a uuid column, so this needs
   `id::text ILIKE` in raw SQL or an equivalent — builder's choice). An unknown `status` value is a 400. `limit` default 30, max 100. `cursor` opaque.

@@ -1163,13 +1163,12 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
       const or: Prisma.OrderWhereInput[] = [{ user: { displayName: { contains: likeEscape(term), mode: 'insensitive' } } }];
       let digits = term.replace(/\D/g, '');
       if (digits.startsWith('09')) digits = digits.slice(1);
-      if (digits.length >= 3) or.push({ user: { phone: { contains: digits } } });
+      if (digits.length >= 4) or.push({ user: { phone: { contains: digits } } });
       if (/^[0-9a-f]{1,8}$/i.test(term)) {
-        const like = likeEscape(term) + '%';
-        const ids = await this.prisma.$queryRaw<{ id: string }[]>`
-          SELECT id::text AS id FROM orders
-          WHERE event_id = ${eventId}::uuid AND total_mmk > 0 AND channel <> 'COMP' AND id::text ILIKE ${like}`;
-        if (ids.length) or.push({ id: { in: ids.map((r) => r.id) } });
+        // order number = uuid prefix: a range on the primary key
+        const h = term.toLowerCase();
+        const fmt = (x: string) => `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+        or.push({ id: { gte: fmt(h.padEnd(32, '0')), lte: fmt(h.padEnd(32, 'f')) } });
       }
       and.push({ OR: or });
     }
