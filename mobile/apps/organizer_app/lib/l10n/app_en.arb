@@ -441,5 +441,27 @@
     }
   },
   "paymentCash": "Cash",
-  "paymentCard": "Card"
+  "paymentCard": "Card",
+  "payouts": "Payouts",
+  "earned": "Earned",
+  "paidOut": "Paid out",
+  "owedToYou": "Owed to you",
+  "youOwe": "You owe Event 360 {amount}",
+  "@youOwe": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "reconcileNote": "This is a sales breakdown; totals come from the ledger.",
+  "byEvent": "By event",
+  "salesBeforeRefunds": "Sales before refunds",
+  "payoutHistory": "Payout history",
+  "noPayouts": "No payouts yet.",
+  "voided": "Voided",
+  "methodBANK": "Bank transfer",
+  "methodOTHER": "Other",
+  "reference": "Reference",
+  "noSalesYet": "No sales yet"
 }

@@ -683,4 +683,52 @@ class L10nMy extends L10n {
 
   @override
   String get paymentCard => 'ကတ်';
+
+  @override
+  String get payouts => 'ငွေပေးချေမှုများ';
+
+  @override
+  String get earned => 'ရရှိငွေ';
+
+  @override
+  String get paidOut => 'ပေးချေပြီး';
+
+  @override
+  String get owedToYou => 'သင့်ကို ပေးရန်ကျန်';
+
+  @override
+  String youOwe(String amount) {
+    return 'သင်သည် Event 360 ကို $amount ပေးရန်ကျန်ပါသည်';
+  }
+
+  @override
+  String get reconcileNote =>
+      'ဤသည်မှာ အရောင်း အသေးစိတ်ဖြစ်ပါသည်။ စုစုပေါင်းများကို စာရင်းဇယားမှ ယူထားပါသည်။';
+
+  @override
+  String get byEvent => 'ပွဲအလိုက်';
+
+  @override
+  String get salesBeforeRefunds => 'ငွေပြန်မအမ်းမီ ရောင်းရငွေ';
+
+  @override
+  String get payoutHistory => 'ငွေပေးချေမှု မှတ်တမ်း';
+
+  @override
+  String get noPayouts => 'ငွေပေးချေမှု မရှိသေးပါ။';
+
+  @override
+  String get voided => 'ပယ်ဖျက်ပြီး';
+
+  @override
+  String get methodBANK => 'ဘဏ်လွှဲ';
+
+  @override
+  String get methodOTHER => 'အခြား';
+
+  @override
+  String get reference => 'ကိုးကားနံပါတ်';
+
+  @override
+  String get noSalesYet => 'ရောင်းရမှု မရှိသေးပါ';
 }

@@ -65,6 +65,9 @@ class FakeApi extends Event360Api {
   FakeApi(this.store) : super(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'http://fake'), store);
   final MemoryTokenStore store;
   String role = 'ORG_OWNER';
+
+  /// Organizations where the user is only a manager (the first one gets [role]).
+  Set<String> managerOrgs = {};
   final calls = <String>[];
   final devices = <String>[];
   final codes = <Map<String, dynamic>>[];
@@ -158,7 +161,7 @@ class FakeApi extends Event360Api {
   @override
   Future<List<OrgMembership>> myOrganizations() async => [
         OrgMembership.fromJson({'id': 'o1', 'name': 'Yangon Live', 'slug': 'yl', 'role': role, 'kycStatus': 'APPROVED'}),
-        OrgMembership.fromJson({'id': 'o2', 'name': 'Mandalay Arts', 'slug': 'ma', 'role': 'ORG_OWNER', 'kycStatus': 'APPROVED'}),
+        OrgMembership.fromJson({'id': 'o2', 'name': 'Mandalay Arts', 'slug': 'ma', 'role': managerOrgs.contains('o2') ? 'ORG_MANAGER' : 'ORG_OWNER', 'kycStatus': 'APPROVED'}),
       ];
 
   @override
@@ -430,6 +433,41 @@ class FakeApi extends Event360Api {
 
   /// Refund state shown in the order sheet.
   String refundStatus = 'PENDING';
+
+  /// Payout summary per organization (null: the default). [failPayoutsOnce] makes the next request fail.
+  Map<String, dynamic>? payoutData;
+  bool failPayoutsOnce = false;
+  final payoutCalls = <String>[];
+
+  Map<String, dynamic> payoutsFor(String orgId) =>
+      payoutData ??
+      {
+        'earnedMmk': orgId == 'o2' ? 777000 : 1500000,
+        'paidOutMmk': orgId == 'o2' ? 0 : 900000,
+        'owedMmk': orgId == 'o2' ? 777000 : 600000,
+        'reconciled': true,
+        'events': [
+          {'eventId': 'pe1', 'title': orgId == 'o2' ? 'Mandalay Night Market' : 'Inya Lake Live', 'grossMmk': 1700000, 'discountMmk': 100000, 'commissionMmk': 80000, 'refundsMmk': 20000, 'netMmk': 1500000},
+          {'eventId': 'pe2', 'title': 'Thingyan Gala', 'grossMmk': 50000, 'discountMmk': 0, 'commissionMmk': 2500, 'refundsMmk': 0, 'netMmk': 47500},
+        ],
+        'payouts': orgId == 'o2'
+            ? []
+            : [
+                {'id': 'pp1', 'method': 'BANK', 'amountMmk': 500000, 'paidAt': '2026-11-10T04:00:00.000Z', 'reference': 'TRX-1001', 'note': 'First instalment', 'voidedAt': null, 'voidReason': null},
+                {'id': 'pp2', 'method': 'KBZPAY', 'amountMmk': 400000, 'paidAt': '2026-11-15T04:00:00.000Z', 'reference': null, 'note': null, 'voidedAt': null, 'voidReason': null},
+                {'id': 'pp3', 'method': 'CASH', 'amountMmk': 250000, 'paidAt': '2026-11-18T04:00:00.000Z', 'reference': null, 'note': null, 'voidedAt': '2026-11-19T04:00:00.000Z', 'voidReason': 'Paid twice by mistake'},
+              ],
+      };
+
+  @override
+  Future<PayoutSummary> payoutSummary(String orgId) async {
+    payoutCalls.add(orgId);
+    if (failPayoutsOnce) {
+      failPayoutsOnce = false;
+      throw ApiException(null, 'No connection');
+    }
+    return PayoutSummary.fromJson(payoutsFor(orgId));
+  }
 
   @override
   Future<EventSales> eventSales(String orgId, String eventId) async {
@@ -891,6 +929,17 @@ void main() {
     await t.pumpAndSettle();
   }
 
+  Future<void> openPayouts(WidgetTester t, {bool expand = false}) async {
+    await t.tap(find.byType(PopupMenuButton<String>));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('menuPayouts')));
+    await t.pumpAndSettle();
+    if (expand && find.byKey(const Key('payoutEvent-pe1')).evaluate().isNotEmpty) {
+      await t.tap(find.byKey(const Key('payoutEvent-pe1')));
+      await t.pumpAndSettle();
+    }
+  }
+
   Future<void> createCode(WidgetTester t) async {
     await openTab(t, 'tabDoor');
     await t.enterText(find.byKey(const Key('codeLabel')), 'Volunteers for the north side entrance');
@@ -1034,6 +1083,17 @@ void main() {
       final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
       app.sales = {...app.sales, 'ticketTypes': [], 'paidOrders': 0};
       await openOrders(t);
+    }),
+    'payouts, full summary': (signedIn: true, role: 'ORG_OWNER', then: (t) => openPayouts(t, expand: true)),
+    'payouts, empty': (signedIn: true, role: 'ORG_FINANCE', then: (t) async {
+      final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
+      app.payoutData = {'earnedMmk': 0, 'paidOutMmk': 0, 'owedMmk': 0, 'reconciled': true, 'events': [], 'payouts': []};
+      await openPayouts(t);
+    }),
+    'payouts, negative owed and reconcile note': (signedIn: true, role: 'ORG_OWNER', then: (t) async {
+      final app = ProviderScope.containerOf(t.element(find.byType(OrganizerApp))).read(apiProvider) as FakeApi;
+      app.payoutData = {...app.payoutsFor('o1'), 'owedMmk': -120000, 'reconciled': false};
+      await openPayouts(t, expand: true);
     }),
     'announce tab': (signedIn: true, role: 'ORG_OWNER', then: (t) => openTab(t, 'tabAnnounce')),
     'announce tab, confirm dialog': (signedIn: true, role: 'ORG_OWNER', then: (t) async {

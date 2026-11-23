@@ -1290,6 +1290,96 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Card'**
   String get paymentCard;
+
+  /// No description provided for @payouts.
+  ///
+  /// In en, this message translates to:
+  /// **'Payouts'**
+  String get payouts;
+
+  /// No description provided for @earned.
+  ///
+  /// In en, this message translates to:
+  /// **'Earned'**
+  String get earned;
+
+  /// No description provided for @paidOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid out'**
+  String get paidOut;
+
+  /// No description provided for @owedToYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Owed to you'**
+  String get owedToYou;
+
+  /// No description provided for @youOwe.
+  ///
+  /// In en, this message translates to:
+  /// **'You owe Event 360 {amount}'**
+  String youOwe(String amount);
+
+  /// No description provided for @reconcileNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a sales breakdown; totals come from the ledger.'**
+  String get reconcileNote;
+
+  /// No description provided for @byEvent.
+  ///
+  /// In en, this message translates to:
+  /// **'By event'**
+  String get byEvent;
+
+  /// No description provided for @salesBeforeRefunds.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales before refunds'**
+  String get salesBeforeRefunds;
+
+  /// No description provided for @payoutHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Payout history'**
+  String get payoutHistory;
+
+  /// No description provided for @noPayouts.
+  ///
+  /// In en, this message translates to:
+  /// **'No payouts yet.'**
+  String get noPayouts;
+
+  /// No description provided for @voided.
+  ///
+  /// In en, this message translates to:
+  /// **'Voided'**
+  String get voided;
+
+  /// No description provided for @methodBANK.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank transfer'**
+  String get methodBANK;
+
+  /// No description provided for @methodOTHER.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get methodOTHER;
+
+  /// No description provided for @reference.
+  ///
+  /// In en, this message translates to:
+  /// **'Reference'**
+  String get reference;
+
+  /// No description provided for @noSalesYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No sales yet'**
+  String get noSalesYet;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

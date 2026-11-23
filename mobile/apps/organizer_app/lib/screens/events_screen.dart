@@ -75,10 +75,12 @@ class EventsScreen extends ConsumerWidget {
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'lang') ref.read(langProvider.notifier).toggle();
+              if (v == 'payouts') context.push('/payouts');
               if (v == 'out') ref.read(sessionProvider.notifier).signOut();
             },
             itemBuilder: (_) => [
               PopupMenuItem(value: 'lang', child: Text(lang == 'my' ? 'English' : 'မြန်မာ')),
+              if (org?.canSeePayouts ?? false) PopupMenuItem(key: const Key('menuPayouts'), value: 'payouts', child: Text(t.payouts)),
               PopupMenuItem(value: 'out', child: Text(t.signOut)),
             ],
           ),

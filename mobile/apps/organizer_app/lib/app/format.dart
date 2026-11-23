@@ -18,3 +18,6 @@ String formatAmount(int mmk, String lang) => NumberFormat.decimalPattern(_loc(la
 
 /// "15,000 MMK" / "15,000 ကျပ်"
 String formatMmk(int mmk, String lang) => '${formatAmount(mmk, lang)} ${lang == 'my' ? 'ကျပ်' : 'MMK'}';
+
+/// e.g. "19 Dec 2026"
+String formatDate(DateTime t, String lang) => DateFormat('d MMM y', _loc(lang)).format(toYangon(t));

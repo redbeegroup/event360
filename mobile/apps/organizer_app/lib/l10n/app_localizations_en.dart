@@ -701,4 +701,52 @@ class L10nEn extends L10n {
 
   @override
   String get paymentCard => 'Card';
+
+  @override
+  String get payouts => 'Payouts';
+
+  @override
+  String get earned => 'Earned';
+
+  @override
+  String get paidOut => 'Paid out';
+
+  @override
+  String get owedToYou => 'Owed to you';
+
+  @override
+  String youOwe(String amount) {
+    return 'You owe Event 360 $amount';
+  }
+
+  @override
+  String get reconcileNote =>
+      'This is a sales breakdown; totals come from the ledger.';
+
+  @override
+  String get byEvent => 'By event';
+
+  @override
+  String get salesBeforeRefunds => 'Sales before refunds';
+
+  @override
+  String get payoutHistory => 'Payout history';
+
+  @override
+  String get noPayouts => 'No payouts yet.';
+
+  @override
+  String get voided => 'Voided';
+
+  @override
+  String get methodBANK => 'Bank transfer';
+
+  @override
+  String get methodOTHER => 'Other';
+
+  @override
+  String get reference => 'Reference';
+
+  @override
+  String get noSalesYet => 'No sales yet';
 }

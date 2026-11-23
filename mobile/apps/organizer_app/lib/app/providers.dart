@@ -101,6 +101,8 @@ final waitlistProvider = FutureProvider.family<WaitlistCounts, EventKey>((ref, k
 final eventSalesProvider = FutureProvider.family<EventSales, EventKey>((ref, k) => ref.watch(apiProvider).eventSales(k.orgId, k.eventId),
     // A failed refresh is reported at once (the tab says so) rather than retried behind the scenes
     retry: (_, __) => null);
+/// Owner/finance payout totals. Not kept once the screen closes, so each visit shows fresh numbers; a failed refresh is reported at once.
+final payoutSummaryProvider = FutureProvider.autoDispose.family<PayoutSummary, String>((ref, orgId) => ref.watch(apiProvider).payoutSummary(orgId), retry: (_, __) => null);
 final attendeesProvider = FutureProvider.family<List<Attendee>, EventKey>((ref, k) => ref.watch(apiProvider).attendees(k.orgId, k.eventId));
 final orgSeatingProvider = FutureProvider.family<OrgSeating, EventKey>((ref, k) => ref.watch(apiProvider).orgSeating(k.orgId, k.eventId));
 final guestTicketsProvider = FutureProvider.family<List<GuestTicket>, EventKey>((ref, k) => ref.watch(apiProvider).guestTickets(k.orgId, k.eventId));
