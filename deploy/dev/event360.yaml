@@ -119,7 +119,7 @@ spec:
         fsGroup: 10001
       initContainers:
         - name: migrate
-          image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           command:
             - sh
@@ -141,7 +141,7 @@ spec:
               memory: 768Mi
       containers:
         - name: api
-          image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -158,7 +158,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: 827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: 34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -190,7 +190,7 @@ spec:
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
             - name: API_IMAGE
-              value: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
@@ -268,7 +268,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: realtime
-          image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -285,7 +285,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: 827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: 34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -317,7 +317,7 @@ spec:
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
             - name: API_IMAGE
-              value: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
@@ -379,7 +379,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: worker
-          image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -396,7 +396,7 @@ spec:
             - name: USER_WEB_ENABLED
               value: 'true'
             - name: APP_VERSION
-              value: 827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: 34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: PORT
               value: '3000'
             - name: TRUST_PROXY
@@ -428,7 +428,7 @@ spec:
             - name: FFMPEG_IMAGE
               value: jrottenberg/ffmpeg:7.1-ubuntu
             - name: API_IMAGE
-              value: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: MEDIA_AVOID_NODES
               value: ''
             - name: APP_ROLE
@@ -508,7 +508,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: web
-          image: ghcr.io/redbeegroup/event360-web:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-web:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -517,7 +517,7 @@ spec:
             - name: API_URL
               value: http://api:3000
             - name: APP_VERSION
-              value: 827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: 34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: CREW_APP_URL
               value: https://app.dev.event360.app/crew/
           readinessProbe:
@@ -580,7 +580,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: site
-          image: ghcr.io/redbeegroup/event360-site:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-site:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -589,7 +589,7 @@ spec:
             - name: API_URL
               value: http://api:3000
             - name: APP_VERSION
-              value: 827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              value: 34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
             - name: SITE_URL
               value: https://dev.event360.app
             - name: APP_URL
@@ -662,7 +662,7 @@ spec:
         fsGroup: 101
       containers:
         - name: user-web
-          image: ghcr.io/redbeegroup/event360-user-web:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+          image: ghcr.io/redbeegroup/event360-user-web:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1006,7 +1006,7 @@ spec:
                   memory: 1Gi
           containers:
             - name: upload
-              image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
               imagePullPolicy: IfNotPresent
               command:
                 - node
@@ -1069,7 +1069,7 @@ spec:
                 sizeLimit: 10Gi
           initContainers:
             - name: fetch
-              image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
               imagePullPolicy: IfNotPresent
               command:
                 - node
@@ -1157,7 +1157,7 @@ spec:
                   memory: 1Gi
           containers:
             - name: report
-              image: ghcr.io/redbeegroup/event360-api:827bfb98fecf2ca5cf7218e1c8b858a9a4c0c487
+              image: ghcr.io/redbeegroup/event360-api:34aac3e1007ef558ad8a45afcb5f4296c86bf7c1
               imagePullPolicy: IfNotPresent
               command:
                 - node
