@@ -49,13 +49,22 @@ class Event360Api {
       },
       onError: (e, handler) async {
         final retried = e.requestOptions.extra['retried'] == true;
-        if (e.response?.statusCode == 401 && !retried && e.requestOptions.extra['auth'] != false && await _refresh()) {
-          final opts = e.requestOptions..extra['retried'] = true;
-          opts.headers['Authorization'] = 'Bearer ${await tokens.accessToken()}';
-          try {
-            return handler.resolve(await _dio.fetch(opts));
-          } on DioException catch (e2) {
-            return handler.next(e2);
+        if (e.response?.statusCode == 401 && !retried && e.requestOptions.extra['auth'] != false) {
+          final out = await _refresh();
+          if (out.ok) {
+            final opts = e.requestOptions..extra['retried'] = true;
+            opts.headers['Authorization'] = 'Bearer ${await tokens.accessToken()}';
+            try {
+              return handler.resolve(await _dio.fetch(opts));
+            } on DioException catch (e2) {
+              return handler.next(e2);
+            }
+          }
+          if (out.failure != null) {
+            // The refresh could not be done right now (no connection, timeout, server trouble): the session is still good.
+            // The request fails with what went wrong, the tokens stay, and the next request refreshes again.
+            final f = out.failure!;
+            return handler.next(DioException(requestOptions: e.requestOptions, response: f.response, type: f.type, error: f.error, message: f.message));
           }
         }
         if (e.response?.statusCode == 401 && e.requestOptions.extra['auth'] != false) onSessionExpired?.call();
@@ -66,23 +75,32 @@ class Event360Api {
 
   final Dio _dio;
   final TokenStore tokens;
-  Future<bool>? _refreshing;
+  Future<_Refresh>? _refreshing;
 
   /// Called when a signed-in request still gets 401 after the token refresh (the session is over). The app signs the
   /// user out here, once, instead of every screen handling it. Requests that carry no session (sign-in, refresh) never call it.
   void Function()? onSessionExpired;
 
-  Future<bool> _refresh() => _refreshing ??= () async {
+  /// One refresh at a time, shared by every request that needs it. Three outcomes: done; rejected (the server answered 400,
+  /// 401 or 403: the refresh token is no good, the tokens are cleared and the session is over); or transient (anything else:
+  /// no connection, timeout, a 5xx, an unreadable answer), which keeps the tokens.
+  Future<_Refresh> _refresh() => _refreshing ??= () async {
         try {
           final rt = await tokens.refreshToken();
-          if (rt == null) return false;
+          if (rt == null) return const _Refresh.rejected();
           final r = await _dio.post<Map<String, dynamic>>('/auth/refresh',
               data: {'refreshToken': rt}, options: Options(extra: {'auth': false}));
           await tokens.save(r.data!['accessToken'] as String, r.data!['refreshToken'] as String);
-          return true;
-        } catch (_) {
-          await tokens.clear();
-          return false;
+          return const _Refresh.ok();
+        } on DioException catch (e) {
+          final code = e.response?.statusCode;
+          if (code == 400 || code == 401 || code == 403) {
+            await tokens.clear();
+            return const _Refresh.rejected();
+          }
+          return _Refresh.transient(e);
+        } catch (e) {
+          return _Refresh.transient(DioException(requestOptions: RequestOptions(path: '/auth/refresh'), type: DioExceptionType.unknown, error: e));
         } finally {
           _refreshing = null;
         }
@@ -492,4 +510,17 @@ class Event360Api {
 
   Future<void> markOrganizerNotificationsRead([List<String> ids = const []]) =>
       _call(() => _dio.post('/me/notifications/read', data: ids.isEmpty ? {'audience': 'organizer'} : {'ids': ids}), (_) {});
+}
+
+/// Result of a token refresh: done, rejected by the server, or transient ([failure] says what went wrong).
+class _Refresh {
+  const _Refresh.ok()
+      : ok = true,
+        failure = null;
+  const _Refresh.rejected()
+      : ok = false,
+        failure = null;
+  const _Refresh.transient(DioException this.failure) : ok = false;
+  final bool ok;
+  final DioException? failure;
 }

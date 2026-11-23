@@ -26,7 +26,83 @@ class _StatusAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Scripted server: [handle] answers each request (status + json body) or throws a DioException (a dropped connection).
+class _ScriptAdapter implements HttpClientAdapter {
+  _ScriptAdapter(this.handle);
+  final (int, String) Function(RequestOptions o) handle;
+  final paths = <String>[];
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<List<int>>? requestStream, Future<void>? cancelFuture) async {
+    paths.add(options.path);
+    final (status, body) = handle(options);
+    return ResponseBody.fromString(body, status, headers: {Headers.contentTypeHeader: ['application/json']});
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 void main() {
+  group('token refresh outcomes', () {
+    ({Event360Api api, _ScriptAdapter ad, MemoryTokenStore store, List<int> ended}) setup((int, String) Function(RequestOptions) refresh) {
+      final store = MemoryTokenStore()..save('old', 'rt');
+      var fresh = false;
+      final ad = _ScriptAdapter((o) {
+        if (o.path == '/auth/refresh') {
+          final r = refresh(o);
+          if (r.$1 == 200) fresh = true;
+          return r;
+        }
+        final auth = o.headers['Authorization'];
+        return fresh && auth == 'Bearer new' ? (200, '{"id":"u","phone":"0","organizations":[]}') : (401, '{"message":"x"}');
+      });
+      final api = Event360Api(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'https://api.example'), store,
+          dio: Dio(BaseOptions(baseUrl: 'https://api.example/v1'))..httpClientAdapter = ad);
+      final ended = <int>[];
+      api.onSessionExpired = () => ended.add(1);
+      return (api: api, ad: ad, store: store, ended: ended);
+    }
+
+    const ok = (200, '{"accessToken":"new","refreshToken":"rt2"}');
+
+    test('a dropped connection during refresh keeps the session and fails as a network error', () async {
+      var drop = true;
+      final h = setup((o) => drop ? throw DioException.connectionError(requestOptions: o, reason: 'offline') : ok);
+      await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isNetwork, 'network', true)));
+      expect(h.ended, isEmpty);
+      expect(await h.store.accessToken(), 'old');
+      expect(await h.store.refreshToken(), 'rt');
+      // a later request refreshes successfully
+      drop = false;
+      await h.api.myOrganizations();
+      expect(await h.store.accessToken(), 'new');
+      expect(h.ended, isEmpty);
+    });
+
+    test('a 5xx from refresh keeps the session', () async {
+      final h = setup((o) => (503, '{"message":"down"}'));
+      await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 503)));
+      expect(h.ended, isEmpty);
+      expect(await h.store.refreshToken(), 'rt');
+    });
+
+    test('a refresh the server rejects (400, 401, 403) clears the tokens and ends the session once', () async {
+      for (final code in [400, 401, 403]) {
+        final h = setup((o) => (code, '{"message":"no"}'));
+        await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isUnauthorized, '401', true)));
+        expect(h.ended.length, 1, reason: '$code');
+        expect(await h.store.accessToken(), isNull, reason: '$code');
+      }
+    });
+
+    test('parallel 401s share one refresh', () async {
+      final h = setup((o) => ok);
+      await Future.wait([h.api.myOrganizations(), h.api.myOrganizations(), h.api.myOrganizations()]);
+      expect(h.ad.paths.where((p) => p == '/auth/refresh').length, 1);
+      expect(h.ended, isEmpty);
+    });
+  });
+
   group('onSessionExpired', () {
     Event360Api apiWith(int status, MemoryTokenStore store, List<String> paths) => Event360Api(
         const AppConfig(app: Event360App.organizer, apiBaseUrl: 'https://api.example'), store,
