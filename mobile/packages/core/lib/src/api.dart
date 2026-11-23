@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'app_config.dart';
 import 'crew.dart';
@@ -49,8 +50,12 @@ class Event360Api {
       },
       onError: (e, handler) async {
         final retried = e.requestOptions.extra['retried'] == true;
+        var announced = false;
         if (e.response?.statusCode == 401 && !retried && e.requestOptions.extra['auth'] != false) {
           final out = await _refresh();
+          // Requests sharing one refresh that cleared the session sign the user out once, not once each.
+          announced = out.announced;
+          if (!out.ok && out.failure == null) out.announced = true;
           if (out.ok) {
             final opts = e.requestOptions..extra['retried'] = true;
             opts.headers['Authorization'] = 'Bearer ${await tokens.accessToken()}';
@@ -61,13 +66,13 @@ class Event360Api {
             }
           }
           if (out.failure != null) {
-            // The refresh could not be done right now (no connection, timeout, server trouble): the session is still good.
+            // The refresh request never reached the server, so the old refresh token is unused and the session is still good.
             // The request fails with what went wrong, the tokens stay, and the next request refreshes again.
             final f = out.failure!;
             return handler.next(DioException(requestOptions: e.requestOptions, response: f.response, type: f.type, error: f.error, message: f.message));
           }
         }
-        if (e.response?.statusCode == 401 && e.requestOptions.extra['auth'] != false) onSessionExpired?.call();
+        if (e.response?.statusCode == 401 && e.requestOptions.extra['auth'] != false && !announced) onSessionExpired?.call();
         handler.next(e);
       },
     ));
@@ -81,30 +86,43 @@ class Event360Api {
   /// user out here, once, instead of every screen handling it. Requests that carry no session (sign-in, refresh) never call it.
   void Function()? onSessionExpired;
 
-  /// One refresh at a time, shared by every request that needs it. Three outcomes: done; rejected (the server answered 400,
-  /// 401 or 403: the refresh token is no good, the tokens are cleared and the session is over); or transient (anything else:
-  /// no connection, timeout, a 5xx, an unreadable answer), which keeps the tokens.
+  /// One refresh at a time, shared by every request that needs it. Three outcomes: done; not sent (the request certainly
+  /// never reached the server: the tokens are kept and a later request tries again); or cleared (anything else: this
+  /// device's tokens are cleared and the session is over here).
+  ///
+  /// The server rotates refresh tokens and treats a reused rotated token as theft, revoking the user's sessions on every
+  /// device. Keeping the old token is therefore only safe when the server cannot have seen the request: a failed connect
+  /// ([DioExceptionType.connectionError]) or a connect that timed out ([DioExceptionType.connectionTimeout]). Every other
+  /// failure may have happened after the server rotated the token (a lost response, a receive or send timeout, a 5xx or
+  /// 429 answer, an unreadable body, a failure saving the new tokens), and replaying the old token later could sign the
+  /// user out everywhere, so those clear the tokens and cost only this device's session. On the web an XHR error or
+  /// timeout says nothing about whether the request was sent, so nothing counts as not sent there.
   Future<_Refresh> _refresh() => _refreshing ??= () async {
         try {
           final rt = await tokens.refreshToken();
-          if (rt == null) return const _Refresh.rejected();
+          if (rt == null) return _Refresh.rejected();
           final r = await _dio.post<Map<String, dynamic>>('/auth/refresh',
               data: {'refreshToken': rt}, options: Options(extra: {'auth': false}));
           await tokens.save(r.data!['accessToken'] as String, r.data!['refreshToken'] as String);
-          return const _Refresh.ok();
+          return _Refresh.ok();
         } on DioException catch (e) {
-          final code = e.response?.statusCode;
-          if (code == 400 || code == 401 || code == 403) {
-            await tokens.clear();
-            return const _Refresh.rejected();
-          }
-          return _Refresh.transient(e);
-        } catch (e) {
-          return _Refresh.transient(DioException(requestOptions: RequestOptions(path: '/auth/refresh'), type: DioExceptionType.unknown, error: e));
+          if (_neverSent(e)) return _Refresh.notSent(e);
+          await tokens.clear();
+          return _Refresh.rejected();
+        } catch (_) {
+          await tokens.clear();
+          return _Refresh.rejected();
         } finally {
           _refreshing = null;
         }
       }();
+
+  static bool _neverSent(DioException e) {
+    if (kIsWeb) return false;
+    if (e.type != DioExceptionType.connectionError && e.type != DioExceptionType.connectionTimeout) return false;
+    // Dio also reports a connection closed after the request went out (before the response headers) as a connectionError.
+    return !'${e.error} ${e.message}'.contains('closed before full header');
+  }
 
   Future<T> _call<T>(Future<Response<dynamic>> Function() send, T Function(dynamic data) parse) async {
     try {
@@ -512,15 +530,18 @@ class Event360Api {
       _call(() => _dio.post('/me/notifications/read', data: ids.isEmpty ? {'audience': 'organizer'} : {'ids': ids}), (_) {});
 }
 
-/// Result of a token refresh: done, rejected by the server, or transient ([failure] says what went wrong).
+/// Result of a token refresh: done, cleared (the session is over on this device), or not sent ([failure] says what went wrong).
 class _Refresh {
-  const _Refresh.ok()
+  _Refresh.ok()
       : ok = true,
         failure = null;
-  const _Refresh.rejected()
+  _Refresh.rejected()
       : ok = false,
         failure = null;
-  const _Refresh.transient(DioException this.failure) : ok = false;
+  _Refresh.notSent(DioException this.failure) : ok = false;
   final bool ok;
   final DioException? failure;
+
+  /// Set by the first request that reports this outcome.
+  bool announced = false;
 }

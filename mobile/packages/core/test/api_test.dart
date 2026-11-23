@@ -1,3 +1,5 @@
+import 'dart:io' show HttpException;
+
 import 'package:dio/dio.dart';
 import 'package:event360_core/event360_core.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +44,21 @@ class _ScriptAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// A token store whose `save` fails once seeded (a full or locked keystore).
+class _FailingSaveStore extends MemoryTokenStore {
+  var _seeded = false;
+  Future<void> seed(String a, String r) async {
+    await super.save(a, r);
+    _seeded = true;
+  }
+
+  @override
+  Future<void> save(String access, String refresh) async {
+    if (_seeded) throw StateError('keystore locked');
+    await super.save(access, refresh);
+  }
+}
+
 void main() {
   group('token refresh outcomes', () {
     ({Event360Api api, _ScriptAdapter ad, MemoryTokenStore store, List<int> ended}) setup((int, String) Function(RequestOptions) refresh) {
@@ -65,7 +82,7 @@ void main() {
 
     const ok = (200, '{"accessToken":"new","refreshToken":"rt2"}');
 
-    test('a dropped connection during refresh keeps the session and fails as a network error', () async {
+    test('a connection that failed during refresh keeps the session and fails as a network error', () async {
       var drop = true;
       final h = setup((o) => drop ? throw DioException.connectionError(requestOptions: o, reason: 'offline') : ok);
       await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isNetwork, 'network', true)));
@@ -79,11 +96,60 @@ void main() {
       expect(h.ended, isEmpty);
     });
 
-    test('a 5xx from refresh keeps the session', () async {
-      final h = setup((o) => (503, '{"message":"down"}'));
-      await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 503)));
+    test('a connect timeout during refresh keeps the session and fails as a network error', () async {
+      var drop = true;
+      final h = setup((o) => drop
+          ? throw DioException.connectionTimeout(requestOptions: o, timeout: const Duration(seconds: 15))
+          : ok);
+      await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isNetwork, 'network', true)));
       expect(h.ended, isEmpty);
       expect(await h.store.refreshToken(), 'rt');
+      drop = false;
+      await h.api.myOrganizations();
+      expect(await h.store.accessToken(), 'new');
+      expect(h.ended, isEmpty);
+    });
+
+    test('a connection closed after the refresh went out clears the tokens', () async {
+      final h = setup((o) => throw DioException.connectionError(
+          requestOptions: o, reason: 'Connection closed before full header was received', error: const HttpException('Connection closed before full header was received')));
+      await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isUnauthorized, '401', true)));
+      expect(h.ended.length, 1);
+      expect(await h.store.accessToken(), isNull);
+    });
+
+    test('a refresh that may have reached the server clears the tokens and ends the session once', () async {
+      final cases = <String, (int, String) Function(RequestOptions)>{
+        'receiveTimeout': (o) => throw DioException.receiveTimeout(requestOptions: o, timeout: const Duration(seconds: 20)),
+        'sendTimeout': (o) => throw DioException.sendTimeout(requestOptions: o, timeout: const Duration(seconds: 20)),
+        'badCertificate': (o) => throw DioException.badCertificate(requestOptions: o),
+        'cancel': (o) => throw DioException.requestCancelled(requestOptions: o, reason: 'x'),
+        'unknown': (o) => throw DioException(requestOptions: o, type: DioExceptionType.unknown, error: 'boom'),
+        '503': (o) => (503, '{"message":"down"}'),
+        '429': (o) => (429, '{"message":"slow"}'),
+        'non-map 2xx': (o) => (200, '[1,2]'),
+        'missing tokens 2xx': (o) => (200, '{"accessToken":"new"}'),
+      };
+      for (final c in cases.entries) {
+        final h = setup(c.value);
+        await expectLater(h.api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isUnauthorized, '401', true)), reason: c.key);
+        expect(h.ended.length, 1, reason: c.key);
+        expect(await h.store.accessToken(), isNull, reason: c.key);
+        expect(await h.store.refreshToken(), isNull, reason: c.key);
+      }
+    });
+
+    test('an error while saving the new tokens clears them and ends the session', () async {
+      final store = _FailingSaveStore();
+      await store.seed('old', 'rt');
+      final ended = <int>[];
+      final ad = _ScriptAdapter((o) => o.path == '/auth/refresh' ? (200, '{"accessToken":"new","refreshToken":"rt2"}') : (401, '{"message":"x"}'));
+      final api = Event360Api(const AppConfig(app: Event360App.organizer, apiBaseUrl: 'https://api.example'), store,
+          dio: Dio(BaseOptions(baseUrl: 'https://api.example/v1'))..httpClientAdapter = ad);
+      api.onSessionExpired = () => ended.add(1);
+      await expectLater(api.myOrganizations(), throwsA(isA<ApiException>().having((e) => e.isUnauthorized, '401', true)));
+      expect(ended.length, 1);
+      expect(await store.refreshToken(), isNull);
     });
 
     test('a refresh the server rejects (400, 401, 403) clears the tokens and ends the session once', () async {
@@ -93,6 +159,24 @@ void main() {
         expect(h.ended.length, 1, reason: '$code');
         expect(await h.store.accessToken(), isNull, reason: '$code');
       }
+    });
+
+    test('parallel 401s share one refresh when it was not sent', () async {
+      final h = setup((o) => throw DioException.connectionError(requestOptions: o, reason: 'offline'));
+      final rs = await Future.wait([for (var i = 0; i < 3; i++) h.api.myOrganizations().then<Object?>((_) => null, onError: (Object e) => e)]);
+      expect(rs.every((e) => e is ApiException && e.isNetwork), isTrue);
+      expect(h.ad.paths.where((p) => p == '/auth/refresh').length, 1);
+      expect(h.ended, isEmpty);
+      expect(await h.store.refreshToken(), 'rt');
+    });
+
+    test('parallel 401s share one refresh when it cleared the session', () async {
+      final h = setup((o) => (503, '{"message":"down"}'));
+      final rs = await Future.wait([for (var i = 0; i < 3; i++) h.api.myOrganizations().then<Object?>((_) => null, onError: (Object e) => e)]);
+      expect(rs.every((e) => e is ApiException && e.isUnauthorized), isTrue);
+      expect(h.ad.paths.where((p) => p == '/auth/refresh').length, 1);
+      expect(h.ended.length, 1);
+      expect(await h.store.accessToken(), isNull);
     });
 
     test('parallel 401s share one refresh', () async {
