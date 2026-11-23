@@ -23,6 +23,8 @@ class ApiException implements Exception {
 
   bool get isRateLimited => status == 429;
   bool get isUnauthorized => status == 401;
+  bool get isForbidden => status == 403;
+  bool get isNotFound => status == 404;
   bool get isNetwork => status == null;
 
   @override
@@ -56,6 +58,7 @@ class Event360Api {
             return handler.next(e2);
           }
         }
+        if (e.response?.statusCode == 401 && e.requestOptions.extra['auth'] != false) onSessionExpired?.call();
         handler.next(e);
       },
     ));
@@ -64,6 +67,10 @@ class Event360Api {
   final Dio _dio;
   final TokenStore tokens;
   Future<bool>? _refreshing;
+
+  /// Called when a signed-in request still gets 401 after the token refresh (the session is over). The app signs the
+  /// user out here, once, instead of every screen handling it. Requests that carry no session (sign-in, refresh) never call it.
+  void Function()? onSessionExpired;
 
   Future<bool> _refresh() => _refreshing ??= () async {
         try {
@@ -448,7 +455,7 @@ class Event360Api {
     try {
       return await _call(send, parse);
     } on ApiException catch (e) {
-      if (e.status == 409 && e.takenSeats.isNotEmpty) throw SeatsChanged(e.message, e.takenSeats);
+      if (e.status == 409 && e.takenSeats.isNotEmpty) throw SeatsChanged(e.message, e.takenSeats, reasonCode: e.reasonCode);
       rethrow;
     }
   }

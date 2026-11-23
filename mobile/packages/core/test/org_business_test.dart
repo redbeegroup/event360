@@ -39,11 +39,13 @@ void main() {
   test('EventSales.fromJson with next price and free type', () {
     final s = EventSales.fromJson({
       'ticketTypes': [
-        {'id': 'a', 'name': 'GA', 'priceMmk': 15000, 'basePriceMmk': 10000, 'nextPrice': {'priceMmk': 20000, 'startsAt': '2026-12-01T00:00:00.000Z'}, 'quota': 100, 'sold': 4, 'held': 1, 'offered': 0, 'revenueMmk': 60000},
+        {'id': 'a', 'name': 'GA', 'nameMy': 'ယေဘုယျ', 'priceMmk': 15000, 'basePriceMmk': 10000, 'nextPrice': {'priceMmk': 20000, 'startsAt': '2026-12-01T00:00:00.000Z'}, 'quota': 100, 'sold': 4, 'held': 1, 'offered': 0, 'revenueMmk': 60000},
         {'id': 'b', 'name': 'Free', 'priceMmk': 0, 'basePriceMmk': 0, 'nextPrice': null, 'quota': 10, 'sold': 0, 'held': 0, 'offered': 0, 'revenueMmk': 0},
       ],
       'paidOrders': 3, 'grossMmk': 60000, 'commissionMmk': 3000, 'netMmk': 57000, 'refundedOrders': 1, 'refundedMmk': 5000, 'recent': [],
     });
+    expect(s.types[0].nameMy, 'ယေဘုယျ');
+    expect(s.types[1].nameMy, isNull); // absent field
     expect(s.types[0].nextPriceMmk, 20000);
     expect(s.types[0].nextPriceAt, DateTime.utc(2026, 12));
     expect(s.types[1].nextPriceMmk, isNull);
@@ -92,7 +94,7 @@ void main() {
   test('PayoutSummary.fromJson with voided payout and negative owed', () {
     final s = PayoutSummary.fromJson({
       'earnedMmk': 1000, 'eventsNetMmk': 1000, 'reconciled': true, 'paidOutMmk': 1500, 'owedMmk': -500,
-      'events': [{'eventId': 'e', 'title': 'Night', 'grossMmk': 2000, 'discountMmk': 100, 'commissionMmk': 100, 'refundsMmk': 900, 'netMmk': 1000}],
+      'events': [{'eventId': 'e', 'title': 'Night', 'titleMy': 'ည', 'grossMmk': 2000, 'discountMmk': 100, 'commissionMmk': 100, 'refundsMmk': 900, 'netMmk': 1000}],
       'payouts': [
         {'id': 'p1', 'organizationId': 'o', 'amountMmk': 1500, 'paidAt': '2026-11-22T00:00:00.000Z', 'method': 'BANK', 'reference': 'R1', 'note': null, 'createdAt': '2026-11-22T01:00:00.000Z', 'voidedAt': null, 'voidReason': null},
         {'id': 'p2', 'organizationId': 'o', 'amountMmk': 700, 'paidAt': '2026-11-21T00:00:00.000Z', 'method': 'CASH', 'reference': null, 'note': 'n', 'createdAt': '2026-11-21T01:00:00.000Z', 'voidedAt': '2026-11-22T02:00:00.000Z', 'voidReason': 'typo'},
@@ -100,6 +102,7 @@ void main() {
     });
     expect(s.owedMmk, -500);
     expect(s.events.single.refundsMmk, 900);
+    expect(s.events.single.titleMy, 'ည');
     expect(s.payouts[0].isVoided, isFalse);
     expect(s.payouts[1].isVoided, isTrue);
     expect(s.payouts[1].voidReason, 'typo');

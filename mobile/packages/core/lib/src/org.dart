@@ -341,17 +341,23 @@ class WaitlistCounts {
 
 /// Thrown by hold/release/comps on HTTP 409 carrying `takenSeats`: those seats changed under the organizer.
 class SeatsChanged implements Exception {
-  const SeatsChanged(this.message, this.takenSeats);
+  const SeatsChanged(this.message, this.takenSeats, {this.reasonCode});
   final String message;
   final List<String> takenSeats;
+
+  /// The machine-readable reason from the error body (e.g. `SEATS_NOT_AVAILABLE`), when the server sent one.
+  final String? reasonCode;
 
   @override
   String toString() => message;
 }
 
 class SalesTicketType {
-  SalesTicketType({required this.id, required this.name, required this.priceMmk, required this.basePriceMmk, this.nextPriceMmk, this.nextPriceAt, required this.quota, required this.sold, required this.revenueMmk});
+  SalesTicketType({required this.id, required this.name, this.nameMy, required this.priceMmk, required this.basePriceMmk, this.nextPriceMmk, this.nextPriceAt, required this.quota, required this.sold, required this.revenueMmk});
   final String id, name;
+
+  /// Myanmar name; null when the organizer did not set one.
+  final String? nameMy;
   final int priceMmk, basePriceMmk, quota, sold, revenueMmk;
   final int? nextPriceMmk;
   final DateTime? nextPriceAt;
@@ -360,6 +366,7 @@ class SalesTicketType {
     return SalesTicketType(
       id: j['id'] as String,
       name: j['name'] as String,
+      nameMy: j['nameMy'] as String?,
       priceMmk: _i(j['priceMmk']),
       basePriceMmk: _i(j['basePriceMmk']),
       nextPriceMmk: next == null ? null : _i(next['priceMmk']),
@@ -472,12 +479,16 @@ class OrgOrderDetail {
 }
 
 class PayoutEventRow {
-  PayoutEventRow({required this.eventId, required this.title, required this.grossMmk, required this.discountMmk, required this.commissionMmk, required this.refundsMmk, required this.netMmk});
+  PayoutEventRow({required this.eventId, required this.title, this.titleMy, required this.grossMmk, required this.discountMmk, required this.commissionMmk, required this.refundsMmk, required this.netMmk});
   final String eventId, title;
+
+  /// Myanmar title; null when the event has none.
+  final String? titleMy;
   final int grossMmk, discountMmk, commissionMmk, refundsMmk, netMmk;
   factory PayoutEventRow.fromJson(Map<String, dynamic> j) => PayoutEventRow(
         eventId: j['eventId'] as String,
         title: j['title'] as String,
+        titleMy: j['titleMy'] as String?,
         grossMmk: _i(j['grossMmk']),
         discountMmk: _i(j['discountMmk']),
         commissionMmk: _i(j['commissionMmk']),

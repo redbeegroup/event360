@@ -11,7 +11,61 @@ Event360Api failingApi(int status, Object? body) {
   return Event360Api(const AppConfig(app: Event360App.user, apiBaseUrl: 'https://api.example'), MemoryTokenStore(), dio: dio);
 }
 
+/// Answers every request with [status]; [paths] collects what was asked.
+class _StatusAdapter implements HttpClientAdapter {
+  _StatusAdapter(this.status, this.paths);
+  final int status;
+  final List<String> paths;
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<List<int>>? requestStream, Future<void>? cancelFuture) async {
+    paths.add(options.path);
+    return ResponseBody.fromString('{"message":"nope"}', status, headers: {Headers.contentTypeHeader: ['application/json']});
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 void main() {
+  group('onSessionExpired', () {
+    Event360Api apiWith(int status, MemoryTokenStore store, List<String> paths) => Event360Api(
+        const AppConfig(app: Event360App.organizer, apiBaseUrl: 'https://api.example'), store,
+        dio: Dio(BaseOptions(baseUrl: 'https://api.example/v1'))..httpClientAdapter = _StatusAdapter(status, paths));
+
+    test('a 401 that survives the refresh calls the hook once and clears the tokens', () async {
+      final store = MemoryTokenStore()..save('a', 'r');
+      final paths = <String>[];
+      var ended = 0;
+      final api = apiWith(401, store, paths)..onSessionExpired = () => ended++;
+      await expectLater(api.me(), throwsA(isA<ApiException>().having((e) => e.isUnauthorized, '401', true)));
+      expect(ended, 1);
+      expect(paths, ['/auth/me', '/auth/refresh']);
+      expect(await store.accessToken(), isNull);
+    });
+
+    test('a failed sign-in (no session) does not call the hook', () async {
+      final api = apiWith(401, MemoryTokenStore(), <String>[]);
+      var ended = 0;
+      api.onSessionExpired = () => ended++;
+      await expectLater(api.passwordLogin('a@b.c', 'x'), throwsA(isA<ApiException>()));
+      expect(ended, 0);
+    });
+
+    test('other errors do not call the hook', () async {
+      final store = MemoryTokenStore()..save('a', 'r');
+      final api = apiWith(403, store, <String>[]);
+      var ended = 0;
+      api.onSessionExpired = () => ended++;
+      await expectLater(api.me(), throwsA(isA<ApiException>().having((e) => e.isForbidden, '403', true)));
+      expect(ended, 0);
+    });
+  });
+
+  test('SeatsChanged carries the reasonCode', () async {
+    final api = failingApi(409, {'message': 'Some seats are no longer available', 'reasonCode': 'SEATS_NOT_AVAILABLE', 'takenSeats': ['A:1:1']});
+    await expectLater(api.holdSeats('o', 'e', ['A:1:1'], 'x'), throwsA(isA<SeatsChanged>().having((e) => e.reasonCode, 'reasonCode', 'SEATS_NOT_AVAILABLE')));
+  });
+
   test('ApiException carries reasonCode from the error body', () async {
     final api = failingApi(400, {'message': 'This code has been used up', 'reasonCode': 'USED_UP'});
     await expectLater(
