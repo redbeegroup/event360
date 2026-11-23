@@ -1,6 +1,10 @@
 # Organizer app: the business view — design
 
-Date: 2026-11-23. Status: awaiting approval.
+Date: 2026-11-23. Status: approved and built.
+
+Changes during the build: the Sales tab has two views switched at the top, **Summary** and **Orders** (search and
+filters were buried under the totals on one page); phone search matches the buyer's full number exactly (partial
+matching let a masked number be recovered by guessing).
 
 ## Why
 
