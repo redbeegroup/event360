@@ -157,7 +157,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('${o.quantity} × · ${formatMmk(o.totalMmk, lang)}'),
+                title: Text('${t.ticketCount(o.quantity)} · ${formatMmk(o.totalMmk, lang)}'),
                 subtitle: Text([o.buyer ?? '', formatDayTime(o.createdAt, lang)].where((s) => s.isNotEmpty).join(' · ')),
                 trailing: E360Badge(orderStatusLabel(t, o.status), kind: o.status == 'PAID' ? E360BadgeKind.success : E360BadgeKind.neutral),
               ),
@@ -172,11 +172,14 @@ class _OverviewState extends ConsumerState<OverviewTab> {
 
 /// Overview number tile: label on top, the number big in the display font.
 class StatTile extends StatelessWidget {
-  const StatTile({super.key, required this.label, required this.value, this.valueKey, this.small = false});
+  const StatTile({super.key, required this.label, required this.value, this.valueKey, this.small = false, this.oneLine = false});
   final String label;
   final String value;
   final Key? valueKey;
   final bool small;
+
+  /// Keeps the value on one line, shrinking it when it does not fit.
+  final bool oneLine;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +192,10 @@ class StatTile extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text(value, key: valueKey, style: theme.textTheme.titleLarge?.copyWith(fontSize: size)),
+        if (oneLine)
+          FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, key: valueKey, maxLines: 1, style: theme.textTheme.titleLarge?.copyWith(fontSize: size)))
+        else
+          Text(value, key: valueKey, style: theme.textTheme.titleLarge?.copyWith(fontSize: size)),
       ]),
     );
   }

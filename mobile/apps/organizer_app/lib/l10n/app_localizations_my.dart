@@ -746,4 +746,14 @@ class L10nMy extends L10n {
 
   @override
   String get balance => 'လက်ကျန်';
+
+  @override
+  String ticketCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'လက်မှတ် $count စောင်',
+    );
+    return '$_temp0';
+  }
 }

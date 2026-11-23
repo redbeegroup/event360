@@ -546,7 +546,9 @@ class _LegendState extends State<_Legend> {
       child: icon == null ? null : Icon(icon, size: 11, color: Colors.white),
     );
     // One scrolling line: the map below keeps the height.
-    final line = SingleChildScrollView(
+    final line = ScrollConfiguration(
+      behavior: dragEverywhere,
+      child: SingleChildScrollView(
       controller: _scroll,
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -587,7 +589,7 @@ class _LegendState extends State<_Legend> {
           ),
         ],
       ),
-    );
+    ));
     // A fade at the right edge while the line goes on.
     final bg = Theme.of(context).scaffoldBackgroundColor;
     return Stack(children: [

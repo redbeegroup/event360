@@ -534,6 +534,7 @@ class FakeApi extends Event360Api {
       'payments': [
         {'provider': 'KBZPAY', 'status': 'FAILED', 'createdAt': '2026-11-22T09:00:00.000Z'},
         {'provider': 'WAVEPAY', 'status': 'SUCCEEDED', 'createdAt': '2026-11-22T09:05:00.000Z'},
+        {'provider': 'MOCK', 'status': 'INITIATED', 'createdAt': '2026-11-22T09:06:00.000Z'},
       ],
       'refunds': [
         {'status': refundStatus, 'amountMmk': row['totalMmk'], 'createdAt': '2026-11-22T12:00:00.000Z', 'completedAt': null},
@@ -678,7 +679,7 @@ void main() {
     expect(find.descendant(of: card, matching: find.text('VIP deck', skipOffstage: false), skipOffstage: false), findsNothing);
     await tester.drag(find.byKey(const Key('sold')), const Offset(0, -2000)); // scrollUntilVisible cannot find a row that is built but off screen
     await tester.pumpAndSettle();
-    expect(find.text('2 × · 30,000 MMK'), findsOneWidget);
+    expect(find.text('2 tickets · 30,000 MMK'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); // stop the refresh timer
   });
 

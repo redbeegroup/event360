@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -248,7 +249,7 @@ void main() {
     expect(inRow('o003', 'Flagged Buyer'), findsOneWidget);
     expect(inRow('o003', 'BEING REVIEWED'), findsOneWidget);
     expect(inRow('o003', 'PAID'), findsOneWidget);
-    expect(inRow('o003', 'Order E360-0003 · 1 × · 40,000 MMK'), findsOneWidget);
+    expect(inRow('o003', 'Order E360-0003 · 1 ticket · 40,000 MMK'), findsOneWidget);
     await reveal(tester, 'o002');
     expect(inRow('o002', '0979•••102'), findsOneWidget);
     expect(inRow('o002', 'BEING REVIEWED'), findsNothing);
@@ -325,6 +326,7 @@ void main() {
     expect(inSheet('Commission'), findsOneWidget);
     expect(inSheet('KBZPay · Failed'), findsOneWidget);
     expect(inSheet('WavePay · Paid'), findsOneWidget);
+    expect(inSheet('Mock · Waiting for payment'), findsOneWidget, reason: 'an unknown provider is title-cased');
     expect(inSheet('40,000 MMK'), findsNWidgets(2), reason: 'total and the whole-order refund');
     expect(inSheet('Refund in progress'), findsOneWidget);
     expect(inSheet('Refunds are always for the whole order.'), findsOneWidget);
@@ -343,6 +345,50 @@ void main() {
     expect(key('orderSheet'), findsOneWidget);
     expect(key('reviewNote'), findsNothing);
     expect(inSheet('0979•••102'), findsNWidgets(1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('commission shows only on a paid order, not on a refunded or waiting one', (tester) async {
+    await openSales(tester);
+    for (final (id, shown) in [('o003', true), ('o004', false), ('o005', false), ('o009', false)]) {
+      await reveal(tester, id);
+      await tester.tap(key('orderRow-$id'));
+      await tester.pumpAndSettle();
+      expect(inSheet('Commission'), shown ? findsOneWidget : findsNothing, reason: id);
+      await tester.tap(key('orderSheetClose'));
+      await tester.pumpAndSettle();
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('rows count tickets in words; one ticket is singular', (tester) async {
+    await openSales(tester);
+    expect(inRow('o001', 'Order E360-0001 · 2 tickets · 20,000 MMK'), findsOneWidget);
+    expect(inRow('o003', 'Order E360-0003 · 1 ticket · 40,000 MMK'), findsOneWidget);
+    expect(find.textContaining(' × '), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the filter chips scroll fully into view with a fade while there is more, and drag with a mouse', (tester) async {
+    await openSales(tester);
+    expect(tester.widget<AnimatedOpacity>(key('orderFiltersFade')).opacity, 1);
+    final row = find.descendant(of: find.ancestor(of: key('orderFilter-all'), matching: find.byType(SingleChildScrollView)).first, matching: find.byType(Row)).first;
+    final scrollable = find.ancestor(of: key('orderFilter-all'), matching: find.byType(Scrollable)).first;
+    final gesture = await tester.startGesture(tester.getCenter(key('orderFilter-paid')), kind: PointerDeviceKind.mouse);
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(-50, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.state<ScrollableState>(scrollable).position.pixels, greaterThan(0), reason: 'a mouse drag scrolls the row');
+    final pos = tester.state<ScrollableState>(scrollable).position;
+    pos.jumpTo(pos.maxScrollExtent);
+    await tester.pumpAndSettle();
+    final last = tester.getRect(key('orderFilter-incomplete'));
+    expect(last.right, lessThanOrEqualTo(tester.getSize(find.byType(MaterialApp)).width - 16), reason: 'the last chip is fully visible with room after it');
+    expect(tester.widget<AnimatedOpacity>(key('orderFiltersFade')).opacity, 0);
+    expect(row, findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

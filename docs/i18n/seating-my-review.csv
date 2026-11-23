@@ -502,3 +502,4 @@
 "refundedAmount","Refunded","ပြန်အမ်းငွေ","organizer app"
 "discountsIncluded","Discounts given (already taken off sales)","ပေးထားသော လျှော့စျေး (ရောင်းရငွေထဲမှ နုတ်ပြီးသား)","organizer app"
 "balance","Balance","လက်ကျန်","organizer app"
+"ticketCount","{count, plural, =1{1 ticket} other{{count} tickets}}","{count, plural, other{လက်မှတ် {count} စောင်}}","organizer app"

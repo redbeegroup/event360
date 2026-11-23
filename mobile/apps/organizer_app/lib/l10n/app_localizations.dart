@@ -1404,6 +1404,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Balance'**
   String get balance;
+
+  /// No description provided for @ticketCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 ticket} other{{count} tickets}}'**
+  String ticketCount(int count);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

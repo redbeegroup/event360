@@ -762,4 +762,15 @@ class L10nEn extends L10n {
 
   @override
   String get balance => 'Balance';
+
+  @override
+  String ticketCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tickets',
+      one: '1 ticket',
+    );
+    return '$_temp0';
+  }
 }

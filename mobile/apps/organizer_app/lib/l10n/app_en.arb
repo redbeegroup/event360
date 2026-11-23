@@ -467,5 +467,13 @@
   "revenueCaption": "Ticket revenue is before discounts",
   "refundedAmount": "Refunded",
   "discountsIncluded": "Discounts given (already taken off sales)",
-  "balance": "Balance"
+  "balance": "Balance",
+  "ticketCount": "{count, plural, =1{1 ticket} other{{count} tickets}}",
+  "@ticketCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

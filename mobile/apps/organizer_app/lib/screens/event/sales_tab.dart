@@ -42,8 +42,14 @@ String _providerText(L10n t, String code) => switch (code) {
       'CB_MPGS' => t.paymentCard,
       'MPU' => 'MPU',
       'CASH' => t.paymentCash,
-      _ => code,
+      _ => _titleCase(code),
     };
+
+/// An unknown provider code reads "Mock" or "Test Pay", not the raw upper-case code.
+String _titleCase(String code) {
+  final words = code.split(RegExp(r'[_\s]+')).where((w) => w.isNotEmpty).map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase()).toList();
+  return words.isEmpty ? code : words.join(' ');
+}
 
 const _pageSize = 30;
 const _debounce = Duration(milliseconds: 350);
@@ -335,7 +341,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
         ]),
       );
     }
-    Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, valueKey: key == null ? null : Key(key));
+    Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, oneLine: true, valueKey: key == null ? null : Key(key));
     Widget pair(Widget a, Widget b) => IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]),
         );
@@ -344,10 +350,10 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
       onRefresh: _refresh,
       child: ListView(key: const Key('salesSummary'), padding: const EdgeInsets.all(12), physics: const AlwaysScrollableScrollPhysics(), children: [
         Column(key: const Key('salesTotals'), crossAxisAlignment: CrossAxisAlignment.start, children: [
-          pair(tile(t.paidOrders, formatAmount(s.paidOrders, lang), key: 'paidOrders'), tile(t.grossSales, formatMmk(s.grossMmk, lang), key: 'grossSales')),
+          pair(tile(t.grossSales, formatMmk(s.grossMmk, lang), key: 'grossSales'), tile(t.netToYou, formatMmk(s.netMmk, lang), key: 'net')),
           Padding(padding: const EdgeInsets.fromLTRB(4, 6, 4, 0), child: Text(t.grossCaption, style: theme.textTheme.bodySmall)),
           const SizedBox(height: 10),
-          pair(tile(t.commission, formatMmk(s.commissionMmk, lang), key: 'commission'), tile(t.netToYou, formatMmk(s.netMmk, lang), key: 'net')),
+          pair(tile(t.commission, formatMmk(s.commissionMmk, lang), key: 'commission'), tile(t.paidOrders, formatAmount(s.paidOrders, lang), key: 'paidOrders')),
           const SizedBox(height: 10),
           tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded'),
         ]),
@@ -378,8 +384,9 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
         const SizedBox(height: 8),
         // One row that scrolls sideways. The selected fill is the primary colour: the label and the tick must read
         // on it (as on the Guests filter).
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        FadingHScroll(
+          fadeKey: const Key('orderFiltersFade'),
+          padding: const EdgeInsets.only(right: 24),
           child: Row(children: [
             for (final f in _filters) ...[
               FilterChip(
@@ -509,7 +516,7 @@ class _OrderTile extends StatelessWidget {
       onTap: onTap,
       title: Text(_buyer(t, row), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${t.orderNumber(row.number)} · ${formatAmount(row.quantity, lang)} × · ${formatMmk(row.totalMmk, lang)}', maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text('${t.orderNumber(row.number)} · ${t.ticketCount(row.quantity)} · ${formatMmk(row.totalMmk, lang)}', maxLines: 2, overflow: TextOverflow.ellipsis),
         Text(formatDayTime(row.createdAt, lang), style: theme.textTheme.bodySmall),
         if (row.status == 'PENDING_PAYMENT' && hold != null) Text(holdLine(t, hold, DateTime.now(), lang), style: theme.textTheme.bodySmall),
         const SizedBox(height: 4),
@@ -627,7 +634,8 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
       _line(theme, t.subtotal, formatMmk(d.subtotalMmk, lang)),
       if (d.row.discountMmk > 0) _line(theme, discountLabel, '− ${formatMmk(d.row.discountMmk, lang)}', key: const Key('orderDiscount')),
       _line(theme, t.total, formatMmk(d.row.totalMmk, lang), bold: true, key: const Key('orderTotal')),
-      _line(theme, t.commission, formatMmk(d.commissionMmk, lang)),
+      // Commission is only charged on an order that was paid
+      if (d.row.status == 'PAID') _line(theme, t.commission, formatMmk(d.commissionMmk, lang)),
       if (d.payments.isNotEmpty) ...[
         const SizedBox(height: 16),
         Text(t.payments, style: theme.textTheme.titleMedium),

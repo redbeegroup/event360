@@ -216,5 +216,6 @@
   "revenueCaption": "လက်မှတ်ရောင်းရငွေသည် လျှော့စျေး မနုတ်မီ ငွေဖြစ်ပါသည်",
   "refundedAmount": "ပြန်အမ်းငွေ",
   "discountsIncluded": "ပေးထားသော လျှော့စျေး (ရောင်းရငွေထဲမှ နုတ်ပြီးသား)",
-  "balance": "လက်ကျန်"
+  "balance": "လက်ကျန်",
+  "ticketCount": "{count, plural, other{လက်မှတ် {count} စောင်}}"
 }
