@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/providers.dart';
+import 'app/retry.dart';
 import 'app/router.dart';
 import 'l10n/app_localizations.dart';
 
@@ -19,7 +20,7 @@ Future<void> main() async {
   if (!kDebugMode) ErrorReporter(AppConfig.fromEnvironment(Event360App.organizer)).install();
   await Future.wait([initializeDateFormatting('en'), initializeDateFormatting('my')]);
   final prefs = await SharedPreferences.getInstance();
-  runApp(ProviderScope(overrides: [prefsProvider.overrideWithValue(prefs)], child: const OrganizerApp()));
+  runApp(ProviderScope(retry: appRetry, overrides: [prefsProvider.overrideWithValue(prefs)], child: const OrganizerApp()));
 }
 
 class OrganizerApp extends ConsumerStatefulWidget {
