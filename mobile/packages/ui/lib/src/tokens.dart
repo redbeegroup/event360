@@ -79,11 +79,11 @@ class E360DarkColors {
   static const Color navy = Color(0xFF8F96E8);
   static const Color onNavy = Color(0xFF111326);
 
-  static const Color success = Color(0xFF5FD0B0);
+  static const Color success = Color(0xFF6FD3B5);
   static const Color successBadgeInk = Color(0xFFA7ECD6);
   static const Color successBadgeBg = Color(0xFF123D33);
-  static const Color amberInk = Color(0xFFF2B632);
-  static const Color amberBg = Color(0xFF3A3017);
+  static const Color amberInk = Color(0xFFF2C46A);
+  static const Color amberBg = Color(0xFF3A2F10);
   static const Color danger = Color(0xFFFF8A80);
   static const Color dangerBg = Color(0xFF3A1F26);
   static const Color disabledLine = Color(0xFF3F4470);
