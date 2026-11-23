@@ -84,10 +84,11 @@ run('Organizer tools', () => {
     await http.post(`${base()}/promo-codes`).set(outsider.h).send({ code: 'NOPE', kind: 'PERCENT', value: 10 }).expect(403);
     let list = await http.post(`${base()}/promo-codes`).set(O).send({ code: 'early20', kind: 'PERCENT', value: 20, maxUses: 2 }).expect(201);
     expect(list.body[0]).toMatchObject({ code: 'EARLY20', kind: 'PERCENT', value: 20, maxUses: 2, used: 0 });
-    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'EARLY20', kind: 'FIXED', value: 1000 }).expect(409);
+    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'EARLY20', kind: 'FIXED', value: 1000 }).expect(409).expect((r) => expect(r.body).toMatchObject({ message: 'This code already exists for the event', reasonCode: 'PROMO_CODE_EXISTS' }));
     await http.post(`${base()}/promo-codes`).set(O).send({ code: 'VIPONLY', kind: 'FIXED', value: 5000, ticketTypeIds: [ttVip] }).expect(201);
     list = await http.post(`${base()}/promo-codes`).set(O).send({ code: 'COMP', kind: 'PERCENT', value: 100, maxUses: 1 }).expect(201);
-    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'BAD', kind: 'PERCENT', value: 150 }).expect(400);
+    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'BAD', kind: 'PERCENT', value: 150 }).expect(400).expect((r) => expect(r.body).toMatchObject({ reasonCode: 'PROMO_PERCENT_RANGE' }));
+    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'BADDATES', kind: 'PERCENT', value: 10, startsAt: '2030-02-01T00:00:00Z', endsAt: '2030-01-01T00:00:00Z' }).expect(400).expect((r) => expect(r.body).toMatchObject({ message: 'End must be after start', reasonCode: 'PROMO_DATES_ORDER' }));
 
     const B = await consumer();
     const pv = await http.post(`/v1/events/${eventId}/promo-check`).set(B.h).send({ code: 'early20', items: [{ ticketTypeId: ttStd, quantity: 2 }] }).expect(200);
@@ -209,5 +210,8 @@ run('Organizer tools', () => {
     const outsider = await consumer();
     await http.get(`${base()}/dashboard`).set(outsider.h).expect(403);
     void payments;
+    // a finished event takes no new promo codes
+    await prisma.event.update({ where: { id: eventId }, data: { status: 'COMPLETED' } });
+    await http.post(`${base()}/promo-codes`).set(O).send({ code: 'LATE', kind: 'PERCENT', value: 10 }).expect(409).expect((r) => expect(r.body).toMatchObject({ message: 'Event is COMPLETED', reasonCode: 'EVENT_ENDED' }));
   });
 });

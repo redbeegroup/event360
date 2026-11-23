@@ -160,7 +160,7 @@ run('Notifications', () => {
       const a = await http.post(`/v1/organizations/${orgId}/events/${eventId}/announcements`).set(O).send({ title: `Gate opens ${i}`, body: 'Doors open at 4 PM. Bring your QR.' }).expect(201);
       expect(a.body.recipients).toBe(2);
     }
-    await http.post(`/v1/organizations/${orgId}/events/${eventId}/announcements`).set(O).send({ title: 'One more', body: 'Too many today' }).expect(409);
+    await http.post(`/v1/organizations/${orgId}/events/${eventId}/announcements`).set(O).send({ title: 'One more', body: 'Too many today' }).expect(409).expect((r) => expect(r.body).toMatchObject({ reasonCode: 'ANNOUNCE_DAILY_LIMIT' }));
     const list = await http.get(`/v1/organizations/${orgId}/events/${eventId}/announcements`).set(O).expect(200);
     expect(list.body).toMatchObject({ ticketHolders: 2, remainingToday: 0 });
     expect(list.body.items).toHaveLength(3);
@@ -169,6 +169,11 @@ run('Notifications', () => {
     expect(i2.items[0]).toMatchObject({ kind: 'announcement', title: `Notify Fest ${tag}: Gate opens 3` });
     expect(texts.length).toBe(sent); // announcements never go by SMS
     expect((await inbox(outsider.h)).items).toHaveLength(0);
+    // an event that is not published takes no announcements
+    const before = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+    await prisma.event.update({ where: { id: eventId }, data: { status: 'DRAFT' } });
+    await http.post(`/v1/organizations/${orgId}/events/${eventId}/announcements`).set(O).send({ title: 'Early', body: 'Not yet published' }).expect(409).expect((r) => expect(r.body).toMatchObject({ message: 'Announcements can only be sent for published events', reasonCode: 'ANNOUNCE_NOT_PUBLISHED' }));
+    await prisma.event.update({ where: { id: eventId }, data: { status: before.status } });
   });
 
   it('day-before reminder goes out once', async () => {

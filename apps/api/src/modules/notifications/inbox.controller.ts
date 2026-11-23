@@ -167,9 +167,9 @@ export class AnnouncementsController {
   async create(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AnnouncementDto, @CurrentUser() u: AuthUser) {
     await this.access.assert(u, orgId, ORG_EDITORS);
     const e = await this.event(orgId, id);
-    if (!e.publishedAt || ['CANCELLED', 'COMPLETED', 'DRAFT'].includes(e.status)) throw new ConflictException('Announcements can only be sent for published events');
+    if (!e.publishedAt || ['CANCELLED', 'COMPLETED', 'DRAFT'].includes(e.status)) throw new ConflictException({ message: 'Announcements can only be sent for published events', reasonCode: 'ANNOUNCE_NOT_PUBLISHED' });
     const today = await this.prisma.announcement.count({ where: { eventId: id, createdAt: { gt: new Date(Date.now() - 24 * 3600e3) } } });
-    if (today >= ANNOUNCEMENTS_PER_DAY) throw new ConflictException(`At most ${ANNOUNCEMENTS_PER_DAY} announcements per event per day`);
+    if (today >= ANNOUNCEMENTS_PER_DAY) throw new ConflictException({ message: `At most ${ANNOUNCEMENTS_PER_DAY} announcements per event per day`, reasonCode: 'ANNOUNCE_DAILY_LIMIT' });
     const holders = await this.notify.holders(id);
     const a = await this.prisma.$transaction(async (tx) => {
       const row = await tx.announcement.create({

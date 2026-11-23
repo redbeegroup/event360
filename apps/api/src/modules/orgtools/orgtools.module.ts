@@ -104,11 +104,11 @@ export class OrgToolsService {
 
   async createPromo(orgId: string, eventId: string, dto: PromoDto, actorId: string) {
     const e = await this.event(orgId, eventId);
-    if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException(`Event is ${e.status}`);
-    if (dto.kind === 'PERCENT' && dto.value > 100) throw new BadRequestException('Percent must be 1–100');
+    if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException({ message: `Event is ${e.status}`, reasonCode: 'EVENT_ENDED' });
+    if (dto.kind === 'PERCENT' && dto.value > 100) throw new BadRequestException({ message: 'Percent must be 1–100', reasonCode: 'PROMO_PERCENT_RANGE' });
     const types = dto.ticketTypeIds ?? [];
     if (types.some((t) => !e.ticketTypes.find((x) => x.id === t))) throw new BadRequestException('Unknown ticket type');
-    if (dto.startsAt && dto.endsAt && new Date(dto.endsAt) <= new Date(dto.startsAt)) throw new BadRequestException('End must be after start');
+    if (dto.startsAt && dto.endsAt && new Date(dto.endsAt) <= new Date(dto.startsAt)) throw new BadRequestException({ message: 'End must be after start', reasonCode: 'PROMO_DATES_ORDER' });
     try {
       await this.prisma.promoCode.create({
         data: {
@@ -124,7 +124,7 @@ export class OrgToolsService {
         },
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('This code already exists for the event');
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException({ message: 'This code already exists for the event', reasonCode: 'PROMO_CODE_EXISTS' });
       throw err;
     }
     return this.promos(orgId, eventId);
