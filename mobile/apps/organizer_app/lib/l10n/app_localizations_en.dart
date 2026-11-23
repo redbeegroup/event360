@@ -581,8 +581,7 @@ class L10nEn extends L10n {
   String get allOrders => 'All orders';
 
   @override
-  String get orderSearchHint =>
-      'Search name, full phone number or order number';
+  String get orderSearchHint => 'Name, full phone or order number';
 
   @override
   String get filterAll => 'All';

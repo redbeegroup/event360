@@ -69,7 +69,7 @@ class _Body extends StatelessWidget {
     final theme = Theme.of(context);
     final s = summary;
     final owing = s.owedMmk < 0;
-    Widget tile(String key, String label, String value) => StatTile(label: label, value: value, valueKey: Key(key));
+    Widget tile(String key, String label, String value) => StatTile(label: label, value: value, oneLine: true, valueKey: Key(key));
     Widget pair(Widget a, Widget b) => IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]),
         );

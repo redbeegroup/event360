@@ -348,7 +348,7 @@
     }
   },
   "allOrders": "All orders",
-  "orderSearchHint": "Search name, full phone number or order number",
+  "orderSearchHint": "Name, full phone or order number",
   "filterAll": "All",
   "filterPaid": "Paid",
   "filterRefunded": "Refunded",

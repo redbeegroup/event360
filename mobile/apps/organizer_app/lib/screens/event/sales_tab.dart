@@ -355,7 +355,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
           const SizedBox(height: 10),
           pair(tile(t.commission, formatMmk(s.commissionMmk, lang), key: 'commission'), tile(t.paidOrders, formatAmount(s.paidOrders, lang), key: 'paidOrders')),
           const SizedBox(height: 10),
-          tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded'),
+          SizedBox(width: double.infinity, child: tile(t.refunded, t.refundedLine(formatAmount(s.refundedOrders, lang), formatMmk(s.refundedMmk, lang)), key: 'refunded')),
         ]),
         if (_totalsFailed)
           Padding(padding: const EdgeInsets.fromLTRB(4, 8, 4, 0), child: Text(t.refreshFailed, key: const Key('salesRefreshFailed'), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error))),

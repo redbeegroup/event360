@@ -561,8 +561,7 @@ class L10nMy extends L10n {
   String get allOrders => 'အော်ဒါအားလုံး';
 
   @override
-  String get orderSearchHint =>
-      'အမည်၊ ဖုန်းနံပါတ်အပြည့်အစုံ သို့ အော်ဒါနံပါတ် ရှာရန်';
+  String get orderSearchHint => 'အမည်၊ ဖုန်းအပြည့် သို့ အော်ဒါနံပါတ်';
 
   @override
   String get filterAll => 'အားလုံး';

@@ -1084,7 +1084,7 @@ abstract class L10n {
   /// No description provided for @orderSearchHint.
   ///
   /// In en, this message translates to:
-  /// **'Search name, full phone number or order number'**
+  /// **'Name, full phone or order number'**
   String get orderSearchHint;
 
   /// No description provided for @filterAll.

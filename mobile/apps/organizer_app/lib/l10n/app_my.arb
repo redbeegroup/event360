@@ -163,7 +163,7 @@
   "nextPriceLine": "{date} တွင် စျေးနှုန်း {amount} ဖြစ်မည်",
   "soldOf": "{quota} ထဲက {sold} ရောင်းပြီး",
   "allOrders": "အော်ဒါအားလုံး",
-  "orderSearchHint": "အမည်၊ ဖုန်းနံပါတ်အပြည့်အစုံ သို့ အော်ဒါနံပါတ် ရှာရန်",
+  "orderSearchHint": "အမည်၊ ဖုန်းအပြည့် သို့ အော်ဒါနံပါတ်",
   "filterAll": "အားလုံး",
   "filterPaid": "ငွေပေးချေပြီး",
   "filterRefunded": "ငွေပြန်အမ်းပြီး",

@@ -448,7 +448,7 @@
 "nextPriceLine","Next price {amount} on {date}","{date} တွင် စျေးနှုန်း {amount} ဖြစ်မည်","organizer app"
 "soldOf","{sold} of {quota} sold","{quota} ထဲက {sold} ရောင်းပြီး","organizer app"
 "allOrders","All orders","အော်ဒါအားလုံး","organizer app"
-"orderSearchHint","Search name, full phone number or order number","အမည်၊ ဖုန်းနံပါတ်အပြည့်အစုံ သို့ အော်ဒါနံပါတ် ရှာရန်","organizer app"
+"orderSearchHint","Name, full phone or order number","အမည်၊ ဖုန်းအပြည့် သို့ အော်ဒါနံပါတ်","organizer app"
 "filterAll","All","အားလုံး","organizer app"
 "filterPaid","Paid","ငွေပေးချေပြီး","organizer app"
 "filterRefunded","Refunded","ငွေပြန်အမ်းပြီး","organizer app"
