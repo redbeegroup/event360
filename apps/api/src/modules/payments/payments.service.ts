@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import type { OrderStatus, PaymentProviderCode, Prisma } from '@prisma/client';
 import { createHmac, randomUUID } from 'crypto';
 import { maskPhone, mmk } from '../../common/util';
+import { normalizeMyanmarPhone } from '../auth/phone';
 import { NotifyService } from '../notifications/notify.service';
 import { PaymentSettingsService } from '../notifications/settings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1161,9 +1162,9 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const term = q.q?.trim().slice(0, 60);
     if (term) {
       const or: Prisma.OrderWhereInput[] = [{ user: { displayName: { contains: likeEscape(term), mode: 'insensitive' } } }];
-      let digits = term.replace(/\D/g, '');
-      if (digits.startsWith('09')) digits = digits.slice(1);
-      if (digits.length >= 4) or.push({ user: { phone: { contains: digits } } });
+      // Phone: exact match on the full number only, so a masked number cannot be recovered by guessing digits.
+      const phone = normalizeMyanmarPhone(term);
+      if (phone) or.push({ user: { phone } });
       if (/^[0-9a-f]{1,8}$/i.test(term)) {
         // order number = uuid prefix: a range on the primary key
         const h = term.toLowerCase();

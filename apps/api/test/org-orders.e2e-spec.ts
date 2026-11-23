@@ -217,12 +217,25 @@ run('Organizer orders', () => {
       expect(none.body.orders.map((x: any) => x.id)).toEqual([]);
     });
 
-    it('phone search needs four digits: 959 matches nothing, the last four digits match', async () => {
+    it('phone search is an exact full-number match: 959 and the last four digits match nothing by phone', async () => {
       const r959 = await list('?q=959&limit=100').expect(200);
       for (const o of r959.body.orders) expect(o.id.toLowerCase().startsWith('959')).toBe(true);
-      const last4 = namedBuyer.phone.slice(-4);
-      const r = await list(`?q=${last4}&limit=100`).expect(200);
-      expect(r.body.orders.map((o: any) => o.id)).toContain(paid);
+      for (const part of [namedBuyer.phone.slice(-4), namedBuyer.phone.slice(-7), namedBuyer.phone.slice(0, -1), localPhone(namedBuyer.phone).slice(0, -1)]) {
+        const r = await list(`?q=${encodeURIComponent(part)}&limit=100`).expect(200);
+        // only an order-number prefix could match a digit string like this
+        for (const o of r.body.orders) expect(o.id.toLowerCase().startsWith(part.toLowerCase())).toBe(true);
+      }
+    });
+
+    it('the full number of a buyer of another organization finds nothing here', async () => {
+      const u = await makeUser(`Elsewhere ${tag}`);
+      await prisma.order.create({
+        data: { userId: u.id, eventId: otherEventId, status: 'PAID', subtotalMmk: 10_000n, totalMmk: 10_000n, commissionMmk: 500n, channel: 'APP', paidAt: new Date(), holdExpiresAt: new Date(Date.now() + 600_000) },
+      });
+      for (const q of [u.phone, localPhone(u.phone)]) {
+        const r = await list(`?q=${encodeURIComponent(q)}`).expect(200);
+        expect(r.body.orders).toEqual([]);
+      }
     });
 
     it('status and name searches page across a boundary without repeats or gaps', async () => {
