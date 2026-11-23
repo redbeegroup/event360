@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { PaymentProviderCode, Prisma } from '@prisma/client';
+import type { OrderStatus, PaymentProviderCode, Prisma } from '@prisma/client';
 import { createHmac, randomUUID } from 'crypto';
 import { maskPhone, mmk } from '../../common/util';
 import { NotifyService } from '../notifications/notify.service';
@@ -90,6 +90,80 @@ const HOLD_SKIP_MS = 10 * 60e3;
 /** Flags an order for admin review, keeping any earlier note (one line per reason) so no refund reason is lost. */
 async function flagForReview(tx: Prisma.TransactionClient, orderId: string, note: string) {
   await tx.$executeRaw`UPDATE orders SET needs_review = true, review_note = CASE WHEN review_note IS NULL OR review_note = '' THEN ${note} ELSE review_note || E'\n' || ${note} END WHERE id = ${orderId}::uuid`;
+}
+
+export type OrgOrderFilter = 'paid' | 'refunded' | 'pending' | 'incomplete';
+const ORG_ORDER_STATUSES: Record<OrgOrderFilter, OrderStatus[]> = {
+  paid: ['PAID'],
+  refunded: ['REFUNDED'],
+  pending: ['PENDING_PAYMENT'],
+  incomplete: ['FAILED', 'EXPIRED', 'CANCELLED'],
+};
+
+export type OrgOrderRow = {
+  id: string;
+  number: string;
+  status: OrderStatus;
+  needsReview: boolean;
+  createdAt: Date;
+  paidAt: Date | null;
+  holdExpiresAt: Date | null;
+  totalMmk: number;
+  discountMmk: number;
+  quantity: number;
+  buyer: { name: string | null; phone: string | null };
+};
+export type OrgOrderDetail = OrgOrderRow & {
+  subtotalMmk: number;
+  commissionMmk: number;
+  promoCode: string | null;
+  groupDiscountBp: number | null;
+  items: { ticketTypeId: string; name: string; nameMy: string | null; quantity: number; unitPriceMmk: number; seats: { label: string; labelMy: string | null }[] }[];
+  payments: { provider: string; status: string; createdAt: Date }[];
+  refunds: { status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'MANUAL'; amountMmk: number; createdAt: Date; completedAt: Date | null }[];
+  tickets: { total: number; valid: number; checkedIn: number; void: number };
+};
+
+/** Explicit field picks only: nothing from the Prisma row is passed through. */
+function orgOrderRow(o: {
+  id: string;
+  status: OrderStatus;
+  needsReview: boolean;
+  createdAt: Date;
+  paidAt: Date | null;
+  holdExpiresAt: Date | null;
+  totalMmk: bigint;
+  discountMmk: bigint;
+  items: { quantity: number }[];
+  user: { phone: string | null; displayName: string | null };
+}): OrgOrderRow {
+  return {
+    id: o.id,
+    number: o.id.slice(0, 8).toUpperCase(),
+    status: o.status,
+    needsReview: o.needsReview,
+    createdAt: o.createdAt,
+    paidAt: o.paidAt,
+    holdExpiresAt: o.status === 'PENDING_PAYMENT' ? o.holdExpiresAt : null,
+    totalMmk: mmk(o.totalMmk),
+    discountMmk: mmk(o.discountMmk),
+    quantity: o.items.reduce((s, i) => s + i.quantity, 0),
+    buyer: { name: o.user.displayName, phone: maskPhone(o.user.phone) },
+  };
+}
+
+/** Prisma's `contains` passes % and _ through as wildcards; escape them (and the escape character) for LIKE. */
+function likeEscape(t: string): string {
+  return t.replace(/[\\%_]/g, '\\$&');
+}
+
+function decodeOrderCursor(cursor: string): { createdAt: Date; id: string } {
+  const [iso, id, extra] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+  const createdAt = new Date(iso ?? '');
+  if (extra !== undefined || !id || Number.isNaN(createdAt.getTime()) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new BadRequestException('Invalid cursor');
+  }
+  return { createdAt, id: id.toLowerCase() };
 }
 
 @Injectable()
@@ -1072,6 +1146,95 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         quantity: o.items.reduce((s, i) => s + i.quantity, 0),
         buyer: o.user.displayName || maskPhone(o.user.phone),
       })),
+    };
+  }
+  /** Organizer order list: paid-side orders of one event, newest first, keyset paged. Buyer phone is always masked. */
+  async orgOrders(
+    organizationId: string,
+    eventId: string,
+    q: { status?: OrgOrderFilter; q?: string; cursor?: string; limit?: number },
+  ): Promise<{ orders: OrgOrderRow[]; nextCursor: string | null }> {
+    const event = await this.prisma.event.findFirst({ where: { id: eventId, organizationId }, select: { id: true } });
+    if (!event) throw new NotFoundException('Event not found');
+    const limit = Math.min(Math.max(Math.trunc(q.limit ?? 30), 1), 100);
+    const and: Prisma.OrderWhereInput[] = [];
+    const term = q.q?.trim().slice(0, 60);
+    if (term) {
+      const or: Prisma.OrderWhereInput[] = [{ user: { displayName: { contains: likeEscape(term), mode: 'insensitive' } } }];
+      let digits = term.replace(/\D/g, '');
+      if (digits.startsWith('09')) digits = digits.slice(1);
+      if (digits.length >= 3) or.push({ user: { phone: { contains: digits } } });
+      if (/^[0-9a-f]{1,8}$/i.test(term)) {
+        const like = likeEscape(term) + '%';
+        const ids = await this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM orders
+          WHERE event_id = ${eventId}::uuid AND total_mmk > 0 AND channel <> 'COMP' AND id::text ILIKE ${like}`;
+        if (ids.length) or.push({ id: { in: ids.map((r) => r.id) } });
+      }
+      and.push({ OR: or });
+    }
+    if (q.cursor) {
+      const c = decodeOrderCursor(q.cursor);
+      and.push({ OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] });
+    }
+    const rows = await this.prisma.order.findMany({
+      where: {
+        eventId,
+        event: { organizationId },
+        totalMmk: { gt: 0n },
+        channel: { not: 'COMP' },
+        status: { in: q.status ? ORG_ORDER_STATUSES[q.status] : Object.values(ORG_ORDER_STATUSES).flat() },
+        ...(and.length ? { AND: and } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { user: { select: { phone: true, displayName: true } }, items: { select: { quantity: true } } },
+    });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      orders: page.map((o) => orgOrderRow(o)),
+      nextCursor: rows.length > limit && last ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString('base64url') : null,
+    };
+  }
+
+  /** Organizer order detail; the order must belong to this event and the event to this organization (else 404). */
+  async orgOrder(organizationId: string, eventId: string, orderId: string): Promise<OrgOrderDetail> {
+    const o = await this.prisma.order.findFirst({
+      where: { id: orderId, eventId, event: { organizationId }, totalMmk: { gt: 0n }, channel: { not: 'COMP' } },
+      include: {
+        user: { select: { phone: true, displayName: true } },
+        promoCode: { select: { code: true } },
+        items: { include: { ticketType: { select: { name: true, nameMy: true } } } },
+        payments: { orderBy: { createdAt: 'desc' }, take: 5, select: { provider: true, status: true, createdAt: true } },
+        refunds: { orderBy: { createdAt: 'desc' }, select: { status: true, amountMmk: true, createdAt: true, completedAt: true } },
+      },
+    });
+    if (!o) throw new NotFoundException('Order not found');
+    const keys = o.items.flatMap((i) => i.seatKeys);
+    const labels = keys.length
+      ? new Map((await this.prisma.eventSeat.findMany({ where: { eventId, seatKey: { in: keys } }, select: { seatKey: true, label: true, labelMy: true } })).map((s) => [s.seatKey, s]))
+      : new Map<string, { label: string; labelMy: string | null }>();
+    const counts = await this.prisma.ticket.groupBy({ by: ['status'], where: { orderId: o.id }, _count: true });
+    const n = (...st: string[]) => counts.filter((c) => st.includes(c.status)).reduce((s, c) => s + c._count, 0);
+    return {
+      ...orgOrderRow(o),
+      subtotalMmk: mmk(o.subtotalMmk),
+      commissionMmk: mmk(o.commissionMmk),
+      promoCode: o.promoCode?.code ?? null,
+      groupDiscountBp: o.groupDiscountBp,
+      items: o.items.map((i) => ({
+        ticketTypeId: i.ticketTypeId,
+        name: i.ticketType.name,
+        nameMy: i.ticketType.nameMy,
+        quantity: i.quantity,
+        unitPriceMmk: mmk(i.unitPriceMmk),
+        seats: i.seatKeys.map((k) => ({ label: labels.get(k)?.label ?? k, labelMy: labels.get(k)?.labelMy ?? null })),
+      })),
+      payments: o.payments.map((p) => ({ provider: p.provider, status: p.status, createdAt: p.createdAt })),
+      refunds: o.refunds.map((r) => ({ status: r.status, amountMmk: mmk(r.amountMmk), createdAt: r.createdAt, completedAt: r.completedAt })),
+      // void counts tickets that no longer admit anyone (voided or refunded)
+      tickets: { total: counts.reduce((s, c) => s + c._count, 0), valid: n('VALID'), checkedIn: n('CHECKED_IN'), void: n('VOID', 'REFUNDED') },
     };
   }
 }

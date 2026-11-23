@@ -514,6 +514,7 @@ model Order {
 
   @@index([status, holdExpiresAt])
   @@index([eventId, status])
+  @@index([eventId, createdAt, id])
   @@map("orders")
 }
 

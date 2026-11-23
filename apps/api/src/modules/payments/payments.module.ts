@@ -18,7 +18,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -45,7 +45,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SeatingModule } from '../seating/seating.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { mockPage, mockResultPage } from './mock-page';
-import { PaymentsService } from './payments.service';
+import { OrgOrderFilter, PaymentsService } from './payments.service';
 import { PAYOUT_METHODS, PayoutsService } from './payouts.service';
 
 export { PaymentsService } from './payments.service';
@@ -383,6 +383,56 @@ export class OrgSalesController {
   }
 }
 
+export class OrgOrdersQueryDto {
+  @ApiPropertyOptional({ enum: ['paid', 'refunded', 'pending', 'incomplete'] })
+  @IsOptional()
+  @IsIn(['paid', 'refunded', 'pending', 'incomplete'])
+  status?: OrgOrderFilter;
+
+  @ApiPropertyOptional({ description: 'Buyer name, phone digits or order number prefix' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(60)
+  q?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  cursor?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 30 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+@ApiTags('organizer')
+@Controller('organizations/:orgId/events/:eventId/orders')
+@Auth()
+export class OrgOrdersController {
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly access: OrgAccessService,
+  ) {}
+
+  @Get()
+  async list(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('eventId', ParseUUIDPipe) eventId: string, @Query() q: OrgOrdersQueryDto, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_VIEWERS);
+    return this.payments.orgOrders(orgId, eventId, q);
+  }
+
+  @Get(':orderId')
+  async one(@Param('orgId', ParseUUIDPipe) orgId: string, @Param('eventId', ParseUUIDPipe) eventId: string, @Param('orderId', ParseUUIDPipe) orderId: string, @CurrentUser() u: AuthUser) {
+    await this.access.assert(u, orgId, ORG_VIEWERS);
+    return this.payments.orgOrder(orgId, eventId, orderId);
+  }
+}
+
 @ApiTags('organizer')
 @Controller('organizations/:orgId/payouts')
 @Auth()
@@ -424,7 +474,7 @@ export class OrgPayoutsController {
 
 @Module({
   imports: [SeatingModule, WaitlistModule],
-  controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController, OrgPayoutsController],
+  controllers: [CheckoutController, PaymentsController, AdminFinanceController, OrgSalesController, OrgOrdersController, OrgPayoutsController],
   providers: [PaymentsService, PayoutsService],
   exports: [PaymentsService],
 })
