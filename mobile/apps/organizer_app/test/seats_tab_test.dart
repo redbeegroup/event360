@@ -726,5 +726,35 @@ void tallTests() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-}
 
+  for (final (name, setup) in <(String, void Function(FakeApi))>[
+    ('a server error (500)', (a) => a.releaseError = ApiException(500, 'Internal server error')),
+    ('an unexpected error', (a) => a.crashRelease = true),
+  ]) {
+    testWidgets('Release failing with $name says so and keeps the selection', (tester) async {
+      final api = await openSeats(tester, setup: setup);
+      await tapSeats(tester, ['A:1:5', 'A:1:6']);
+      await tester.tap(key('seatsRelease'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('releaseConfirm'));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('release:A:1:5,A:1:6'));
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(find.text('2 seats selected'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('a failed Release is not queued behind an older message', (tester) async {
+    await openSeats(tester, setup: (a) => a.releaseError = ApiException(500, 'Internal server error'));
+    ScaffoldMessenger.of(tester.element(find.byType(SeatsTab))).showSnackBar(const SnackBar(content: Text('Older message'), duration: Duration(seconds: 30)));
+    await tester.pump();
+    await tapSeats(tester, ['A:1:5', 'A:1:6']);
+    tester.widget<OutlinedButton>(key('seatsRelease')).onPressed!(); // the older message covers the bar
+    await tester.pumpAndSettle();
+    await tester.tap(key('releaseConfirm'));
+    await tester.pumpAndSettle();
+    expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+}

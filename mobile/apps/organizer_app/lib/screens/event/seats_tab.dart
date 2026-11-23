@@ -154,12 +154,12 @@ class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClie
       refreshSeating(c, widget.k);
       if (mounted) setState(_selected.clear);
       if (okMessage != null)
-        messenger.showSnackBar(SnackBar(content: Text(okMessage(t))));
+        say(messenger, okMessage(t));
       return const _Outcome(_Result.ok);
     } on SeatsChanged catch (e) {
       refreshSeating(c, widget.k);
       if (mounted) setState(() => _selected.removeAll(e.takenSeats));
-      messenger.showSnackBar(SnackBar(content: Text(t.seatsChanged)));
+      say(messenger, t.seatsChanged);
       return const _Outcome(_Result.changed);
     } on ApiException catch (e) {
       if (phoneOn400 && e.status == 400)
@@ -215,7 +215,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClie
       (api) => api.releaseSeats(widget.k.orgId, widget.k.eventId, keys),
     );
     if (out.result == _Result.failed && out.message != null)
-      messenger.showSnackBar(SnackBar(content: Text(out.message!)));
+      say(messenger, out.message!);
   }
 
   Future<void> _revoke(GuestTicket g) async {
@@ -253,15 +253,13 @@ class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClie
     try {
       await api.revokeGuestTicket(widget.k.orgId, widget.k.eventId, g.id);
       refreshSeating(c, widget.k);
-      messenger.showSnackBar(SnackBar(content: Text(t.guestRevoked)));
+      say(messenger, t.guestRevoked);
     } on ApiException catch (e) {
       // Already checked in or already revoked: say so, and show the current state.
       refreshSeating(c, widget.k);
-      messenger.showSnackBar(
-        SnackBar(content: Text(errorText(t, e))),
-      );
+      say(messenger, errorText(t, e));
     } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text(t.somethingWentWrong)));
+      say(messenger, t.somethingWentWrong);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -60,8 +60,9 @@ class _AnnounceState extends ConsumerState<AnnounceTab> {
         c.clear();
       }
       ref.invalidate(announcementsProvider(widget.k));
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.sent)));
-    } on ApiException catch (e) {
+      if (mounted) say(ScaffoldMessenger.of(context), t.sent);
+    } catch (e) {
+      // Any failure, not only an API error, ends with a visible message
       if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);

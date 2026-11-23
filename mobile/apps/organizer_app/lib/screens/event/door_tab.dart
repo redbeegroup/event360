@@ -48,7 +48,8 @@ class _DoorState extends ConsumerState<DoorTab> {
       _label.clear();
       _gate.clear();
       if (mounted) await showDialog<void>(context: context, builder: (_) => _CodeDialog(code: c));
-    } on ApiException catch (e) {
+    } catch (e) {
+      // Any failure, not only an API error, ends with a visible message
       if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -68,8 +69,14 @@ class _DoorState extends ConsumerState<DoorTab> {
       ),
     );
     if (ok != true) return;
-    await ref.read(apiProvider).revokeCrewCode(widget.k.orgId, widget.k.eventId, c.id).catchError((_) {});
-    ref.invalidate(crewCodesProvider(widget.k));
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiProvider).revokeCrewCode(widget.k.orgId, widget.k.eventId, c.id);
+    } catch (e) {
+      say(messenger, errorText(t, e));
+    }
+    if (mounted) ref.invalidate(crewCodesProvider(widget.k));
   }
 
   @override

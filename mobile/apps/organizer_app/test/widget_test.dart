@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:organizer_app/app/providers.dart';
 import 'package:organizer_app/app/push.dart';
+import 'package:organizer_app/app/retry.dart';
 import 'package:organizer_app/main.dart';
 import 'package:organizer_app/screens/event_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,7 +92,11 @@ class FakeApi extends Event360Api {
   Completer<void>? checkInGate;
 
   /// The next hold / revoke fails with an unexpected (non-API) error.
-  bool crashHold = false, crashRevoke = false;
+  bool crashHold = false, crashRevoke = false, crashRelease = false;
+  Object? releaseError;
+
+  /// Thrown by the Door, Promos, Announce and undo calls (any object: an ApiException or an unexpected error).
+  Object? actionError;
   String? refuseWith;
   /// Seat map: off for an event without one.
   bool hasMap = true;
@@ -129,6 +134,8 @@ class FakeApi extends Event360Api {
   bool failSeating = false;
 
   /// Requests fail with this error while it is set (dashboard, guests list, seating).
+  /// How many dashboard calls fail with [dashboardError] (-1: all of them).
+  int dashboardErrorTimes = -1;
   Object? dashboardError, attendeesError, seatingError, holdError;
 
   /// The server ended the session: the tokens are gone and the client tells the app, as the real client does after a 401 that the refresh could not fix.
@@ -211,7 +218,7 @@ class FakeApi extends Event360Api {
   @override
   Future<EventDashboard> eventDashboard(String orgId, String eventId) async {
     dashboardCalls++;
-    if (dashboardError != null) throw dashboardError!;
+    if (dashboardError != null && (dashboardErrorTimes < 0 || dashboardCalls <= dashboardErrorTimes)) throw dashboardError!;
     return _dashboard();
   }
 
@@ -247,6 +254,7 @@ class FakeApi extends Event360Api {
 
   @override
   Future<CrewCode> createCrewCode(String orgId, String eventId, String label, {String? gate}) async {
+    if (actionError != null) throw actionError!;
     final c = {'id': 'c${codes.length}', 'label': label, 'gate': gate, 'expiresAt': _future, 'devices': 0, 'active': true};
     codes.add(c);
     return CrewCode.fromJson({...c, 'code': 'K7QM-4XRT', 'redeemUri': 'event360crew://redeem?code=K7QM-4XRT'});
@@ -255,6 +263,7 @@ class FakeApi extends Event360Api {
   @override
   Future<void> revokeCrewCode(String orgId, String eventId, String codeId) async {
     calls.add('revoke:$codeId');
+    if (actionError != null) throw actionError!;
     final i = codes.indexWhere((c) => c['id'] == codeId);
     codes[i] = {...codes[i], 'active': false, 'revokedAt': '2026-11-20T04:00:00.000Z'};
   }
@@ -268,19 +277,21 @@ class FakeApi extends Event360Api {
 
   @override
   Future<void> sendAnnouncement(String orgId, String eventId, {required String title, required String body, String? titleMy, String? bodyMy}) async =>
-      sent.add({'title': title, 'body': body, 'titleMy': titleMy, 'bodyMy': bodyMy});
+      actionError != null ? throw actionError! : sent.add({'title': title, 'body': body, 'titleMy': titleMy, 'bodyMy': bodyMy});
 
   @override
   Future<List<PromoCodeInfo>> promoCodes(String orgId, String eventId) async => promos.map(PromoCodeInfo.fromJson).toList();
 
   @override
   Future<void> createPromoCode(String orgId, String eventId, {required String code, required String kind, required int value, int? maxUses}) async {
+    if (actionError != null) throw actionError!;
     if (promos.any((p) => p['code'] == code.toUpperCase())) throw ApiException(409, 'This code already exists for the event', reasonCode: 'PROMO_CODE_EXISTS');
     promos.add({'id': 'p${promos.length}', 'code': code.toUpperCase(), 'kind': kind, 'value': value, 'maxUses': maxUses, 'used': 0, 'isActive': true, 'orders': 0, 'discountGivenMmk': 0});
   }
 
   @override
   Future<void> setPromoActive(String orgId, String eventId, String promoId, bool active) async {
+    if (actionError != null) throw actionError!;
     final i = promos.indexWhere((p) => p['id'] == promoId);
     promos[i] = {...promos[i], 'isActive': active};
   }
@@ -326,6 +337,7 @@ class FakeApi extends Event360Api {
   @override
   Future<CrewTicket> crewUndo(String eventId, String ticketId) async {
     calls.add('undo:$ticketId');
+    if (actionError != null) throw actionError!;
     final i = attendeesList.indexWhere((a) => a['id'] == ticketId);
     attendeesList[i] = {...attendeesList[i], 'status': 'VALID'};
     return _crewTicket(attendeesList[i]);
@@ -387,6 +399,9 @@ class FakeApi extends Event360Api {
   @override
   Future<int> releaseSeats(String orgId, String eventId, List<String> seats) async {
     calls.add('release:${seats.join(',')}');
+    await actionGate?.future;
+    if (crashRelease) throw StateError('boom');
+    if (releaseError != null) throw releaseError!;
     _seatsConflict();
     for (final s in seats) {
       _setSeat(s, 'AVAILABLE');
@@ -656,7 +671,7 @@ Future<FakeApi> pumpApp(WidgetTester tester, {bool signedIn = true, String role 
     ..role = role
     ..eventOpen = eventOpen;
   configure?.call(api);
-  await tester.pumpWidget(ProviderScope(overrides: [
+  await tester.pumpWidget(ProviderScope(retry: appRetry, overrides: [
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
     pushProvider.overrideWithValue(push ?? const NoPush()),

@@ -147,6 +147,21 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('undo failing (500 or unexpected) shows the message in the sheet and keeps the row checked in', (tester) async {
+    for (final error in [ApiException(500, 'Internal server error'), StateError('boom')]) {
+      final api = await openGuests(tester);
+      await openRow(tester, 'a3');
+      api.actionError = error;
+      await tester.tap(find.byKey(const Key('guestUndo')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('guestUndoConfirm')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('guestError')), findsOneWidget, reason: '$error');
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets('finance sees the details but no Check in or Undo', (tester) async {
     await openGuests(tester, role: 'ORG_FINANCE');
     await openRow(tester, 'a1');

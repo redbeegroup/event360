@@ -1,4 +1,3 @@
-import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,7 +47,8 @@ class _PromosState extends ConsumerState<PromosTab> {
         c.clear();
       }
       ref.invalidate(promoCodesProvider(widget.k));
-    } on ApiException catch (e) {
+    } catch (e) {
+      // Any failure, not only an API error, ends with a visible message
       if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -106,8 +106,14 @@ class _PromosState extends ConsumerState<PromosTab> {
                     trailing: widget.canEdit
                         ? TextButton(
                             onPressed: () async {
-                              await ref.read(apiProvider).setPromoActive(widget.k.orgId, widget.k.eventId, p.id, !p.isActive).catchError((_) {});
-                              ref.invalidate(promoCodesProvider(widget.k));
+                              final messenger = ScaffoldMessenger.of(context);
+                              final t = L10n.of(context);
+                              try {
+                                await ref.read(apiProvider).setPromoActive(widget.k.orgId, widget.k.eventId, p.id, !p.isActive);
+                              } catch (e) {
+                                say(messenger, errorText(t, e));
+                              }
+                              if (mounted) ref.invalidate(promoCodesProvider(widget.k));
                             },
                             child: Text(p.isActive ? t.turnOff : t.turnOn),
                           )

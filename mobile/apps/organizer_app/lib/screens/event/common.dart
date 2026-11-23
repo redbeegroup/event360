@@ -93,3 +93,13 @@ class _FadingHScrollState extends State<FadingHScroll> {
     ]);
   }
 }
+
+/// Shows a message from an action. Replaces one that is still on screen, so a result never waits behind an older message,
+/// and never throws (the screen may be gone by the time the request answers).
+void say(ScaffoldMessengerState messenger, String message) {
+  try {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  } catch (_) {}
+}

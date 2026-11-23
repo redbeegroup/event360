@@ -129,9 +129,7 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
   }
 
   void _say(ScaffoldMessengerState messenger, String message) {
-    try {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    } catch (_) {}
+    say(messenger, message);
   }
 
   /// Runs here, in the tab: the lists are refreshed and the result shown even if the sheet is gone.
