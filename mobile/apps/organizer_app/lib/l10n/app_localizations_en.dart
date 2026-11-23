@@ -203,7 +203,7 @@ class L10nEn extends L10n {
       'Revoke this code? Phones using it are signed out.';
 
   @override
-  String devices(int n) {
+  String devices(String n) {
     return '$n phones';
   }
 
@@ -224,12 +224,12 @@ class L10nEn extends L10n {
       'Sends a notification to everyone holding a ticket (not SMS). Up to 3 per day.';
 
   @override
-  String recipients(int n) {
+  String recipients(String n) {
     return '$n ticket holders';
   }
 
   @override
-  String leftToday(int n) {
+  String leftToday(String n) {
     return '$n left today';
   }
 
@@ -316,7 +316,7 @@ class L10nEn extends L10n {
   String get tabGuests => 'Guests';
 
   @override
-  String guestsCount(int inCount, int total) {
+  String guestsCount(String inCount, String total) {
     return '$inCount of $total checked in';
   }
 
@@ -400,11 +400,11 @@ class L10nEn extends L10n {
   String get tabSeats => 'Seats';
 
   @override
-  String seatsSelected(int count) {
+  String seatsSelected(int count, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count seats selected',
+      other: '$countText seats selected',
       one: '1 seat selected',
     );
     return '$_temp0';
@@ -423,11 +423,11 @@ class L10nEn extends L10n {
   String get releaseSeats => 'Release';
 
   @override
-  String releaseConfirm(int count) {
+  String releaseConfirm(int count, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Put $count seats back on sale?',
+      other: 'Put $countText seats back on sale?',
       one: 'Put 1 seat back on sale?',
     );
     return '$_temp0';
@@ -450,11 +450,11 @@ class L10nEn extends L10n {
       'The guest finds the tickets in the Event 360 app after signing in with this number. No SMS is sent.';
 
   @override
-  String issueConfirmText(int count, String phone) {
+  String issueConfirmText(int count, String phone, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Issue $count guest tickets to $phone?',
+      other: 'Issue $countText guest tickets to $phone?',
       one: 'Issue 1 guest ticket to $phone?',
     );
     return '$_temp0';
@@ -520,7 +520,7 @@ class L10nEn extends L10n {
   String get seatsViewMap => 'Map';
 
   @override
-  String seatsViewGuests(int count) {
+  String seatsViewGuests(String count) {
     return 'Guest tickets ($count)';
   }
 
@@ -528,11 +528,11 @@ class L10nEn extends L10n {
   String get legendSelected => 'Selected';
 
   @override
-  String ticketsIssued(int count) {
+  String ticketsIssued(int count, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count guest tickets issued',
+      other: '$countText guest tickets issued',
       one: '1 guest ticket issued',
     );
     return '$_temp0';
@@ -763,13 +763,56 @@ class L10nEn extends L10n {
   String get balance => 'Balance';
 
   @override
-  String ticketCount(int count) {
+  String ticketCount(int count, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count tickets',
+      other: '$countText tickets',
       one: '1 ticket',
     );
     return '$_temp0';
   }
+
+  @override
+  String get sessionEnded => 'Please sign in again';
+
+  @override
+  String get noAccess => 'You no longer have access to this';
+
+  @override
+  String get notAvailable => 'This is no longer available';
+
+  @override
+  String get ordersAndRegistrations => 'Orders and registrations';
+
+  @override
+  String get promoCodeExists => 'This code already exists for the event';
+
+  @override
+  String get issueShort => 'Issue';
+
+  @override
+  String get reasonSeatsNotAvailable =>
+      'Some of those seats are no longer free';
+
+  @override
+  String get reasonSeatsNotHeld => 'Hold those seats for guests first';
+
+  @override
+  String get reasonNoSeatMap => 'This event has no seat map';
+
+  @override
+  String get reasonEventEnded => 'This event has ended';
+
+  @override
+  String get reasonGuestAlreadyCheckedIn => 'This guest has already checked in';
+
+  @override
+  String get reasonGuestAlreadyRevoked => 'This ticket was already revoked';
+
+  @override
+  String get reasonGuestTicketNotFound => 'Guest ticket not found';
+
+  @override
+  String get reasonNotCheckedIn => 'This ticket is not checked in';
 }

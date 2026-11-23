@@ -35,6 +35,8 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
   int _lastIndex = 0;
   // The Sales tab keeps its search, filter and scroll when the Seats tab appears and the pages are rebuilt.
   final _salesKey = GlobalKey();
+  // Likewise the Seats tab (its selection, zoom and view), which itself appears only once the seating data is in.
+  final _seatsKey = GlobalKey();
 
   @override
   void dispose() {
@@ -116,7 +118,7 @@ class _EventScreenState extends ConsumerState<EventScreen> with TickerProviderSt
       body: TabBarView(controller: controller, children: [
         OverviewTab(k: k, onAllOrders: _openSales),
         GuestsTab(k: k, canEdit: org.canEdit, event: event),
-        if (hasSeats) SeatsTab(k: k, canEdit: org.canEdit),
+        if (hasSeats) SeatsTab(key: _seatsKey, k: k, canEdit: org.canEdit),
         SalesTab(key: _salesKey, k: k, openOrders: _openOrders, shown: _salesShown),
         DoorTab(k: k, canEdit: org.canEdit),
         AnnounceTab(k: k, canEdit: org.canEdit),

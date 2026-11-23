@@ -473,7 +473,7 @@ abstract class L10n {
   ///
   /// In en, this message translates to:
   /// **'{n} phones'**
-  String devices(int n);
+  String devices(String n);
 
   /// No description provided for @expired.
   ///
@@ -509,13 +509,13 @@ abstract class L10n {
   ///
   /// In en, this message translates to:
   /// **'{n} ticket holders'**
-  String recipients(int n);
+  String recipients(String n);
 
   /// No description provided for @leftToday.
   ///
   /// In en, this message translates to:
   /// **'{n} left today'**
-  String leftToday(int n);
+  String leftToday(String n);
 
   /// No description provided for @heading.
   ///
@@ -677,7 +677,7 @@ abstract class L10n {
   ///
   /// In en, this message translates to:
   /// **'{inCount} of {total} checked in'**
-  String guestsCount(int inCount, int total);
+  String guestsCount(String inCount, String total);
 
   /// No description provided for @guestsSearch.
   ///
@@ -814,8 +814,8 @@ abstract class L10n {
   /// No description provided for @seatsSelected.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 seat selected} other{{count} seats selected}}'**
-  String seatsSelected(int count);
+  /// **'{count, plural, =1{1 seat selected} other{{countText} seats selected}}'**
+  String seatsSelected(int count, String countText);
 
   /// No description provided for @clear.
   ///
@@ -844,8 +844,8 @@ abstract class L10n {
   /// No description provided for @releaseConfirm.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Put 1 seat back on sale?} other{Put {count} seats back on sale?}}'**
-  String releaseConfirm(int count);
+  /// **'{count, plural, =1{Put 1 seat back on sale?} other{Put {countText} seats back on sale?}}'**
+  String releaseConfirm(int count, String countText);
 
   /// No description provided for @issueGuestTickets.
   ///
@@ -880,8 +880,8 @@ abstract class L10n {
   /// No description provided for @issueConfirmText.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {count} guest tickets to {phone}?}}'**
-  String issueConfirmText(int count, String phone);
+  /// **'{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {countText} guest tickets to {phone}?}}'**
+  String issueConfirmText(int count, String phone, String countText);
 
   /// No description provided for @seatsMixedHint.
   ///
@@ -995,7 +995,7 @@ abstract class L10n {
   ///
   /// In en, this message translates to:
   /// **'Guest tickets ({count})'**
-  String seatsViewGuests(int count);
+  String seatsViewGuests(String count);
 
   /// No description provided for @legendSelected.
   ///
@@ -1006,8 +1006,8 @@ abstract class L10n {
   /// No description provided for @ticketsIssued.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}'**
-  String ticketsIssued(int count);
+  /// **'{count, plural, =1{1 guest ticket issued} other{{countText} guest tickets issued}}'**
+  String ticketsIssued(int count, String countText);
 
   /// No description provided for @tabSales.
   ///
@@ -1408,8 +1408,92 @@ abstract class L10n {
   /// No description provided for @ticketCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 ticket} other{{count} tickets}}'**
-  String ticketCount(int count);
+  /// **'{count, plural, =1{1 ticket} other{{countText} tickets}}'**
+  String ticketCount(int count, String countText);
+
+  /// No description provided for @sessionEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Please sign in again'**
+  String get sessionEnded;
+
+  /// No description provided for @noAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'You no longer have access to this'**
+  String get noAccess;
+
+  /// No description provided for @notAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This is no longer available'**
+  String get notAvailable;
+
+  /// No description provided for @ordersAndRegistrations.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders and registrations'**
+  String get ordersAndRegistrations;
+
+  /// No description provided for @promoCodeExists.
+  ///
+  /// In en, this message translates to:
+  /// **'This code already exists for the event'**
+  String get promoCodeExists;
+
+  /// No description provided for @issueShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Issue'**
+  String get issueShort;
+
+  /// No description provided for @reasonSeatsNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Some of those seats are no longer free'**
+  String get reasonSeatsNotAvailable;
+
+  /// No description provided for @reasonSeatsNotHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold those seats for guests first'**
+  String get reasonSeatsNotHeld;
+
+  /// No description provided for @reasonNoSeatMap.
+  ///
+  /// In en, this message translates to:
+  /// **'This event has no seat map'**
+  String get reasonNoSeatMap;
+
+  /// No description provided for @reasonEventEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'This event has ended'**
+  String get reasonEventEnded;
+
+  /// No description provided for @reasonGuestAlreadyCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'This guest has already checked in'**
+  String get reasonGuestAlreadyCheckedIn;
+
+  /// No description provided for @reasonGuestAlreadyRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'This ticket was already revoked'**
+  String get reasonGuestAlreadyRevoked;
+
+  /// No description provided for @reasonGuestTicketNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest ticket not found'**
+  String get reasonGuestTicketNotFound;
+
+  /// No description provided for @reasonNotCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'This ticket is not checked in'**
+  String get reasonNotCheckedIn;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

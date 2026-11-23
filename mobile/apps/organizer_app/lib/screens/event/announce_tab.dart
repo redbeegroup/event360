@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/format.dart';
 import '../../app/providers.dart';
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/lang_button.dart' show compactFilled;
 import 'common.dart';
@@ -61,7 +62,7 @@ class _AnnounceState extends ConsumerState<AnnounceTab> {
       ref.invalidate(announcementsProvider(widget.k));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.sent)));
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -75,11 +76,11 @@ class _AnnounceState extends ConsumerState<AnnounceTab> {
     final ann = ref.watch(announcementsProvider(widget.k));
     return ann.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => loadError(t, () => ref.invalidate(announcementsProvider(widget.k))),
+      error: (e, __) => loadError(t, () => ref.invalidate(announcementsProvider(widget.k)), e),
       data: (a) => ListView(padding: const EdgeInsets.all(16), children: [
         Text(t.announceHint),
         const SizedBox(height: 6),
-        Text('${t.recipients(a.ticketHolders)} · ${t.leftToday(a.remainingToday)}', key: const Key('announceCounts'), style: theme.textTheme.bodySmall),
+        Text('${t.recipients(formatAmount(a.ticketHolders, lang))} · ${t.leftToday(formatAmount(a.remainingToday, lang))}', key: const Key('announceCounts'), style: theme.textTheme.bodySmall),
         const SizedBox(height: 12),
         if (!widget.canEdit)
           readOnly(context, t)
@@ -97,7 +98,7 @@ class _AnnounceState extends ConsumerState<AnnounceTab> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(pickLang(lang, i.title, i.titleMy)),
-            subtitle: Text('${pickLang(lang, i.body, i.bodyMy)}\n${formatDayTime(i.createdAt, lang)} · ${t.recipients(i.recipients)}'),
+            subtitle: Text('${pickLang(lang, i.body, i.bodyMy)}\n${formatDayTime(i.createdAt, lang)} · ${t.recipients(formatAmount(i.recipients, lang))}'),
             isThreeLine: true,
           ),
       ]),

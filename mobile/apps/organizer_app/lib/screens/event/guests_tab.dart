@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/format.dart';
 import '../../app/providers.dart';
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/lang_button.dart' show compactFilled;
 import 'common.dart';
@@ -93,6 +94,8 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
   List<Attendee>? _source;
   List<_Row> _rows = const [];
   DateTime _updated = DateTime.now();
+  // A refresh that failed while earlier data is on screen: the hint stays through the reload that follows, and goes with the next answer that works.
+  bool _refreshFailed = false;
 
   @override
   void dispose() {
@@ -154,7 +157,7 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
       }
       return const _Done(closes: true);
     } on ApiException catch (e) {
-      return _Done(error: e.isNetwork ? t.checkInNoConnection : e.message);
+      return _Done(error: e.isNetwork ? t.checkInNoConnection : errorText(t, e));
     } catch (_) {
       return _Done(error: t.checkInRefusedGeneric);
     }
@@ -174,7 +177,7 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
         _reload(c);
         return const _Done(closes: true);
       }
-      return _Done(error: e.isNetwork ? t.loadError : e.message);
+      return _Done(error: errorText(t, e));
     } catch (_) {
       return _Done(error: t.loadError);
     }
@@ -187,8 +190,13 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
     final theme = Theme.of(context);
     final async = ref.watch(attendeesProvider(widget.k));
     final data = async.value;
+    if (async.hasError && async.hasValue) {
+      _refreshFailed = true;
+    } else if (async.hasValue && !async.isLoading) {
+      _refreshFailed = false;
+    }
     if (data == null) {
-      return async.hasError ? loadError(t, _refresh) : const Center(child: CircularProgressIndicator());
+      return async.hasError ? loadError(t, _refresh, async.error!) : const Center(child: CircularProgressIndicator());
     }
     if (!identical(data, _source)) {
       _source = data;
@@ -208,7 +216,7 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(t.guestsCount(inCount, total), key: const Key('guestsCount'), style: theme.textTheme.titleMedium),
+          Text(t.guestsCount(formatAmount(inCount, lang), formatAmount(total, lang)), key: const Key('guestsCount'), style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           TextField(
             key: const Key('guestSearch'),
@@ -233,6 +241,8 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
             checkmarkColor: theme.colorScheme.onPrimary,
             onSelected: (v) => setState(() => _onlyNotIn = v),
           ),
+          if (_refreshFailed)
+            Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.refreshFailed, key: const Key('guestsRefreshFailed'), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error))),
           const SizedBox(height: 8),
         ]),
       ),
@@ -259,6 +269,17 @@ class _GuestsTabState extends ConsumerState<GuestsTab> {
   }
 }
 
+/// "Stalls · Row C · Seat 4": a seat label that already starts with the ticket type's name is not given the name again.
+String typeAndSeat(String type, String seat) {
+  if (seat.isEmpty) return type;
+  if (type.isEmpty) return seat;
+  if (seat.toLowerCase().startsWith(type.toLowerCase())) {
+    final rest = seat.substring(type.length);
+    if (rest.isEmpty || RegExp(r'^[\s·,\-]').hasMatch(rest)) return seat; // a whole word, not "Stall" in "Stalls"
+  }
+  return '$type · $seat';
+}
+
 String _seat(String lang, Attendee a) => a.seatLabel == null ? '' : pickLang(lang, a.seatLabel!, a.seatLabelMy);
 
 String _name(L10n t, Attendee a) => a.displayName.isEmpty ? t.guestBadge : a.displayName;
@@ -280,7 +301,7 @@ class _GuestTile extends StatelessWidget {
       onTap: onTap,
       title: Text(_name(t, a), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text([a.ticketTypeName, if (seat.isNotEmpty) seat].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text(typeAndSeat(a.ticketTypeName, seat), maxLines: 2, overflow: TextOverflow.ellipsis),
         const SizedBox(height: 4),
         Wrap(spacing: 6, runSpacing: 4, children: [
           E360Badge(attendeeStatusLabel(t, a), kind: _statusKind(a)),
@@ -364,7 +385,7 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
       canPop: !_busy,
       child: SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
           Text(_name(t, a), style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
@@ -382,7 +403,7 @@ class _AttendeeSheetState extends ConsumerState<AttendeeSheet> {
               ),
             const SizedBox(height: 4),
           ],
-          Padding(padding: const EdgeInsets.only(bottom: 6), child: Text([a.ticketTypeName, if (seat.isNotEmpty) seat].join(' · '), style: theme.textTheme.bodyLarge)),
+          Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(typeAndSeat(a.ticketTypeName, seat), style: theme.textTheme.bodyLarge)),
           Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(t.registeredOn(formatDayTime(a.createdAt, lang)), style: theme.textTheme.bodySmall)),
           if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, key: const Key('guestError'), style: TextStyle(color: theme.colorScheme.error))),
           if (widget.canEdit && a.isValid)

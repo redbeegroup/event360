@@ -203,7 +203,7 @@ class L10nMy extends L10n {
       'ဤကုဒ်ကို ပယ်ဖျက်မလား။ အသုံးပြုနေသော ဖုန်းများ ထွက်သွားပါမည်။';
 
   @override
-  String devices(int n) {
+  String devices(String n) {
     return 'ဖုန်း $n လုံး';
   }
 
@@ -224,12 +224,12 @@ class L10nMy extends L10n {
       'လက်မှတ်ကိုင်ဆောင်သူ အားလုံးထံ အသိပေးချက် ပို့သည် (SMS မဟုတ်)။ တစ်ရက် ၃ ကြိမ်အထိ။';
 
   @override
-  String recipients(int n) {
+  String recipients(String n) {
     return 'လက်မှတ်ကိုင်ဆောင်သူ $n ဦး';
   }
 
   @override
-  String leftToday(int n) {
+  String leftToday(String n) {
     return 'ယနေ့ $n ကြိမ် ကျန်';
   }
 
@@ -316,7 +316,7 @@ class L10nMy extends L10n {
   String get tabGuests => 'ဧည့်သည်များ';
 
   @override
-  String guestsCount(int inCount, int total) {
+  String guestsCount(String inCount, String total) {
     return '$total ဦးအနက် $inCount ဦး ဝင်ပြီး';
   }
 
@@ -401,8 +401,8 @@ class L10nMy extends L10n {
   String get tabSeats => 'ထိုင်ခုံများ';
 
   @override
-  String seatsSelected(int count) {
-    return 'ခုံ $count ခု ရွေးထားသည်';
+  String seatsSelected(int count, String countText) {
+    return 'ခုံ $countText ခု ရွေးထားသည်';
   }
 
   @override
@@ -418,8 +418,8 @@ class L10nMy extends L10n {
   String get releaseSeats => 'ပြန်လွှတ်မည်';
 
   @override
-  String releaseConfirm(int count) {
-    return 'ခုံ $count ခုကို ပြန်လည်ရောင်းချနိုင်အောင် လွှတ်မလား။';
+  String releaseConfirm(int count, String countText) {
+    return 'ခုံ $countText ခုကို ပြန်လည်ရောင်းချနိုင်အောင် လွှတ်မလား။';
   }
 
   @override
@@ -439,8 +439,8 @@ class L10nMy extends L10n {
       'ဧည့်သည်သည် ဤနံပါတ်ဖြင့် ဝင်ပြီးနောက် Event 360 အက်ပ်တွင် လက်မှတ်များကို တွေ့ရမည်။ SMS မပို့ပါ။';
 
   @override
-  String issueConfirmText(int count, String phone) {
-    return 'ဧည့်သည်လက်မှတ် $count စောင်ကို $phone သို့ ထုတ်ပေးမလား။';
+  String issueConfirmText(int count, String phone, String countText) {
+    return 'ဧည့်သည်လက်မှတ် $countText စောင်ကို $phone သို့ ထုတ်ပေးမလား။';
   }
 
   @override
@@ -506,7 +506,7 @@ class L10nMy extends L10n {
   String get seatsViewMap => 'မြေပုံ';
 
   @override
-  String seatsViewGuests(int count) {
+  String seatsViewGuests(String count) {
     return 'ဧည့်သည်လက်မှတ် ($count)';
   }
 
@@ -514,8 +514,8 @@ class L10nMy extends L10n {
   String get legendSelected => 'ရွေးထားသည်';
 
   @override
-  String ticketsIssued(int count) {
-    return 'ဧည့်သည်လက်မှတ် $count စောင် ထုတ်ပေးပြီး';
+  String ticketsIssued(int count, String countText) {
+    return 'ဧည့်သည်လက်မှတ် $countText စောင် ထုတ်ပေးပြီး';
   }
 
   @override
@@ -747,12 +747,56 @@ class L10nMy extends L10n {
   String get balance => 'လက်ကျန်';
 
   @override
-  String ticketCount(int count) {
+  String ticketCount(int count, String countText) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'လက်မှတ် $count စောင်',
+      other: 'လက်မှတ် $countText စောင်',
     );
     return '$_temp0';
   }
+
+  @override
+  String get sessionEnded => 'ကျေးဇူးပြု၍ ပြန်လည် ဝင်ပါ';
+
+  @override
+  String get noAccess => 'ဤအရာကို ကြည့်ခွင့် မရှိတော့ပါ';
+
+  @override
+  String get notAvailable => 'ဤအရာ မရှိတော့ပါ';
+
+  @override
+  String get ordersAndRegistrations => 'အော်ဒါနှင့် စာရင်းသွင်းမှုများ';
+
+  @override
+  String get promoCodeExists => 'ဤကုဒ်ကို ဤပွဲအတွက် အသုံးပြုပြီးသား ဖြစ်ပါသည်';
+
+  @override
+  String get issueShort => 'ထုတ်ပေးမည်';
+
+  @override
+  String get reasonSeatsNotAvailable => 'ဤခုံအချို့ မလွတ်တော့ပါ';
+
+  @override
+  String get reasonSeatsNotHeld =>
+      'ဧည့်သည်များအတွက် ခုံများကို အရင် ထိန်းထားပါ';
+
+  @override
+  String get reasonNoSeatMap => 'ဤပွဲတွင် ခုံမြေပုံ မရှိပါ';
+
+  @override
+  String get reasonEventEnded => 'ဤပွဲ ပြီးဆုံးသွားပါပြီ';
+
+  @override
+  String get reasonGuestAlreadyCheckedIn => 'ဤဧည့်သည် ဝင်ပြီးသား ဖြစ်ပါသည်';
+
+  @override
+  String get reasonGuestAlreadyRevoked =>
+      'ဤလက်မှတ်ကို ပယ်ဖျက်ပြီးသား ဖြစ်ပါသည်';
+
+  @override
+  String get reasonGuestTicketNotFound => 'ဧည့်သည်လက်မှတ် ရှာမတွေ့ပါ';
+
+  @override
+  String get reasonNotCheckedIn => 'ဤလက်မှတ်ကို ဝင်ရောက်မှု မမှတ်ရသေးပါ';
 }

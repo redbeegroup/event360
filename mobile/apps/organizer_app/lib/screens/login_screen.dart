@@ -19,6 +19,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   String? _error;
   bool _busy = false;
+  // "Please sign in again", once: the flag is cleared as soon as this screen has taken it.
+  late bool _ended = ref.read(sessionEndedProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_ended) WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(sessionEndedProvider.notifier).set(false));
+  }
 
   @override
   void dispose() {
@@ -31,6 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _ended = false;
     });
     try {
       await ref.read(sessionProvider.notifier).signIn(_email.text.trim(), _password.text);
@@ -51,6 +60,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const Align(child: E360Mark(size: 56)),
         const SizedBox(height: 12),
         Text(t.signInTitle, textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
+        if (_ended) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.sessionEnded, key: const Key('sessionEnded'), textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error))),
         const SizedBox(height: 20),
         TextField(key: const Key('email'), controller: _email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email], decoration: InputDecoration(labelText: t.email)),
         const SizedBox(height: 12),

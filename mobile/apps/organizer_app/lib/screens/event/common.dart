@@ -2,9 +2,22 @@ import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 
-Widget loadError(L10n t, VoidCallback retry) => MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: retry);
+/// A failed load: what went wrong in plain words, and Retry unless retrying cannot help (no access, or gone).
+Widget loadError(L10n t, VoidCallback retry, [Object? error]) {
+  final noRetry = isFinalError(error);
+  return MessageView(
+    icon: noRetry ? Icons.info_outline : Icons.wifi_off,
+    message: error == null ? t.loadError : errorText(t, error),
+    actionLabel: noRetry ? null : t.retry,
+    onAction: noRetry ? null : retry,
+  );
+}
+
+/// Width of the fade at the right edge of a sideways row; the row keeps at least this much room after its last item.
+const kFadeWidth = 32.0;
 
 Widget readOnly(BuildContext context, L10n t) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -67,7 +80,7 @@ class _FadingHScrollState extends State<FadingHScroll> {
         top: 0,
         bottom: 0,
         right: 0,
-        width: 32,
+        width: kFadeWidth,
         child: IgnorePointer(
           child: AnimatedOpacity(
             key: widget.fadeKey,

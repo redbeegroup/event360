@@ -70,7 +70,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
     final waitlist = ref.watch(waitlistProvider(widget.k)).value;
     return dash.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => loadError(t, _refresh),
+      error: (e, __) => loadError(t, _refresh, e),
       data: (d) {
         final tot = d.totals;
         Widget tile(String label, String value, {String? key}) => StatTile(label: label, value: value, valueKey: key == null ? null : Key(key));
@@ -103,7 +103,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
                   child: tile(t.checkedIn, att == null ? formatAmount(tot.checkedIn, lang) : '${formatAmount(att.checkedIn, lang)} / ${formatAmount(att.registered, lang)}', key: 'checkedIn'),
                 ),
                 const SizedBox(width: 10),
-                Expanded(child: tile(t.orders, formatAmount(tot.orders, lang))),
+                Expanded(child: tile(t.ordersAndRegistrations, formatAmount(tot.orders, lang))),
               ]),
             ),
             const SizedBox(height: 8),
@@ -157,7 +157,7 @@ class _OverviewState extends ConsumerState<OverviewTab> {
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('${t.ticketCount(o.quantity)} · ${formatMmk(o.totalMmk, lang)}'),
+                title: Text('${t.ticketCount(o.quantity, formatAmount(o.quantity, lang))} · ${formatMmk(o.totalMmk, lang)}'),
                 subtitle: Text([o.buyer ?? '', formatDayTime(o.createdAt, lang)].where((s) => s.isNotEmpty).join(' · ')),
                 trailing: E360Badge(orderStatusLabel(t, o.status), kind: o.status == 'PAID' ? E360BadgeKind.success : E360BadgeKind.neutral),
               ),

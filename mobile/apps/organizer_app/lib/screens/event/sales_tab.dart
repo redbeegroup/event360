@@ -107,6 +107,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
   bool _started = false;
   bool _loading = true;
   bool _error = false;
+  Object? _errorObj;
   bool _moreFailed = false;
   int _seq = 0;
 
@@ -185,11 +186,12 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
         _nextCursor = page.nextCursor;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted || seq != _seq) return true;
       setState(() {
         _loading = false;
         _error = !keep;
+        _errorObj = e;
       });
       return false;
     }
@@ -300,7 +302,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
       _totalsFailed = false;
     }
     if (data == null) {
-      return sales.hasError ? loadError(t, _refresh) : const Center(child: CircularProgressIndicator());
+      return sales.hasError ? loadError(t, _refresh, sales.error!) : const Center(child: CircularProgressIndicator());
     }
     // The list is fetched once the totals say there is something to list.
     if (data.hasPaidTypes && !_started) {
@@ -386,7 +388,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
         // on it (as on the Guests filter).
         FadingHScroll(
           fadeKey: const Key('orderFiltersFade'),
-          padding: const EdgeInsets.only(right: 24),
+          padding: const EdgeInsets.only(right: kFadeWidth),
           child: Row(children: [
             for (final f in _filters) ...[
               FilterChip(
@@ -439,7 +441,7 @@ class _SalesTabState extends ConsumerState<SalesTab> with AutomaticKeepAliveClie
 
   Widget _footer(L10n t, ThemeData theme) {
     if (_loading) return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
-    if (_error) return loadError(t, _loadFirst);
+    if (_error) return loadError(t, _loadFirst, _errorObj);
     if (_moreFailed) {
       return ListTile(
         key: const Key('loadMoreFailed'),
@@ -472,7 +474,7 @@ class _TypeRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Text(type.name)),
+          Expanded(child: Text(pickLang(lang, type.name, type.nameMy))),
           const SizedBox(width: 8),
           Text(formatMmk(type.priceMmk, lang)),
         ]),
@@ -516,7 +518,7 @@ class _OrderTile extends StatelessWidget {
       onTap: onTap,
       title: Text(_buyer(t, row), maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${t.orderNumber(row.number)} · ${t.ticketCount(row.quantity)} · ${formatMmk(row.totalMmk, lang)}', maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text('${t.orderNumber(row.number)} · ${t.ticketCount(row.quantity, formatAmount(row.quantity, lang))} · ${formatMmk(row.totalMmk, lang)}', maxLines: 2, overflow: TextOverflow.ellipsis),
         Text(formatDayTime(row.createdAt, lang), style: theme.textTheme.bodySmall),
         if (row.status == 'PENDING_PAYMENT' && hold != null) Text(holdLine(t, hold, DateTime.now(), lang), style: theme.textTheme.bodySmall),
         const SizedBox(height: 4),
@@ -541,6 +543,7 @@ class OrderSheet extends ConsumerStatefulWidget {
 class _OrderSheetState extends ConsumerState<OrderSheet> {
   OrgOrderDetail? _detail;
   bool _error = false;
+  Object? _errorObj;
 
   @override
   void initState() {
@@ -553,8 +556,11 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
     try {
       final d = await ref.read(apiProvider).eventOrder(widget.k.orgId, widget.k.eventId, widget.row.id);
       if (mounted) setState(() => _detail = d);
-    } catch (_) {
-      if (mounted) setState(() => _error = true);
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = true;
+        _errorObj = e;
+      });
     }
   }
 
@@ -610,7 +616,7 @@ class _OrderSheetState extends ConsumerState<OrderSheet> {
           ],
           const Divider(height: 28),
           if (d == null)
-            _error ? loadError(t, _load) : const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+            _error ? loadError(t, _load, _errorObj) : const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
           else
             ..._detailBody(t, lang, theme, sub, d),
         ]),

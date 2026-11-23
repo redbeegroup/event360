@@ -52,7 +52,7 @@ class PayoutsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: title),
       body: data == null
-          ? (summary.hasError ? loadError(t, () => ref.invalidate(provider)) : const Center(child: CircularProgressIndicator()))
+          ? (summary.hasError ? loadError(t, () => ref.invalidate(provider), summary.error!) : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(onRefresh: refresh, child: _Body(summary: data, lang: lang)),
     );
   }
@@ -113,7 +113,8 @@ class _EventRow extends StatelessWidget {
     final theme = Theme.of(context);
     // The lines read as a sum: sales before refunds, minus refunded, minus commission, equals net.
     Widget line(String id, String label, int v, {bool minus = false, bool bold = false, bool quiet = false}) {
-      final style = bold ? theme.textTheme.titleSmall : quiet ? theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant) : theme.textTheme.bodyMedium;
+      // A footnote reads smaller than the lines of the sum
+      final style = bold ? theme.textTheme.titleSmall : quiet ? theme.textTheme.bodySmall?.copyWith(fontSize: 12, color: theme.colorScheme.onSurfaceVariant) : theme.textTheme.bodyMedium;
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -130,7 +131,7 @@ class _EventRow extends StatelessWidget {
       childrenPadding: const EdgeInsets.only(bottom: 8, right: 8),
       shape: const Border(),
       collapsedShape: const Border(),
-      title: Text(row.title, style: theme.textTheme.titleSmall),
+      title: Text(pickLang(lang, row.title, row.titleMy), style: theme.textTheme.titleSmall),
       subtitle: Text(formatMmk(row.netMmk, lang), key: Key('payoutNet-${row.eventId}'), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
       children: [
         line('gross', t.salesBeforeRefunds, row.grossMmk),
@@ -138,7 +139,8 @@ class _EventRow extends StatelessWidget {
         line('commission', t.commission, row.commissionMmk, minus: true),
         const Divider(height: 12),
         line('net', t.netToYou, row.netMmk, bold: true),
-        const SizedBox(height: 4),
+        // Apart from the sum: this is not one of its terms
+        const SizedBox(height: 14),
         line('discounts', t.discountsIncluded, row.discountMmk, quiet: true),
       ],
     );

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../app/format.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import 'event/common.dart';
 
 IconData _icon(String kind) => switch (kind) {
       'org_event_approved' => Icons.verified_outlined,
@@ -67,7 +68,7 @@ class InboxScreen extends ConsumerWidget {
       ]),
       body: inbox.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: () => ref.invalidate(inboxProvider)),
+        error: (e, __) => loadError(t, () => ref.invalidate(inboxProvider), e),
         data: (box) => box.items.isEmpty
             ? MessageView(icon: Icons.notifications_none, message: t.noNotifications)
             : RefreshIndicator(

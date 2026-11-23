@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/format.dart';
 import '../../app/providers.dart';
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 import 'common.dart';
 
@@ -48,7 +49,8 @@ class _PromosState extends ConsumerState<PromosTab> {
       }
       ref.invalidate(promoCodesProvider(widget.k));
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // The one refusal the server gives here is a code that already exists
+      if (mounted) setState(() => _error = e.status == 409 ? L10n.of(context).promoCodeExists : errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -91,7 +93,7 @@ class _PromosState extends ConsumerState<PromosTab> {
       const SizedBox(height: 12),
       promos.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => loadError(t, () => ref.invalidate(promoCodesProvider(widget.k))),
+        error: (e, __) => loadError(t, () => ref.invalidate(promoCodesProvider(widget.k)), e),
         data: (list) => list.isEmpty
             ? Text(t.noPromos, style: theme.textTheme.bodySmall)
             : Column(children: [

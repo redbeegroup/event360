@@ -82,7 +82,7 @@
   "@devices": {
     "placeholders": {
       "n": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
@@ -95,7 +95,7 @@
   "@recipients": {
     "placeholders": {
       "n": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
@@ -103,7 +103,7 @@
   "@leftToday": {
     "placeholders": {
       "n": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
@@ -144,10 +144,10 @@
   "@guestsCount": {
     "placeholders": {
       "inCount": {
-        "type": "int"
+        "type": "String"
       },
       "total": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
@@ -218,11 +218,14 @@
   },
   "checkInRefusedGeneric": "Can't check in this ticket",
   "tabSeats": "Seats",
-  "seatsSelected": "{count, plural, =1{1 seat selected} other{{count} seats selected}}",
+  "seatsSelected": "{count, plural, =1{1 seat selected} other{{countText} seats selected}}",
   "@seatsSelected": {
     "placeholders": {
       "count": {
         "type": "int"
+      },
+      "countText": {
+        "type": "String"
       }
     }
   },
@@ -230,11 +233,14 @@
   "holdForGuests": "Hold for guests",
   "holdLabelField": "Label (e.g. Sponsor)",
   "releaseSeats": "Release",
-  "releaseConfirm": "{count, plural, =1{Put 1 seat back on sale?} other{Put {count} seats back on sale?}}",
+  "releaseConfirm": "{count, plural, =1{Put 1 seat back on sale?} other{Put {countText} seats back on sale?}}",
   "@releaseConfirm": {
     "placeholders": {
       "count": {
         "type": "int"
+      },
+      "countText": {
+        "type": "String"
       }
     }
   },
@@ -243,13 +249,16 @@
   "guestPhoneField": "Guest phone",
   "guestLabelField": "Label (optional)",
   "issueHelp": "The guest finds the tickets in the Event 360 app after signing in with this number. No SMS is sent.",
-  "issueConfirmText": "{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {count} guest tickets to {phone}?}}",
+  "issueConfirmText": "{count, plural, =1{Issue 1 guest ticket to {phone}?} other{Issue {countText} guest tickets to {phone}?}}",
   "@issueConfirmText": {
     "placeholders": {
       "count": {
         "type": "int"
       },
       "phone": {
+        "type": "String"
+      },
+      "countText": {
         "type": "String"
       }
     }
@@ -293,16 +302,19 @@
   "@seatsViewGuests": {
     "placeholders": {
       "count": {
-        "type": "int"
+        "type": "String"
       }
     }
   },
   "legendSelected": "Selected",
-  "ticketsIssued": "{count, plural, =1{1 guest ticket issued} other{{count} guest tickets issued}}",
+  "ticketsIssued": "{count, plural, =1{1 guest ticket issued} other{{countText} guest tickets issued}}",
   "@ticketsIssued": {
     "placeholders": {
       "count": {
         "type": "int"
+      },
+      "countText": {
+        "type": "String"
       }
     }
   },
@@ -468,12 +480,29 @@
   "refundedAmount": "Refunded",
   "discountsIncluded": "Discounts given (already taken off sales)",
   "balance": "Balance",
-  "ticketCount": "{count, plural, =1{1 ticket} other{{count} tickets}}",
+  "ticketCount": "{count, plural, =1{1 ticket} other{{countText} tickets}}",
   "@ticketCount": {
     "placeholders": {
       "count": {
         "type": "int"
+      },
+      "countText": {
+        "type": "String"
       }
     }
-  }
+  },
+  "sessionEnded": "Please sign in again",
+  "noAccess": "You no longer have access to this",
+  "notAvailable": "This is no longer available",
+  "ordersAndRegistrations": "Orders and registrations",
+  "promoCodeExists": "This code already exists for the event",
+  "issueShort": "Issue",
+  "reasonSeatsNotAvailable": "Some of those seats are no longer free",
+  "reasonSeatsNotHeld": "Hold those seats for guests first",
+  "reasonNoSeatMap": "This event has no seat map",
+  "reasonEventEnded": "This event has ended",
+  "reasonGuestAlreadyCheckedIn": "This guest has already checked in",
+  "reasonGuestAlreadyRevoked": "This ticket was already revoked",
+  "reasonGuestTicketNotFound": "Guest ticket not found",
+  "reasonNotCheckedIn": "This ticket is not checked in"
 }

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../app/format.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import 'event/common.dart';
 import 'inbox_screen.dart';
 
 String statusLabel(L10n t, String s) => switch (s) {
@@ -37,7 +38,7 @@ class EventsScreen extends ConsumerWidget {
     } else {
       body = events.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: () => ref.invalidate(orgEventsProvider)),
+        error: (e, __) => loadError(t, () => ref.invalidate(orgEventsProvider), e),
         data: (list) {
           if (list.isEmpty) return MessageView(icon: Icons.event_busy_outlined, message: t.noEvents);
           final upcoming = list.where((e) => !e.isPast).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));

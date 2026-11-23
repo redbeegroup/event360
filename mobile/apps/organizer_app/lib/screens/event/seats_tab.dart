@@ -6,10 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/format.dart';
 import '../../app/providers.dart';
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/lang_button.dart' show compactFilled;
 import 'common.dart';
+
+/// A count in the app's digit style and with separators, the same as money.
+String _n(BuildContext context, int n) => formatAmount(n, Localizations.localeOf(context).languageCode);
 
 /// The server accepts at most this many seats per hold, release or issue.
 const maxSeatsPerAction = 200;
@@ -70,7 +75,7 @@ class SeatsTab extends ConsumerStatefulWidget {
   ConsumerState<SeatsTab> createState() => _SeatsTabState();
 }
 
-class _SeatsTabState extends ConsumerState<SeatsTab> {
+class _SeatsTabState extends ConsumerState<SeatsTab> with AutomaticKeepAliveClientMixin {
   final _controller = SeatMapViewController();
   late final Set<String> _selected = {...widget.initialSelected};
   bool _busy = false;
@@ -159,7 +164,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
     } on ApiException catch (e) {
       if (phoneOn400 && e.status == 400)
         return _Outcome(_Result.phone, t.phoneInvalid);
-      return _Outcome(_Result.failed, e.isNetwork ? t.loadError : e.message);
+      return _Outcome(_Result.failed, errorText(t, e));
     } catch (_) {
       // Anything unexpected (a parsing error, say) still ends the busy state and lets the sheet close.
       return _Outcome(_Result.failed, t.loadError);
@@ -187,7 +192,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
       ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          content: Text(t.releaseConfirm(keys.length)),
+          content: Text(t.releaseConfirm(keys.length, formatAmount(keys.length, ref.read(langProvider)))),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
@@ -253,7 +258,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
       // Already checked in or already revoked: say so, and show the current state.
       refreshSeating(c, widget.k);
       messenger.showSnackBar(
-        SnackBar(content: Text(e.isNetwork ? t.loadError : e.message)),
+        SnackBar(content: Text(errorText(t, e))),
       );
     } catch (_) {
       messenger.showSnackBar(SnackBar(content: Text(t.loadError)));
@@ -262,15 +267,20 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
     }
   }
 
+  // The selection, the zoom and the open view survive a visit to another tab.
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final async = ref.watch(orgSeatingProvider(widget.k));
     final data = async.value;
     if (data == null || !data.hasMap) {
       return async.hasError
-          ? loadError(t, _refresh)
+          ? loadError(t, _refresh, async.error!)
           : const Center(child: CircularProgressIndicator());
     }
     _derive(data);
@@ -405,7 +415,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
                         phone: phone,
                         label: label,
                       ),
-                      okMessage: (t) => t.ticketsIssued(keys.length),
+                      okMessage: (t) => t.ticketsIssued(keys.length, formatAmount(keys.length, ref.read(langProvider))),
                       phoneOn400: true,
                     ),
                   ),
@@ -437,7 +447,7 @@ class _SeatsTabState extends ConsumerState<SeatsTab> {
                 ButtonSegment(
                   value: true,
                   label: Text(
-                    t.seatsViewGuests(guestCount),
+                    t.seatsViewGuests(_n(context, guestCount)),
                     key: const Key('seatsViewGuests'),
                     textAlign: TextAlign.center,
                   ),
@@ -536,7 +546,7 @@ class _LegendState extends State<_Legend> {
       children: [
         mark,
         const SizedBox(width: 6),
-        Text(n == null ? label : '$label $n', style: theme.textTheme.bodySmall),
+        Text(n == null ? label : '$label ${_n(context, n)}', style: theme.textTheme.bodySmall),
       ],
     );
     Widget dot(Color c, [IconData? icon]) => Container(
@@ -674,7 +684,7 @@ class _SelectionBar extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                t.seatsSelected(n),
+                                t.seatsSelected(n, _n(context, n)),
                                 key: const Key('seatsSelected'),
                                 style: theme.textTheme.titleMedium,
                               ),
@@ -770,7 +780,7 @@ class _GuestTickets extends ConsumerWidget {
 
     if (list == null) {
       return async.hasError
-          ? loadError(t, refresh)
+          ? loadError(t, refresh, async.error!)
           : const Center(child: CircularProgressIndicator());
     }
     return RefreshIndicator(
@@ -920,7 +930,7 @@ class _HoldSheetState extends State<_HoldSheet> {
             Text(t.holdForGuests, style: theme.textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              t.seatsSelected(widget.count),
+              t.seatsSelected(widget.count, _n(context, widget.count)),
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -1007,7 +1017,8 @@ class _IssueSheetState extends State<_IssueSheet> {
         context: context,
         builder: (ctx) => AlertDialog(
           content: Text(
-            t.issueConfirmText(widget.count, phone),
+            // The number never breaks across lines: its spaces do not wrap
+            t.issueConfirmText(widget.count, phone.replaceAll(RegExp(r'\s+'), '\u00A0'), _n(context, widget.count)),
             key: const Key('issueConfirmText'),
           ),
           actions: [
@@ -1019,7 +1030,7 @@ class _IssueSheetState extends State<_IssueSheet> {
               key: const Key('issueConfirm'),
               style: compactFilled,
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text(t.issueGuestTickets),
+              child: Text(t.issueShort),
             ),
           ],
         ),
@@ -1066,7 +1077,7 @@ class _IssueSheetState extends State<_IssueSheet> {
             Text(t.issueGuestTickets, style: theme.textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              t.seatsSelected(widget.count),
+              t.seatsSelected(widget.count, _n(context, widget.count)),
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 8),

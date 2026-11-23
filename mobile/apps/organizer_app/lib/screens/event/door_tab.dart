@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/format.dart';
 import '../../app/providers.dart';
+import '../../app/errors.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/lang_button.dart' show compactFilled;
 import 'common.dart';
@@ -48,7 +49,7 @@ class _DoorState extends ConsumerState<DoorTab> {
       _gate.clear();
       if (mounted) await showDialog<void>(context: context, builder: (_) => _CodeDialog(code: c));
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) setState(() => _error = errorText(L10n.of(context), e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -99,7 +100,7 @@ class _DoorState extends ConsumerState<DoorTab> {
       const SizedBox(height: 12),
       codes.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => loadError(t, () => ref.invalidate(crewCodesProvider(widget.k))),
+        error: (e, __) => loadError(t, () => ref.invalidate(crewCodesProvider(widget.k)), e),
         data: (list) => Column(children: [
           for (final c in list)
             ListTile(
@@ -112,7 +113,7 @@ class _DoorState extends ConsumerState<DoorTab> {
                     ? t.revoked
                     : !c.active
                         ? t.expired
-                        : '${t.devices(c.devices)} · ${formatDayTime(c.expiresAt, lang)}',
+                        : '${t.devices(formatAmount(c.devices, lang))} · ${formatDayTime(c.expiresAt, lang)}',
               ),
               trailing: c.active && widget.canEdit ? TextButton(onPressed: () => _revoke(c), child: Text(t.revoke)) : null,
             ),
