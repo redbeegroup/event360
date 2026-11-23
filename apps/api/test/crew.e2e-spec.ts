@@ -153,7 +153,8 @@ run('Phase 3: crew check-in', () => {
 
     // Undo, then offline sync: the device saw it twice while offline → one accepted, one duplicate
     await http.post(`/v1/crew/events/${eventId}/tickets/${target.id}/undo`).set(V).expect(200);
-    await http.post(`/v1/crew/events/${eventId}/tickets/${target.id}/undo`).set(V).expect(409);
+    const notIn = await http.post(`/v1/crew/events/${eventId}/tickets/${target.id}/undo`).set(V).expect(409);
+    expect(notIn.body).toMatchObject({ message: 'This ticket is not checked in', reasonCode: 'NOT_CHECKED_IN' });
     const now = Date.now();
     const sync = await http
       .post(`/v1/crew/events/${eventId}/sync`)

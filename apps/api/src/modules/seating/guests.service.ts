@@ -11,7 +11,7 @@ import { PdfTicket, renderTicketsPdf } from './ticket-pdf';
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const taken = (message: string, takenSeats: string[]) => new ConflictException({ message, takenSeats });
+const taken = (message: string, takenSeats: string[], reasonCode: string) => new ConflictException({ message, takenSeats, reasonCode });
 
 /**
  * Organizer seat-state changes for guests: hold seats off sale, release them, issue complimentary tickets
@@ -32,8 +32,8 @@ export class GuestsService {
     const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM events WHERE id = ${eventId}::uuid AND organization_id = ${orgId}::uuid FOR UPDATE`;
     if (!rows.length) throw new NotFoundException('Event not found');
     const e = await tx.event.findUniqueOrThrow({ where: { id: eventId } });
-    if (!e.seatMapVersionId) throw new ConflictException('This event has no seat map');
-    if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException(`Event is already ${e.status}`);
+    if (!e.seatMapVersionId) throw new ConflictException({ message: 'This event has no seat map', reasonCode: 'NO_SEAT_MAP' });
+    if (['CANCELLED', 'COMPLETED'].includes(e.status)) throw new ConflictException({ message: `Event is already ${e.status}`, reasonCode: 'EVENT_ENDED' });
     return e;
   }
 
@@ -55,7 +55,7 @@ export class GuestsService {
         RETURNING seat_key, ticket_type_id`;
       if (rows.length !== keys.length) {
         const got = new Set(rows.map((r) => r.seat_key));
-        throw taken('Some seats are not available', keys.filter((k) => !got.has(k)));
+        throw taken('Some seats are not available', keys.filter((k) => !got.has(k)), 'SEATS_NOT_AVAILABLE');
       }
       await this.seats.recountTicketTypes(tx, eventId, rows.map((r) => r.ticket_type_id).filter((x): x is string => !!x));
     });
@@ -70,7 +70,7 @@ export class GuestsService {
       const back = await returnSeatsToSale(tx, Prisma.sql`event_id = ${eventId}::uuid AND seat_key = ANY(${keys}::text[]) AND status = 'GUEST_HOLD'`);
       if (back.seatKeys.length !== keys.length) {
         const got = new Set(back.seatKeys);
-        throw taken('Some seats are not held for guests', keys.filter((k) => !got.has(k)));
+        throw taken('Some seats are not held for guests', keys.filter((k) => !got.has(k)), 'SEATS_NOT_HELD');
       }
       await this.seats.recountTicketTypes(tx, eventId, back.typeIds);
     });
@@ -91,7 +91,7 @@ export class GuestsService {
       const ok = rows.filter((s) => s.status === 'GUEST_HOLD' && s.ticketTypeId);
       if (ok.length !== keys.length) {
         const good = new Set(ok.map((s) => s.seatKey));
-        throw taken('Seats must be held for guests first', keys.filter((k) => !good.has(k)));
+        throw taken('Seats must be held for guests first', keys.filter((k) => !good.has(k)), 'SEATS_MUST_BE_HELD_FIRST');
       }
       const perType = new Map<string, number>();
       for (const s of ok) perType.set(s.ticketTypeId!, (perType.get(s.ticketTypeId!) ?? 0) + 1);
@@ -123,7 +123,7 @@ export class GuestsService {
           },
         });
         const n = await tx.eventSeat.updateMany({ where: { id: s.id, status: 'GUEST_HOLD' }, data: { status: 'SOLD', orderId: order.id, ticketId: t.id, holdLabel: null, heldUntil: null } });
-        if (n.count !== 1) throw taken('Seats must be held for guests first', [s.seatKey]);
+        if (n.count !== 1) throw taken('Seats must be held for guests first', [s.seatKey], 'SEATS_MUST_BE_HELD_FIRST');
         tickets.push({ id: t.id, seatKey: s.seatKey, seatLabel: s.label });
       }
       await this.seats.recountTicketTypes(tx, eventId, [...perType.keys()]);
@@ -177,12 +177,12 @@ export class GuestsService {
     await this.prisma.$transaction(async (tx) => {
       await this.lockedEvent(tx, orgId, eventId);
       const t = await tx.ticket.findFirst({ where: { id: ticketId, isComplimentary: true, ticketType: { eventId } } });
-      if (!t) throw new NotFoundException('Guest ticket not found');
-      if (t.status === 'CHECKED_IN') throw new ConflictException('This guest has already checked in');
-      if (t.status !== 'VALID') throw new ConflictException('This ticket was already revoked');
+      if (!t) throw new NotFoundException({ message: 'Guest ticket not found', reasonCode: 'GUEST_TICKET_NOT_FOUND' });
+      if (t.status === 'CHECKED_IN') throw new ConflictException({ message: 'This guest has already checked in', reasonCode: 'GUEST_ALREADY_CHECKED_IN' });
+      if (t.status !== 'VALID') throw new ConflictException({ message: 'This ticket was already revoked', reasonCode: 'GUEST_ALREADY_REVOKED' });
       // Conditional: a gate check-in that committed meanwhile must win
       const n = await tx.ticket.updateMany({ where: { id: t.id, status: 'VALID' }, data: { status: 'VOID', qrVersion: { increment: 1 } } });
-      if (n.count !== 1) throw new ConflictException('This guest has already checked in');
+      if (n.count !== 1) throw new ConflictException({ message: 'This guest has already checked in', reasonCode: 'GUEST_ALREADY_CHECKED_IN' });
       // Back to GUEST_HOLD under the comp's label, as whatever type the current rules give the seat (rules may have changed)
       const back = await tx.$queryRaw<{ old_type: string | null; new_type: string | null }[]>`
         WITH s AS (

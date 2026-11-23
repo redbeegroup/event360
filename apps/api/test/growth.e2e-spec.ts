@@ -192,7 +192,9 @@ run('Organizer growth', () => {
     const d = await http.get(`${e.base}/dashboard`).set(O).expect(200);
     expect(d.body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ priceMmk: 14_000, basePriceMmk: 10_000, nextPrice: { priceMmk: 20_000 } });
     const sales = await http.get(`${e.base}/sales`).set(O).expect(200);
-    expect(sales.body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ priceMmk: 14_000, basePriceMmk: 10_000, revenueMmk: 24_000 });
+    expect(sales.body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ priceMmk: 14_000, basePriceMmk: 10_000, revenueMmk: 24_000, nameMy: null });
+    await prisma.ticketType.update({ where: { id: e.paid }, data: { nameMy: 'သာမန်' } });
+    expect((await http.get(`${e.base}/sales`).set(O).expect(200)).body.ticketTypes.find((t: any) => t.id === e.paid)).toMatchObject({ nameMy: 'သာမန်' });
     const csv = await http.get(`${e.base}/attendees.csv`).set(O).expect(200);
     const prices = csv.text.replace(/^\uFEFF/, '').split('\r\n').slice(1).filter(Boolean).map((l: string) => l.replace(/"/g, '').split(',')[4]).sort();
     expect(prices).toEqual(['10000', '14000']);

@@ -1132,7 +1132,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     const gross = paid._sum.totalMmk ?? 0n;
     const fee = paid._sum.commissionMmk ?? 0n;
     return {
-      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, ...priceView(t, nowT), quota: t.quota, sold: t.sold, held: t.held, offered: t.offered, revenueMmk: mmk(earned.get(t.id) ?? 0n) })),
+      ticketTypes: e.ticketTypes.map((t) => ({ id: t.id, name: t.name, nameMy: t.nameMy ?? null, ...priceView(t, nowT), quota: t.quota, sold: t.sold, held: t.held, offered: t.offered, revenueMmk: mmk(earned.get(t.id) ?? 0n) })),
       paidOrders: paid._count,
       grossMmk: mmk(gross),
       commissionMmk: mmk(fee),

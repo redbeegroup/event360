@@ -1129,7 +1129,7 @@ run('Guest seats', () => {
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'GUEST_HOLD', holdLabel: 'Sponsor' });
     expect(await ttRow(ev.std)).toMatchObject({ quota: 9, sold: 0, held: 0 });
     const r = await hold(ev.id, ['A:1:1', 'A:1:2']).expect(409);
-    expect(r.body.takenSeats).toEqual(['A:1:1']);
+    expect(r.body).toMatchObject({ message: 'Some seats are not available', takenSeats: ['A:1:1'], reasonCode: 'SEATS_NOT_AVAILABLE' });
     expect(await seat(ev.id, 'A:1:2')).toMatchObject({ status: 'AVAILABLE' }); // all or none
     await hold(ev.id, ['Z:9:9']).expect(409).expect((x) => expect(x.body.takenSeats).toEqual(['Z:9:9']));
     // a buyer cannot take a held seat
@@ -1140,10 +1140,23 @@ run('Guest seats', () => {
     await http.post(`${seating(ev.id)}/hold`).set(B).send({ seats: ['A:1:3'], label: 'x' }).expect(403);
   });
 
+  it('hold refusals on an event without a seat map or one that has ended carry a reasonCode', async () => {
+    const ev = await guestEvent('Codes');
+    await prisma.event.update({ where: { id: ev.id }, data: { status: 'COMPLETED' } });
+    const ended = await hold(ev.id, ['A:1:1']).expect(409);
+    expect(ended.body).toMatchObject({ message: 'Event is already COMPLETED', reasonCode: 'EVENT_ENDED' });
+    await prisma.event.update({ where: { id: ev.id }, data: { status: 'CANCELLED' } });
+    expect((await hold(ev.id, ['A:1:1']).expect(409)).body).toMatchObject({ message: 'Event is already CANCELLED', reasonCode: 'EVENT_ENDED' });
+    await prisma.event.update({ where: { id: ev.id }, data: { seatMapVersionId: null } });
+    const none = await hold(ev.id, ['A:1:1']).expect(409);
+    expect(none.body).toMatchObject({ message: 'This event has no seat map', reasonCode: 'NO_SEAT_MAP' });
+  });
+
   it('release returns seats to sale', async () => {
     const ev = await guestEvent('Release');
     await hold(ev.id, ['A:1:1', 'A:1:2']).expect(201);
-    await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:1:3'] }).expect(409); // A:1:3 is not held; nothing changes
+    const rel = await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:1:3'] }).expect(409); // A:1:3 is not held; nothing changes
+    expect(rel.body).toMatchObject({ message: 'Some seats are not held for guests', takenSeats: ['A:1:3'], reasonCode: 'SEATS_NOT_HELD' });
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'GUEST_HOLD' });
     await http.post(`${seating(ev.id)}/release`).set(O).send({ seats: ['A:1:1', 'A:1:2'] }).expect(200);
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'AVAILABLE', holdLabel: null });
@@ -1168,7 +1181,8 @@ run('Guest seats', () => {
     const ev = await guestEvent('Comp');
     await hold(ev.id, ['A:1:1', 'A:1:2'], 'Press').expect(201);
     const phone = newPhone();
-    await comps(ev.id, ['A:1:3'], phone).expect(409); // not held
+    const nh = await comps(ev.id, ['A:1:3'], phone).expect(409); // not held
+    expect(nh.body).toMatchObject({ message: 'Seats must be held for guests first', takenSeats: ['A:1:3'], reasonCode: 'SEATS_MUST_BE_HELD_FIRST' });
     await comps(ev.id, ['A:1:1'], '12345').expect(400);
     const r = await comps(ev.id, ['A:1:1', 'A:1:2'], phone, { label: 'VIP guest' }).expect(201);
     expect(r.body.tickets).toHaveLength(2);
@@ -1277,7 +1291,10 @@ run('Guest seats', () => {
     expect(await ttRow(ev.std)).toMatchObject({ quota: 7, sold: 0 });
     const order = () => prisma.order.findUniqueOrThrow({ where: { id: t.orderId } });
     expect((await order()).status).toBe('CONFIRMED');
-    await http.post(`${seating(ev.id)}/comps/${first.id}/revoke`).set(O).expect(409); // already void
+    const again = await http.post(`${seating(ev.id)}/comps/${first.id}/revoke`).set(O).expect(409); // already void
+    expect(again.body).toMatchObject({ message: 'This ticket was already revoked', reasonCode: 'GUEST_ALREADY_REVOKED' });
+    const nf = await http.post(`${seating(ev.id)}/comps/00000000-0000-4000-8000-000000000000/revoke`).set(O).expect(404);
+    expect(nf.body).toMatchObject({ message: 'Guest ticket not found', reasonCode: 'GUEST_TICKET_NOT_FOUND' });
     for (const r of rest) await http.post(`${seating(ev.id)}/comps/${r.id}/revoke`).set(O).expect(200);
     expect((await order()).status).toBe('CANCELLED');
     // the freed seat can be issued again from its hold
@@ -1315,7 +1332,7 @@ run('Guest seats', () => {
     expect(t.order.paidAt).toBeNull();
     await prisma.ticket.update({ where: { id: t.id }, data: { status: 'CHECKED_IN' } });
     const r = await http.post(`${seating(ev.id)}/comps/${t.id}/revoke`).set(O).expect(409);
-    expect(r.body.message).toBe('This guest has already checked in');
+    expect(r.body).toMatchObject({ message: 'This guest has already checked in', reasonCode: 'GUEST_ALREADY_CHECKED_IN' });
     expect(await seat(ev.id, 'A:1:1')).toMatchObject({ status: 'SOLD', ticketId: t.id });
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: t.id } })).status).toBe('CHECKED_IN');
     // checked-in tickets are not printed (only VALID ones), so nothing is left to print

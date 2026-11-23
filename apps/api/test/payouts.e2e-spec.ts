@@ -161,8 +161,13 @@ run('Payouts', () => {
     expect(s.earnedMmk).toBe(52_250);
     expect(s).toMatchObject({ eventsNetMmk: 52_250, reconciled: true });
     expect(s.payouts[0].createdById).toBeUndefined();
-    expect(s.events).toEqual([{ eventId, title: `Payout Show ${tag}`, grossMmk: 55_000, discountMmk: 5_000, commissionMmk: 2_750, refundsMmk: 0, netMmk: 52_250 }]);
+    expect(s.events).toEqual([{ eventId, title: `Payout Show ${tag}`, titleMy: null, grossMmk: 55_000, discountMmk: 5_000, commissionMmk: 2_750, refundsMmk: 0, netMmk: 52_250 }]);
     expect(s.events.reduce((t: number, e: any) => t + e.netMmk, 0)).toBe(s.earnedMmk);
+    const csvBefore = (await http.get(`/v1/organizations/${orgId}/payouts/summary.csv`).set(O).expect(200)).text;
+    await prisma.event.update({ where: { id: eventId }, data: { titleMy: 'ပွဲ' } });
+    expect((await summary(O).expect(200)).body.events[0]).toMatchObject({ title: `Payout Show ${tag}`, titleMy: 'ပွဲ' });
+    expect((await http.get(`/v1/organizations/${orgId}/payouts/summary.csv`).set(O).expect(200)).text).toBe(csvBefore);
+    await prisma.event.update({ where: { id: eventId }, data: { titleMy: null } });
     expect(s.payouts.length).toBeGreaterThan(1); // voided ones stay in the history
     expect(s.payouts.filter((p: any) => !p.voidedAt)).toHaveLength(1);
     const csv = await http.get(`/v1/organizations/${orgId}/payouts/summary.csv`).set(F).expect(200);

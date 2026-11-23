@@ -10,6 +10,7 @@ const PAYOUT_REFS = ['payout', 'payout_void'];
 export interface EventFigures {
   eventId: string;
   title: string;
+  titleMy: string | null;
   orders: number;
   grossMmk: bigint;
   discountMmk: bigint;
@@ -62,7 +63,7 @@ export async function orgFigures(prisma: PrismaService | Prisma.TransactionClien
   for (const f of out.values()) f.owedMmk = f.earnedMmk - f.paidOutMmk;
 
   const evWhere: Prisma.EventWhereInput = orgId ? { organizationId: orgId } : { organizationId: { in: [...out.keys()] } };
-  const events = await prisma.event.findMany({ where: evWhere, select: { id: true, title: true, organizationId: true } });
+  const events = await prisma.event.findMany({ where: evWhere, select: { id: true, title: true, titleMy: true, organizationId: true } });
   const eventIds = events.map((e) => e.id);
   const base = { eventId: { in: eventIds }, totalMmk: { gt: 0n }, channel: { not: 'COMP' } } as const;
   const sales = await prisma.order.groupBy({
@@ -85,7 +86,7 @@ export async function orgFigures(prisma: PrismaService | Prisma.TransactionClien
     f.grossMmk += gross;
     f.refundedMmk += refunds;
     f.commissionMmk += commission;
-    f.events.push({ eventId: ev.id, title: ev.title, orders: s._count, grossMmk: gross, discountMmk: s._sum.discountMmk ?? 0n, commissionMmk: commission, refundsMmk: refunds, netMmk: gross - refunds - commission });
+    f.events.push({ eventId: ev.id, title: ev.title, titleMy: ev.titleMy ?? null, orders: s._count, grossMmk: gross, discountMmk: s._sum.discountMmk ?? 0n, commissionMmk: commission, refundsMmk: refunds, netMmk: gross - refunds - commission });
   }
   for (const f of out.values()) f.events.sort((a, b) => a.title.localeCompare(b.title));
   return out;
@@ -178,7 +179,7 @@ export class PayoutsService {
       reconciled: eventsNet === f.earnedMmk,
       paidOutMmk: mmk(f.paidOutMmk),
       owedMmk: mmk(f.owedMmk),
-      events: f.events.map((e) => ({ eventId: e.eventId, title: e.title, grossMmk: mmk(e.grossMmk), discountMmk: mmk(e.discountMmk), commissionMmk: mmk(e.commissionMmk), refundsMmk: mmk(e.refundsMmk), netMmk: mmk(e.netMmk) })),
+      events: f.events.map((e) => ({ eventId: e.eventId, title: e.title, titleMy: e.titleMy, grossMmk: mmk(e.grossMmk), discountMmk: mmk(e.discountMmk), commissionMmk: mmk(e.commissionMmk), refundsMmk: mmk(e.refundsMmk), netMmk: mmk(e.netMmk) })),
       payouts: await this.list(orgId, true),
     };
   }

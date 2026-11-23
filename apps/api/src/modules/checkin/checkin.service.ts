@@ -283,7 +283,7 @@ export class CheckinService {
       if (r.count) await tx.checkin.updateMany({ where: { ticketId, undoneAt: null }, data: { undoneAt: new Date(), undoneBy: by } });
       return r.count === 1;
     });
-    if (!ok) throw new ConflictException('This ticket is not checked in');
+    if (!ok) throw new ConflictException({ message: 'This ticket is not checked in', reasonCode: 'NOT_CHECKED_IN' });
     return { ticket: this.ticketView((await this.loadTicket(ticketId))!) };
   }
 
