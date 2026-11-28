@@ -144,9 +144,11 @@ Uri guideDirectionsUri(Venue v) {
 // ───── Happening today, and saving upcoming events for offline ─────
 
 /// One ticket per event the signed-in buyer can open the guide for (usable ticket) that is on today ([isEventToday]), earliest start first.
-/// Cancelled events are left out: nothing is "happening". Empty when signed out. Watching it also keeps [eventSaverProvider] alive.
-final todayEventsProvider = Provider<List<MyTicket>>((ref) {
-  ref.watch(eventSaverProvider);
+/// Cancelled events are left out: nothing is "happening". Empty when signed out. Recomputed every minute (and when the app resumes, see
+/// `GuideBackground`), so the card appears at midnight and goes when the event ends without a ticket reload.
+final todayEventsProvider = Provider.autoDispose<List<MyTicket>>((ref) {
+  final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   if (ref.watch(sessionProvider).value == null) return const [];
   final tickets = ref.watch(myTicketsProvider).value ?? const <MyTicket>[];
   final now = ref.read(nowProvider)();
@@ -195,39 +197,58 @@ class EventSaver {
     }
   }
 
-  bool get _signedIn => !_disposed && _ref.read(sessionProvider).value != null;
+  /// Events the server said do not exist (404): not asked again this app session.
+  final _gone = <String>{};
 
   Future<void> _once() async {
-    if (kIsWeb || !_signedIn) return; // the web build is online only
+    if (kIsWeb) return; // the web build is online only
+    // Wait for the next pass while the session or the ticket list is reloading: they may belong to someone else by the time they settle.
+    if (_disposed || _ref.read(sessionProvider).isLoading || _ref.read(myTicketsProvider).isLoading) return;
     final notifier = _ref.read(myTicketsProvider.notifier);
     final tickets = _ref.read(myTicketsProvider).value;
-    if (tickets == null || notifier.fromCache) return;
+    final owner = notifier.owner;
+    if (tickets == null || owner == null || notifier.fromCache) return;
+    // Still the same signed-in user, with nothing reloading. Checked after every await.
+    bool same() {
+      if (_disposed) return false;
+      final session = _ref.read(sessionProvider);
+      return !session.isLoading && session.value?.id == owner && _ref.read(myTicketsProvider.notifier).owner == owner && !_ref.read(myTicketsProvider).isLoading;
+    }
+
+    if (!same()) return;
     final now = _ref.read(nowProvider)();
     final usable = tickets.where((t) => t.status == 'VALID' || t.status == 'CHECKED_IN').toList();
     final upcoming = <String, MyTicket>{};
     for (final t in usable) {
       if (t.endsAt.isAfter(now)) upcoming.putIfAbsent(t.eventId, () => t);
     }
-    final order = upcoming.values.toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final order = upcoming.values.where((t) => !_gone.contains(t.eventId)).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     final cache = _ref.read(eventCacheProvider);
     final api = _ref.read(apiProvider);
     for (final t in order.take(EventCache.maxEvents)) {
-      if (!_signedIn) return;
+      if (!same()) return;
       try {
         final saved = cache.read(t.eventId);
         if (saved != null && now.difference(saved.savedAt) < fresh) continue;
-        final raw = await api.eventRaw(t.eventId);
+        final Map<String, dynamic> raw;
+        try {
+          raw = await api.eventRaw(t.eventId);
+        } on ApiException catch (e) {
+          if (e.isNotFound) _gone.add(t.eventId);
+          rethrow;
+        }
+        if (!same()) return;
         var announcements = const <EventAnnouncement>[];
         try {
           announcements = await api.eventAnnouncements(t.eventId);
         } on ApiException catch (e) {
           if (!e.isForbidden && !e.isNotFound) rethrow;
         }
-        if (!_signedIn) return; // signed out while this was loading: leave nothing behind
+        if (!same()) return; // signed out or switched while loading: nothing fetched for the previous user is written
         await cache.write(t.eventId, raw, announcements);
       } catch (_) {} // one event failing must not stop the others
     }
-    if (!_signedIn) return;
+    if (!same()) return;
     try {
       await cache.prune(keepEventIds: usable.map((t) => t.eventId).toSet());
     } catch (_) {}
@@ -235,7 +256,7 @@ class EventSaver {
   }
 }
 
-/// Starts [EventSaver.run] (after the next frame) each time the ticket list finishes loading. Watched by [todayEventsProvider].
+/// Starts [EventSaver.run] (after the next frame) each time the ticket list finishes loading. Started by `GuideBackground` in the app shell.
 final eventSaverProvider = Provider<EventSaver>((ref) {
   final saver = EventSaver(ref);
   ref.onDispose(() => saver._disposed = true);

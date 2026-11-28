@@ -18,6 +18,7 @@ import '../screens/profile_screen.dart';
 import '../screens/ticket_screen.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/watch_screen.dart';
+import '../widgets/guide_background.dart';
 import '../widgets/waitlist_offer.dart';
 import 'guide_providers.dart';
 import 'providers.dart';
@@ -85,7 +86,7 @@ class _Shell extends StatelessWidget {
     final t = L10n.of(context);
     void go(int i) => shell.goBranch(i, initialLocation: i == shell.currentIndex);
     return Scaffold(
-      body: WaitlistSync(child: shell),
+      body: GuideBackground(child: WaitlistSync(child: shell)),
       bottomNavigationBar: _TabBar(
         selected: shell.currentIndex,
         onSelected: go,

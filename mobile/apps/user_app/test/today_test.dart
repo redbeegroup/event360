@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:event360_core/event360_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:user_app/app/guide_providers.dart';
 import 'package:user_app/app/providers.dart';
+import 'package:user_app/widgets/event_row.dart';
 
 import 'event_guide_test.dart';
 
@@ -110,14 +113,54 @@ void main() {
       await h2.finish();
     });
 
-    testWidgets('the banner does not move Discover for everyone else', (tester) async {
-      final h = await pumpGuide(tester, now: base.add(const Duration(days: 30)), setup: oneEvent);
-      final search = tester.getTopLeft(find.byType(TextField).evaluate().isEmpty ? find.byIcon(Icons.search).first : find.byType(TextField).first);
+    testWidgets('no banner: Discover is laid out as for a signed-out visitor', (tester) async {
+      final out = await pumpGuide(tester, signedIn: false, now: base, setup: oneEvent);
+      final pill = tester.getTopLeft(find.byType(DiscoverSearchPill));
+      await out.finish();
+      // Signed in with a ticket for an event that is not today
+      final h = await pumpGuide(tester, now: base.subtract(const Duration(days: 3)), setup: oneEvent);
+      expect(find.byKey(const Key('homeTodayBanner')), findsNothing);
+      expect(tester.getTopLeft(find.byType(DiscoverSearchPill)), pill);
       await h.finish();
+      // With the banner the pill moves down
       final h2 = await pumpGuide(tester, now: base, setup: oneEvent);
-      final searchWith = tester.getTopLeft(find.byType(TextField).evaluate().isEmpty ? find.byIcon(Icons.search).first : find.byType(TextField).first);
-      expect(searchWith.dy, greaterThan(search.dy));
+      expect(tester.getTopLeft(find.byType(DiscoverSearchPill)).dy, greaterThan(pill.dy));
       await h2.finish();
+    });
+
+    testWidgets('the card and banner follow the clock without a ticket reload', (tester) async {
+      final h = await pumpGuide(tester, now: base.add(const Duration(hours: -15)), setup: oneEvent);
+      expect(find.byKey(const Key('homeTodayBanner')), findsNothing);
+      h.now = () => base.add(const Duration(hours: -14, minutes: -29)); // 00:01 Yangon
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+      expect(find.byKey(const Key('homeTodayBanner')), findsOneWidget, reason: 'appears at midnight');
+      await toTickets(h);
+      expect(find.byKey(const Key('todayCard-e1')), findsOneWidget);
+      h.now = () => base.add(const Duration(hours: 3, minutes: 1)); // an hour after the end
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pump();
+      expect(find.byKey(const Key('todayCard-e1')), findsNothing, reason: 'goes when the event ends');
+      h.router.go('/');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('homeTodayBanner')), findsNothing);
+      await h.finish(); // a timer left behind would fail the test here
+    });
+
+    testWidgets('coming back to the app refreshes the card', (tester) async {
+      final h = await pumpGuide(tester, now: base.add(const Duration(hours: 4)), setup: oneEvent);
+      expect(find.byKey(const Key('homeTodayBanner')), findsNothing);
+      h.now = () => base;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('homeTodayBanner')), findsOneWidget);
+      await h.finish();
     });
   });
 
@@ -207,6 +250,84 @@ void main() {
       expect(savedIds(h), ['ok1', 'ok2']);
       expect(h.container.read(eventCacheProvider).read('ok1')!.announcements, isEmpty);
       expect(find.byType(Scaffold), findsWidgets);
+      await h.finish();
+    });
+
+    testWidgets('account switch during a pass: nothing of the first user is written or kept, the second user is saved', (tester) async {
+      final gate = Completer<void>();
+      final h = await pumpGuide(tester, now: base, prefs: seedPrefs(saved: {'a0': (savedEvent('a0', starts: const Duration(days: 5)), const [], base.subtract(const Duration(minutes: 5)))}), setup: (a) {
+        for (final id in ['a0', 'a1', 'b1']) {
+          a.eventData[id] = eventJson(id, starts: Duration(days: id == 'a0' ? 5 : 3));
+        }
+        a.tickets = [ticketJson('ta0', 'a0', starts: const Duration(days: 5)), ticketJson('ta1', 'a1', starts: const Duration(days: 3))];
+        a.eventGate = gate; // A's pass stops at its first fetch
+      });
+      await saverDone(tester);
+      expect(h.api.rawCalls, 1, reason: 'a1 is in flight (a0 is fresh)');
+      h.api
+        ..tickets = [ticketJson('tb1', 'b1', starts: const Duration(days: 3))]
+        ..meId = 'u2';
+      await h.api.tokensStore.save('b', 'r');
+      await h.container.read(sessionProvider.notifier).signedIn();
+      await tester.pumpAndSettle();
+      expect(h.api.rawCalls, 1, reason: "B's pass waits for A's to finish");
+      gate.complete();
+      await tester.pumpAndSettle();
+      await saverDone(tester);
+      expect(savedIds(h), ['b1'], reason: "A's copies are gone and A's slow fetch was never written");
+      await h.finish();
+    });
+
+    testWidgets('sign-out during a pass: nothing is written and the cache is empty', (tester) async {
+      final gate = Completer<void>();
+      final h = await pumpGuide(tester, now: base, setup: (a) {
+        a.eventData['a1'] = eventJson('a1', starts: const Duration(days: 3));
+        a.tickets = [ticketJson('ta1', 'a1', starts: const Duration(days: 3))];
+        a.eventGate = gate;
+      });
+      await saverDone(tester);
+      expect(h.api.rawCalls, 1);
+      await h.container.read(sessionProvider.notifier).signOut();
+      gate.complete();
+      await tester.pumpAndSettle();
+      await saverDone(tester);
+      expect(savedIds(h), isEmpty);
+      await h.finish();
+    });
+
+    testWidgets('a pass requested during a pass waits for it, never running at the same time', (tester) async {
+      final gate = Completer<void>();
+      final h = await pumpGuide(tester, now: base, setup: (a) {
+        for (final id in ['a1', 'a2']) {
+          a.eventData[id] = eventJson(id, starts: Duration(days: id == 'a1' ? 2 : 3));
+        }
+        a.tickets = [ticketJson('t1', 'a1', starts: const Duration(days: 2)), ticketJson('t2', 'a2', starts: const Duration(days: 3))];
+        a.eventGate = gate;
+      });
+      await saverDone(tester);
+      await h.container.read(myTicketsProvider.notifier).refresh();
+      await tester.pumpAndSettle();
+      await saverDone(tester);
+      expect(h.api.rawCalls, 1, reason: 'the second pass has not started');
+      gate.complete();
+      await tester.pumpAndSettle();
+      await saverDone(tester);
+      expect(savedIds(h), ['a1', 'a2']);
+      expect(h.api.rawCalls, 2);
+      await h.finish();
+    });
+
+    testWidgets('an event the server does not know is not asked for again', (tester) async {
+      final h = await pumpGuide(tester, now: base, setup: (a) {
+        a.eventData['ok'] = eventJson('ok', starts: const Duration(days: 2));
+        a.tickets = [ticketJson('t1', 'ok', starts: const Duration(days: 2)), ticketJson('t0', 'bad', starts: const Duration(days: 3))];
+      });
+      await saverDone(tester);
+      expect(h.api.rawCalls, 2);
+      await h.container.read(myTicketsProvider.notifier).refresh();
+      await tester.pumpAndSettle();
+      await saverDone(tester);
+      expect(h.api.rawCalls, 2, reason: "'ok' is fresh and 'bad' was a 404");
       await h.finish();
     });
 

@@ -39,6 +39,7 @@ class GuideApi extends Event360Api {
   String meId = 'u1';
   Duration meDelay = Duration.zero;
   Completer<void>? ticketGate;
+  Completer<void>? eventGate;
   int rawCalls = 0;
   int announcementCalls = 0;
 
@@ -47,6 +48,7 @@ class GuideApi extends Event360Api {
   @override
   Future<Map<String, dynamic>> eventRaw(String idOrSlug) async {
     rawCalls++;
+    if (eventGate != null) await eventGate!.future;
     if (offline) throw _net;
     final e = eventData[idOrSlug] ?? eventData.values.where((j) => j['slug'] == idOrSlug).firstOrNull;
     if (e == null) throw ApiException(404, 'Not found');
@@ -745,9 +747,12 @@ void main() {
 
   group('refetch', () {
     testWidgets('every five minutes while open, and not after the screen is closed', (tester) async {
-      final h = await pumpGuide(tester, setup: (a) => setUpConcert(a), route: '/event/concert/guide');
-      // The background saver fetched the event once (Tickets load) before the guide opened.
-      const saver = 1;
+      final h = await pumpGuide(tester, setup: (a) => setUpConcert(a));
+      // The background saver fetched the event when the tickets loaded; count only what the open guide does.
+      h.api.rawCalls = 0;
+      h.api.announcementCalls = 0;
+      await h.go('/event/concert/guide');
+      const saver = 0;
       expect(h.api.rawCalls, saver + 1);
       await tester.pump(const Duration(minutes: 4, seconds: 59));
       expect(h.api.rawCalls, saver + 1);
