@@ -30,6 +30,9 @@ String formatTimeRange(DateTime start, DateTime end, String lang) {
 
 String formatAmount(int mmk, String lang) => NumberFormat.decimalPattern(_loc(lang)).format(mmk);
 
+/// A whole count in the language's own numerals (Myanmar digits in Burmese); plural selection should still use the int.
+String formatCount(int n, String lang) => NumberFormat.decimalPattern(_loc(lang)).format(n);
+
 /// Accepts 09…, 959…, +959… with spaces/dashes; mirrors the API's normalizeMyanmarPhone.
 bool isValidMyanmarPhone(String input) {
   final digits = input.replaceAll(RegExp(r'[\s\-()]'), '');

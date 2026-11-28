@@ -523,6 +523,11 @@ class L10nMy extends L10n {
   String get openGuide => 'လမ်းညွှန်ကို ဖွင့်ကြည့်ပါ';
 
   @override
+  String todayMore(int count, String n) {
+    return 'နောက်ထပ် $n ပွဲ';
+  }
+
+  @override
   String get checkedIn => 'ဝင်ပြီးပါပြီ';
 
   @override
@@ -787,18 +792,18 @@ class L10nMy extends L10n {
   String get openFailed => 'ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။';
 
   @override
-  String guideStartsInDays(int count) {
-    return '$count ရက်အကြာတွင် စတင်မည်';
+  String guideStartsInDays(int count, String n) {
+    return '$n ရက်အကြာတွင် စတင်မည်';
   }
 
   @override
-  String guideStartsInHours(int count) {
-    return '$count နာရီအကြာတွင် စတင်မည်';
+  String guideStartsInHours(int count, String n) {
+    return '$n နာရီအကြာတွင် စတင်မည်';
   }
 
   @override
-  String guideStartsInMinutes(int count) {
-    return '$count မိနစ်အကြာတွင် စတင်မည်';
+  String guideStartsInMinutes(int count, String n) {
+    return '$n မိနစ်အကြာတွင် စတင်မည်';
   }
 
   @override

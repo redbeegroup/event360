@@ -1033,6 +1033,12 @@ abstract class L10n {
   /// **'Open your guide'**
   String get openGuide;
 
+  /// No description provided for @todayMore.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{+{n} more}}'**
+  String todayMore(int count, String n);
+
   /// No description provided for @checkedIn.
   ///
   /// In en, this message translates to:
@@ -1480,20 +1486,20 @@ abstract class L10n {
   /// No description provided for @guideStartsInDays.
   ///
   /// In en, this message translates to:
-  /// **'Starts in {count, plural, =1{1 day} other{{count} days}}'**
-  String guideStartsInDays(int count);
+  /// **'Starts in {count, plural, =1{1 day} other{{n} days}}'**
+  String guideStartsInDays(int count, String n);
 
   /// No description provided for @guideStartsInHours.
   ///
   /// In en, this message translates to:
-  /// **'Starts in {count, plural, =1{1 hour} other{{count} hours}}'**
-  String guideStartsInHours(int count);
+  /// **'Starts in {count, plural, =1{1 hour} other{{n} hours}}'**
+  String guideStartsInHours(int count, String n);
 
   /// No description provided for @guideStartsInMinutes.
   ///
   /// In en, this message translates to:
-  /// **'Starts in {count, plural, =1{1 minute} other{{count} minutes}}'**
-  String guideStartsInMinutes(int count);
+  /// **'Starts in {count, plural, =1{1 minute} other{{n} minutes}}'**
+  String guideStartsInMinutes(int count, String n);
 
   /// No description provided for @guideOnNow.
   ///

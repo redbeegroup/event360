@@ -299,9 +299,9 @@ Widget? _headerSection(BuildContext context, GuideContext g) {
     GuidePhase.before => () {
         final s = startsIn(g.startsAt, g.now);
         return switch (s.unit) {
-          'days' => t.guideStartsInDays(s.value),
-          'hours' => t.guideStartsInHours(s.value),
-          _ => t.guideStartsInMinutes(s.value),
+          'days' => t.guideStartsInDays(s.value, formatCount(s.value, g.lang)),
+          'hours' => t.guideStartsInHours(s.value, formatCount(s.value, g.lang)),
+          _ => t.guideStartsInMinutes(s.value, formatCount(s.value, g.lang)),
         };
       }(),
   };
@@ -316,6 +316,10 @@ Widget? _headerSection(BuildContext context, GuideContext g) {
       Text(formatEventDate(g.startsAt, g.lang), style: theme.textTheme.bodyMedium),
       const SizedBox(height: 8),
       Text(status, key: const Key('guideStatus'), style: theme.textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
+      if (phase == GuidePhase.ended) ...[
+        const SizedBox(height: 4),
+        Text(t.guideThanks, key: const Key('guideThanks'), style: theme.textTheme.bodyLarge),
+      ],
     ]),
   );
 }
@@ -358,12 +362,20 @@ Widget? _ticketsSection(BuildContext context, GuideContext g) {
     if (single)
       Padding(
         padding: const EdgeInsets.only(top: 4),
-        child: FilledButton(
-          key: const Key('guideShowTicket'),
-          style: E360Buttons.gold,
-          onPressed: () => context.push('/ticket/${g.tickets.first.id}'),
-          child: Text(t.showTicket),
-        ),
+        // After the event the ticket is spent: no gold button, the guide has nothing left to push.
+        child: g.phase == GuidePhase.ended
+            ? OutlinedButton(
+                key: const Key('guideShowTicket'),
+                style: E360Buttons.outline,
+                onPressed: () => context.push('/ticket/${g.tickets.first.id}'),
+                child: Text(t.showTicket),
+              )
+            : FilledButton(
+                key: const Key('guideShowTicket'),
+                style: E360Buttons.gold,
+                onPressed: () => context.push('/ticket/${g.tickets.first.id}'),
+                child: Text(t.showTicket),
+              ),
       ),
   ]);
 }
@@ -609,7 +621,9 @@ class _AnnouncementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return _card(
+    return SizedBox(
+      width: double.infinity,
+      child: _card(
       context,
       Padding(
         padding: const EdgeInsets.all(14),
@@ -626,6 +640,7 @@ class _AnnouncementCard extends StatelessWidget {
           ),
         ]),
       ),
+    ),
     );
   }
 }
@@ -667,12 +682,14 @@ Widget? _infoSection(BuildContext context, GuideContext g) {
   ]);
 }
 
+/// Recordings of an ended event. The thank-you line itself sits under the status in the header.
 Widget? _thanksSection(BuildContext context, GuideContext g) {
   if (g.phase != GuidePhase.ended) return null;
+  final recordings = g.streams?.recordings ?? const <Recording>[];
+  if (recordings.isEmpty) return null;
   final t = L10n.of(context);
   final theme = Theme.of(context);
-  final recordings = g.streams?.recordings ?? const <Recording>[];
-  return _titled(context, key: const Key('guideThanks'), title: t.guideThanks, children: [
+  return _titled(context, key: const Key('guideRecordings'), title: t.recordingsTitle, children: [
     for (final r in recordings)
       Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -682,7 +699,7 @@ Widget? _thanksSection(BuildContext context, GuideContext g) {
             key: Key('guideRecording-${r.id}'),
             leading: const Icon(Icons.play_circle_outline),
             title: Text(pickLang(g.lang, r.title, r.titleMy), style: theme.textTheme.titleSmall),
-            subtitle: Text([t.recordingsTitle, if (r.availableUntil != null) t.availableUntil(formatEventDate(r.availableUntil!, g.lang))].join(' · ')),
+            subtitle: r.availableUntil == null ? null : Text(t.availableUntil(formatEventDate(r.availableUntil!, g.lang))),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/watch/vod/${r.id}?title=${Uri.encodeQueryComponent(pickLang(g.lang, r.title, r.titleMy))}'),
           ),

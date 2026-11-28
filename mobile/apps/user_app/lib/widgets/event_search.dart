@@ -125,6 +125,10 @@ class _SearchSheetState extends ConsumerState<_SearchSheet> {
                         itemCount: hits.length,
                         itemBuilder: (context, i) {
                           final h = hits[i];
+                          final title = h.group == 'info' ? labels[h.index] : h.title;
+                          // The snippet only earns a line when it says something the title does not.
+                          final snippet = h.snippet?.trim();
+                          final showSnippet = snippet != null && snippet.isNotEmpty && _norm(snippet) != _norm(title);
                           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             if (i == 0 || hits[i - 1].group != h.group)
                               Padding(
@@ -136,8 +140,8 @@ class _SearchSheetState extends ConsumerState<_SearchSheet> {
                               key: Key('searchHit-${h.group}-${h.index}'),
                               contentPadding: EdgeInsets.zero,
                               minVerticalPadding: 8,
-                              title: Text(h.group == 'info' ? labels[h.index] : h.title),
-                              subtitle: h.snippet == null ? null : Text(h.snippet!, maxLines: 3, overflow: TextOverflow.ellipsis),
+                              title: Text(title),
+                              subtitle: showSnippet ? Text(snippet, maxLines: 3, overflow: TextOverflow.ellipsis) : null,
                               onTap: () => Navigator.of(context).pop(h),
                             ),
                           ]);
@@ -149,6 +153,8 @@ class _SearchSheetState extends ConsumerState<_SearchSheet> {
     );
   }
 }
+
+String _norm(String x) => x.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
 
 void _openHit(BuildContext context, EventSummary e, GuideHit hit, String lang) {
   final t = L10n.of(context);

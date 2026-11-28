@@ -522,6 +522,16 @@ class L10nEn extends L10n {
   String get openGuide => 'Open your guide';
 
   @override
+  String todayMore(int count, String n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '+$n more',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get checkedIn => 'Checked in';
 
   @override
@@ -789,33 +799,33 @@ class L10nEn extends L10n {
   String get openFailed => 'Couldn\'t open that. Try again.';
 
   @override
-  String guideStartsInDays(int count) {
+  String guideStartsInDays(int count, String n) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count days',
+      other: '$n days',
       one: '1 day',
     );
     return 'Starts in $_temp0';
   }
 
   @override
-  String guideStartsInHours(int count) {
+  String guideStartsInHours(int count, String n) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count hours',
+      other: '$n hours',
       one: '1 hour',
     );
     return 'Starts in $_temp0';
   }
 
   @override
-  String guideStartsInMinutes(int count) {
+  String guideStartsInMinutes(int count, String n) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count minutes',
+      other: '$n minutes',
       one: '1 minute',
     );
     return 'Starts in $_temp0';

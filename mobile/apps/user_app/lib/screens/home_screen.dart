@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'notifications_screen.dart';
+import '../app/format.dart';
 import '../app/guide_providers.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
@@ -33,7 +34,8 @@ class HomeScreen extends ConsumerWidget {
     final upcoming = ref.watch(upcomingProvider);
     final free = ref.watch(freeEventsProvider);
     final city = ref.watch(lastCityProvider);
-    final today = ref.watch(todayEventsProvider).firstOrNull;
+    final todayAll = ref.watch(todayEventsProvider);
+    final today = todayAll.firstOrNull;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -135,7 +137,22 @@ class HomeScreen extends ConsumerWidget {
               ),
               if (today != null)
                 SliverToBoxAdapter(
-                  child: TodayCard(key: const Key('homeTodayBanner'), ticket: today, padding: const EdgeInsets.fromLTRB(20, 12, 20, 0)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    TodayCard(key: const Key('homeTodayBanner'), ticket: today, padding: const EdgeInsets.fromLTRB(20, 12, 20, 0)),
+                    if (todayAll.length > 1)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: TextButton(
+                            key: const Key('homeTodayMore'),
+                            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                            onPressed: () => context.go('/tickets'),
+                            child: Text(t.todayMore(todayAll.length - 1, formatCount(todayAll.length - 1, lang))),
+                          ),
+                        ),
+                      ),
+                  ]),
                 ),
               SliverToBoxAdapter(
                 child: Padding(
