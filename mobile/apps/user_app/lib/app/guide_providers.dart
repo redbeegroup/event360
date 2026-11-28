@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:event360_core/event360_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -121,3 +124,115 @@ Uri guideDirectionsUri(Venue v) {
   if (v.mapUrl != null && v.mapUrl!.isNotEmpty) return Uri.parse(v.mapUrl!);
   return Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent([v.name, v.address, v.city].whereType<String>().join(', '))}');
 }
+
+// ───── Happening today, and saving upcoming events for offline ─────
+
+/// One ticket per event the signed-in buyer can open the guide for (usable ticket) that is on today ([isEventToday]), earliest start first.
+/// Cancelled events are left out: nothing is "happening". Empty when signed out. Watching it also keeps [eventSaverProvider] alive.
+final todayEventsProvider = Provider<List<MyTicket>>((ref) {
+  ref.watch(eventSaverProvider);
+  if (ref.watch(sessionProvider).value == null) return const [];
+  final tickets = ref.watch(myTicketsProvider).value ?? const <MyTicket>[];
+  final now = ref.read(nowProvider)();
+  final byEvent = <String, MyTicket>{};
+  for (final t in tickets) {
+    if (t.status != 'VALID' && t.status != 'CHECKED_IN') continue;
+    if (t.eventStatus == 'CANCELLED') continue;
+    if (!isEventToday(startsAt: t.startsAt, endsAt: t.endsAt, now: now)) continue;
+    byEvent.putIfAbsent(t.eventId, () => t);
+  }
+  final out = byEvent.values.toList()
+    ..sort((a, b) {
+      final c = a.startsAt.compareTo(b.startsAt);
+      return c != 0 ? c : a.eventId.compareTo(b.eventId);
+    });
+  return out;
+});
+
+/// Saves up to [EventCache.maxEvents] upcoming events (with announcements) to the phone after the tickets load online.
+class EventSaver {
+  EventSaver(this._ref);
+  final Ref _ref;
+  bool _running = false;
+  bool _again = false;
+  bool _disposed = false;
+
+  /// An event saved less than this long ago is not fetched again.
+  static const fresh = Duration(hours: 1);
+
+  /// Never throws. A call while a run is in flight asks for one more run after it, so runs never overlap.
+  Future<void> run() async {
+    if (_running) {
+      _again = true;
+      return;
+    }
+    _running = true;
+    try {
+      do {
+        _again = false;
+        await _once();
+      } while (_again && !_disposed);
+    } catch (_) {
+      // Saving is a convenience; nothing here may reach the Tickets tab.
+    } finally {
+      _running = false;
+    }
+  }
+
+  bool get _signedIn => !_disposed && _ref.read(sessionProvider).value != null;
+
+  Future<void> _once() async {
+    if (kIsWeb || !_signedIn) return; // the web build is online only
+    final notifier = _ref.read(myTicketsProvider.notifier);
+    final tickets = _ref.read(myTicketsProvider).value;
+    if (tickets == null || notifier.fromCache) return;
+    final now = _ref.read(nowProvider)();
+    final usable = tickets.where((t) => t.status == 'VALID' || t.status == 'CHECKED_IN').toList();
+    final upcoming = <String, MyTicket>{};
+    for (final t in usable) {
+      if (t.endsAt.isAfter(now)) upcoming.putIfAbsent(t.eventId, () => t);
+    }
+    final order = upcoming.values.toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final cache = _ref.read(eventCacheProvider);
+    final api = _ref.read(apiProvider);
+    for (final t in order.take(EventCache.maxEvents)) {
+      if (!_signedIn) return;
+      try {
+        final saved = cache.read(t.eventId);
+        if (saved != null && now.difference(saved.savedAt) < fresh) continue;
+        final raw = await api.eventRaw(t.eventId);
+        var announcements = const <EventAnnouncement>[];
+        try {
+          announcements = await api.eventAnnouncements(t.eventId);
+        } on ApiException catch (e) {
+          if (!e.isForbidden && !e.isNotFound) rethrow;
+        }
+        if (!_signedIn) return; // signed out while this was loading: leave nothing behind
+        await cache.write(t.eventId, raw, announcements);
+      } catch (_) {} // one event failing must not stop the others
+    }
+    if (!_signedIn) return;
+    try {
+      await cache.prune(keepEventIds: usable.map((t) => t.eventId).toSet());
+    } catch (_) {}
+    if (!_disposed && _ref.read(sessionProvider).value == null) await cache.clearAll();
+  }
+}
+
+/// Starts [EventSaver.run] (after the next frame) each time the ticket list finishes loading. Watched by [todayEventsProvider].
+final eventSaverProvider = Provider<EventSaver>((ref) {
+  final saver = EventSaver(ref);
+  ref.onDispose(() => saver._disposed = true);
+  void schedule() {
+    final binding = WidgetsBinding.instance;
+    binding.addPostFrameCallback((_) {
+      if (!saver._disposed) unawaited(saver.run());
+    });
+    binding.scheduleFrame();
+  }
+
+  ref.listen<AsyncValue<List<MyTicket>>>(myTicketsProvider, (prev, next) {
+    if (next is AsyncData<List<MyTicket>> && !next.isLoading && !identical(prev?.value, next.value)) schedule();
+  }, fireImmediately: true);
+  return saver;
+});

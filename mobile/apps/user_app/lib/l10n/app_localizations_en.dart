@@ -516,6 +516,12 @@ class L10nEn extends L10n {
   String get eventGuide => 'Event guide';
 
   @override
+  String get happeningToday => 'Happening today';
+
+  @override
+  String get openGuide => 'Open your guide';
+
+  @override
   String get checkedIn => 'Checked in';
 
   @override

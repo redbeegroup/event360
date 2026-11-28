@@ -1021,6 +1021,18 @@ abstract class L10n {
   /// **'Event guide'**
   String get eventGuide;
 
+  /// No description provided for @happeningToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Happening today'**
+  String get happeningToday;
+
+  /// No description provided for @openGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Open your guide'**
+  String get openGuide;
+
   /// No description provided for @checkedIn.
   ///
   /// In en, this message translates to:

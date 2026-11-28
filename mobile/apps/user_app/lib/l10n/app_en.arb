@@ -273,6 +273,8 @@
   "send": "Send",
   "cancel": "Cancel",
   "eventGuide": "Event guide",
+  "happeningToday": "Happening today",
+  "openGuide": "Open your guide",
   "checkedIn": "Checked in",
   "checkedInAt": "Checked in at {time}",
   "@checkedInAt": {

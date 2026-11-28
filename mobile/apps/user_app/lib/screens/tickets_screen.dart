@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/format.dart';
+import '../app/guide_providers.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_card.dart';
+import '../widgets/today_card.dart';
 import '../widgets/waitlist_offer.dart';
 
 class TicketsScreen extends ConsumerWidget {
@@ -19,6 +21,7 @@ class TicketsScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final tickets = ref.watch(myTicketsProvider);
     final fromCache = ref.read(myTicketsProvider.notifier).fromCache;
+    final today = ref.watch(todayEventsProvider);
     final pending = (ref.watch(pendingOrdersProvider).value ?? const <Order>[]).where((o) => o.isOpen).toList();
 
     Widget body;
@@ -61,6 +64,7 @@ class TicketsScreen extends ConsumerWidget {
               const OfferBanner(padding: EdgeInsets.only(bottom: 12)),
               if (fromCache)
                 Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [const Icon(Icons.cloud_off, size: 18), const SizedBox(width: 6), Text(t.offlineReady)])),
+              for (final x in today) TodayCard(key: Key('todayCard-${x.eventId}'), ticket: x, padding: const EdgeInsets.only(bottom: 12)),
               if (pending.isNotEmpty) _Header(t.pendingPayments),
               for (final o in pending) _PendingTile(order: o),
               if (upcoming.isNotEmpty) _Header(t.upcomingTickets),

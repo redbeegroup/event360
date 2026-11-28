@@ -731,22 +731,24 @@ void main() {
   group('refetch', () {
     testWidgets('every five minutes while open, and not after the screen is closed', (tester) async {
       final h = await pumpGuide(tester, setup: (a) => setUpConcert(a), route: '/event/concert/guide');
-      expect(h.api.rawCalls, 1);
+      // The background saver fetched the event once (Tickets load) before the guide opened.
+      const saver = 1;
+      expect(h.api.rawCalls, saver + 1);
       await tester.pump(const Duration(minutes: 4, seconds: 59));
-      expect(h.api.rawCalls, 1);
+      expect(h.api.rawCalls, saver + 1);
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
-      expect(h.api.rawCalls, 2);
-      expect(h.api.announcementCalls, 2);
+      expect(h.api.rawCalls, saver + 2);
+      expect(h.api.announcementCalls, saver + 2);
       await tester.pump(guideRefreshInterval);
       await tester.pumpAndSettle();
-      expect(h.api.rawCalls, 3);
+      expect(h.api.rawCalls, saver + 3);
       expect(find.byKey(const Key('guideStatus')), findsOneWidget, reason: 'content stays while refreshing');
       h.router.pop();
       await tester.pumpAndSettle();
       expect(find.byType(EventGuideScreen), findsNothing);
       await tester.pump(const Duration(minutes: 20));
-      expect(h.api.rawCalls, 3);
+      expect(h.api.rawCalls, saver + 3);
       await h.finish();
     });
   });

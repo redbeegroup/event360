@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'notifications_screen.dart';
+import '../app/guide_providers.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/event_row.dart';
+import '../widgets/today_card.dart';
 import '../widgets/waitlist_offer.dart';
 
 /// The soonest event that has a cover image, or null.
@@ -31,6 +33,7 @@ class HomeScreen extends ConsumerWidget {
     final upcoming = ref.watch(upcomingProvider);
     final free = ref.watch(freeEventsProvider);
     final city = ref.watch(lastCityProvider);
+    final today = ref.watch(todayEventsProvider).firstOrNull;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -130,6 +133,10 @@ class HomeScreen extends ConsumerWidget {
               const SliverToBoxAdapter(
                 child: OfferBanner(padding: EdgeInsets.fromLTRB(20, 12, 20, 0)),
               ),
+              if (today != null)
+                SliverToBoxAdapter(
+                  child: TodayCard(key: const Key('homeTodayBanner'), ticket: today, padding: const EdgeInsets.fromLTRB(20, 12, 20, 0)),
+                ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),

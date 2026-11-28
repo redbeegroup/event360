@@ -517,6 +517,12 @@ class L10nMy extends L10n {
   String get eventGuide => 'ပွဲလမ်းညွှန်';
 
   @override
+  String get happeningToday => 'ယနေ့ ကျင်းပမည့်ပွဲ';
+
+  @override
+  String get openGuide => 'လမ်းညွှန်ကို ဖွင့်ကြည့်ပါ';
+
+  @override
   String get checkedIn => 'ဝင်ပြီးပါပြီ';
 
   @override
