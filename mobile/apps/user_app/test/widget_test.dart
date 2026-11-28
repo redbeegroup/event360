@@ -859,7 +859,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Yangon Food Fair e1'), findsOneWidget);
     expect(sp.getString(MyTicketsNotifier.cacheKey), isNotNull);
-    final cached = jsonDecode(sp.getString(MyTicketsNotifier.cacheKey)!) as List;
+    final cached = (jsonDecode(sp.getString(MyTicketsNotifier.cacheKey)!) as Map<String, dynamic>)['tickets'] as List;
     expect(cached.single['qr'], 'eyJ0aWQiOiJ0In0.c2ln');
 
     // Go offline and reload: the cached ticket and its QR still show.

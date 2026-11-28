@@ -58,38 +58,78 @@ final langProvider = Provider<String>((ref) => ref.watch(localeProvider)?.langua
 // ───── Session ─────
 
 class SessionNotifier extends AsyncNotifier<Me?> {
+  /// The id of the user whose session this phone last loaded online. It lets an offline cold start still tell whose tickets the cache holds.
+  static const userIdKey = 'session_user_id_v1';
+
+  /// Everything this phone keeps for the previous account: the offline tickets, the saved events and the remembered user id.
+  Future<void> _forgetAccount() async {
+    final prefs = ref.read(prefsProvider);
+    try {
+      await prefs.remove(MyTicketsNotifier.cacheKey);
+      await prefs.remove(userIdKey);
+      await ref.read(eventCacheProvider).clearAll();
+    } catch (_) {} // nothing here may keep the app from starting
+  }
+
   @override
   Future<Me?> build() async {
     final api = ref.watch(apiProvider);
-    if (await api.tokens.accessToken() == null) return null;
+    final prefs = ref.read(prefsProvider);
+    // No session (never signed in, or it ended without a sign-out: refresh rejected, revoked on the server): nothing of the previous
+    // account may stay behind for whoever signs in next.
+    if (await api.tokens.accessToken() == null) {
+      await _forgetAccount();
+      return null;
+    }
     try {
-      return await api.me();
+      final me = await api.me();
+      final stored = prefs.getString(userIdKey);
+      if (stored != null && stored != me.id) await _forgetAccount(); // someone else is signed in on this phone now
+      if (me.id.isNotEmpty) await prefs.setString(userIdKey, me.id);
+      return me;
     } on ApiException catch (e) {
-      if (e.isUnauthorized) return null;
-      // Offline: keep the user signed in (tickets work offline); profile details load later.
-      return Me(id: '', phone: null);
+      if (e.isUnauthorized) {
+        await _forgetAccount();
+        return null;
+      }
+      // Offline: keep the user signed in (tickets work offline); profile details load later. The id is the one stored by the last online
+      // load (empty for a phone that has never loaded online with this build): the ticket cache is only shown to its owner.
+      return Me(id: prefs.getString(userIdKey) ?? '', phone: null);
     }
   }
 
   Future<void> signedIn() async => ref.invalidateSelf();
 
-  Future<void> signOut() async {
-    // Stop this phone getting the user's notifications (needs the session, so before logout)
-    final push = ref.read(pushProvider);
-    final token = ref.read(prefsProvider).getString(pushTokenKey);
+  Future<void>? _signingOut;
+
+  /// A second call while a sign-out is running joins it.
+  Future<void> signOut() => _signingOut ??= _signOut().whenComplete(() => _signingOut = null);
+
+  Future<void> _signOut() async {
+    final api = ref.read(apiProvider);
+    final prefs = ref.read(prefsProvider);
+    const patience = Duration(seconds: 5);
+    // Stop this phone getting the user's notifications (needs the session, so before logout). A dead network must not hold the sign-out.
+    final token = prefs.getString(pushTokenKey);
     if (token != null) {
-      await ref.read(apiProvider).removeDevice(token).catchError((_) {});
-      await ref.read(prefsProvider).remove(pushTokenKey);
-      await push.deleteToken().catchError((_) {});
+      try {
+        await api.removeDevice(token).timeout(patience);
+      } catch (_) {}
+      try {
+        await prefs.remove(pushTokenKey);
+      } catch (_) {}
+      try {
+        await ref.read(pushProvider).deleteToken().timeout(patience);
+      } catch (_) {}
     }
-    await ref.read(apiProvider).logout();
-    await ref.read(prefsProvider).remove(MyTicketsNotifier.cacheKey);
-    // myTicketsProvider watches this session, so it reloads (empty) when the state below changes; invalidating it from here is a circular
-    // dependency that trips a debug assertion once the ticket list has been read.
+    try {
+      await api.logout();
+    } catch (_) {}
+    // The session ends first: a ticket or event fetch that finishes from here on sees nobody signed in and writes nothing. Then the copies
+    // go (myTicketsProvider watches this session, so it reloads empty; invalidating it from here is a circular dependency that trips a
+    // debug assertion once the ticket list has been read).
     state = const AsyncData(null);
-    // Saved events and announcements must not outlive the session on a shared phone. The session is already null here, so a fetch that was
-    // in flight cannot save a copy behind this (the guide only saves while signed in).
-    await ref.read(eventCacheProvider).clearAll();
+    await _forgetAccount();
   }
 }
 
@@ -148,10 +188,27 @@ final searchResultsProvider = FutureProvider.family<EventPage, SearchQuery>((ref
 class MyTicketsNotifier extends AsyncNotifier<List<MyTicket>> {
   static const cacheKey = 'my_tickets_cache_v1';
 
-  List<MyTicket> _cached() {
+  /// The offline copy for [meId]. The cache is `{"owner": id, "tickets": [...]}`; a plain list is what older builds wrote (still accepted:
+  /// it is rewritten tagged on the next online fetch). A copy that belongs to someone else, or is unreadable, is not returned (null).
+  /// An empty [meId] (offline, user not known) trusts the copy: the session only exists because this phone was signed in.
+  List<MyTicket>? _cached(String meId) {
     final raw = ref.read(prefsProvider).getString(cacheKey);
     if (raw == null) return const [];
-    return (jsonDecode(raw) as List).map((j) => MyTicket.fromJson(j as Map<String, dynamic>)).toList();
+    try {
+      final j = jsonDecode(raw);
+      final List list;
+      if (j is List) {
+        list = j;
+      } else if (j is Map<String, dynamic>) {
+        if (meId.isNotEmpty && j['owner'] != meId) return null;
+        list = j['tickets'] as List;
+      } else {
+        return null;
+      }
+      return list.map((t) => MyTicket.fromJson(t as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Whether the last list came from the offline cache.
@@ -178,24 +235,43 @@ class MyTicketsNotifier extends AsyncNotifier<List<MyTicket>> {
     }
     if (owner != null && owner != me.id) drop(); // a different user signed in: their list starts empty, not as the previous one's
     final prefs = ref.read(prefsProvider);
-    try {
-      final fresh = await ref.read(apiProvider).myTickets();
-      // A fetch that was already in flight when the session ended must not write the signed-out (or the next user's) cache.
-      var current = false;
+    // Still the session of the user that started this fetch (nobody signed out or switched while it was running).
+    bool current() {
       try {
-        current = ref.mounted && ref.read(sessionProvider).value?.id == me.id;
-      } catch (_) {}
-      if (current) {
-        await prefs.setString(cacheKey, jsonEncode(fresh.map((t) => t.toJson()).toList()));
-        owner = me.id;
+        return ref.mounted && ref.read(sessionProvider).value?.id == me.id;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    try {
+      final api = ref.read(apiProvider);
+      final fresh = await api.myTickets();
+      // A fetch that was already in flight when the session ended must not write the signed-out (or the next user's) cache.
+      if (current()) {
+        var ownerId = me.id;
+        if (ownerId.isEmpty) {
+          // Offline start without a remembered user: now that the network works, find out whose tickets these are.
+          try {
+            ownerId = (await api.me()).id;
+          } catch (_) {}
+        }
+        if (current()) {
+          await prefs.setString(cacheKey, jsonEncode({'owner': ownerId, 'tickets': fresh.map((t) => t.toJson()).toList()}));
+          owner = me.id;
+        }
       }
       fromCache = false;
       return fresh;
     } on ApiException catch (e) {
       if (e.isNetwork) {
+        // A failure that comes back after the account changed must not relabel the list of whoever is signed in now.
+        if (!current()) rethrow;
+        final cached = _cached(me.id);
+        if (cached == null) rethrow; // someone else's copy (or unreadable): the Tickets tab shows its error and retry
         fromCache = true;
         owner = me.id;
-        return _cached();
+        return cached;
       }
       rethrow;
     }

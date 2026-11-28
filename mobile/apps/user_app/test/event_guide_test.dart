@@ -5,6 +5,7 @@ import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -32,6 +33,9 @@ class GuideApi extends Event360Api {
 
   /// Announcements fail with this status (403, 404, 500) when set.
   int? announcementsError;
+
+  /// The event itself fails with this status (e.g. 503) when set.
+  int? eventStatusError;
   final eventData = <String, Map<String, dynamic>>{};
   final announcementData = <String, List<Map<String, dynamic>>>{};
   final streamData = <String, Map<String, dynamic>>{};
@@ -39,6 +43,18 @@ class GuideApi extends Event360Api {
   String meId = 'u1';
   Duration meDelay = Duration.zero;
   Completer<void>? ticketGate;
+
+  /// One gate per ticket fetch, in call order (a fetch beyond the list is not held).
+  final ticketGates = <Completer<void>>[];
+
+  /// `me()` fails with this (a 401, or a network error for the offline start).
+  ApiException? meError;
+  Completer<void>? removeDeviceGate;
+  int removeDeviceCalls = 0;
+  int logoutCalls = 0;
+
+  /// Runs right after the tokens are cleared by `logout()`.
+  void Function()? afterLogout;
   Completer<void>? eventGate;
   int rawCalls = 0;
   int announcementCalls = 0;
@@ -50,6 +66,7 @@ class GuideApi extends Event360Api {
     rawCalls++;
     if (eventGate != null) await eventGate!.future;
     if (offline) throw _net;
+    if (eventStatusError != null) throw ApiException(eventStatusError, 'server error');
     final e = eventData[idOrSlug] ?? eventData.values.where((j) => j['slug'] == idOrSlug).firstOrNull;
     if (e == null) throw ApiException(404, 'Not found');
     return e;
@@ -75,6 +92,8 @@ class GuideApi extends Event360Api {
 
   @override
   Future<List<MyTicket>> myTickets() async {
+    final queued = ticketGates.isEmpty ? null : ticketGates.removeAt(0);
+    if (queued != null) await queued.future;
     if (ticketGate != null) await ticketGate!.future;
     if (offline) throw _net;
     return tickets.map(MyTicket.fromApi).toList();
@@ -83,7 +102,21 @@ class GuideApi extends Event360Api {
   @override
   Future<Me> me() async {
     if (meDelay > Duration.zero) await Future<void>.delayed(meDelay);
+    if (meError != null) throw meError!;
     return Me(id: meId, phone: '+959790000001');
+  }
+
+  @override
+  Future<void> removeDevice(String pushToken) async {
+    removeDeviceCalls++;
+    if (removeDeviceGate != null) await removeDeviceGate!.future;
+  }
+
+  @override
+  Future<void> logout() async {
+    logoutCalls++;
+    await super.logout();
+    afterLogout?.call();
   }
 
   @override
@@ -235,6 +268,7 @@ Future<Harness> pumpGuide(
   Map<String, Object> prefs = const {},
   void Function(GuideApi)? setup,
   String? route,
+  List<Override> Function(SharedPreferences prefs, DateTime Function() now)? extraOverrides,
 }) async {
   tester.view.physicalSize = const Size(412 * 3, 915 * 3);
   tester.view.devicePixelRatio = 3;
@@ -256,6 +290,7 @@ Future<Harness> pumpGuide(
         opened.add(uri);
         return true;
       }),
+      ...?extraOverrides?.call(sp, () => h.now()),
     ],
     child: const UserApp(),
   ));

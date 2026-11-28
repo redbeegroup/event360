@@ -6,11 +6,29 @@ import 'package:go_router/go_router.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  /// Signing out can take a few seconds without a network (push removal waits up to 5 s): the button is busy meanwhile and cannot be tapped twice.
+  bool _signingOut = false;
+
+  Future<void> _signOut() async {
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    try {
+      await ref.read(sessionProvider.notifier).signOut();
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = L10n.of(context);
     final me = ref.watch(sessionProvider).value;
     final lang = ref.watch(langProvider);
@@ -57,9 +75,11 @@ class ProfileScreen extends ConsumerWidget {
         else
           OutlinedButton.icon(
             style: E360Buttons.outline.copyWith(minimumSize: const WidgetStatePropertyAll(Size.fromHeight(52))),
-            icon: const Icon(Icons.logout),
+            icon: _signingOut
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(key: Key('signOutBusy'), strokeWidth: 2))
+                : const Icon(Icons.logout),
             label: Text(t.signOut),
-            onPressed: () => ref.read(sessionProvider.notifier).signOut(),
+            onPressed: _signingOut ? null : _signOut,
           ),
       ]),
     );

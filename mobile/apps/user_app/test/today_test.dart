@@ -25,6 +25,25 @@ Future<void> saverDone(WidgetTester tester) async {
   }
 }
 
+/// A store that records the keys that are written.
+class _RecordingStore implements KeyValueStore {
+  _RecordingStore(this.inner, this.writes);
+  final KeyValueStore inner;
+  final List<String> writes;
+  @override
+  String? getString(String key) => inner.getString(key);
+  @override
+  Future<void> setString(String key, String value) {
+    writes.add(key);
+    return inner.setString(key, value);
+  }
+
+  @override
+  Future<void> remove(String key) => inner.remove(key);
+  @override
+  Iterable<String> keys() => inner.keys();
+}
+
 Map<String, dynamic> savedEvent(String id, {required Duration starts}) => eventJson(id, starts: starts);
 
 void main() {
@@ -255,7 +274,8 @@ void main() {
 
     testWidgets('account switch during a pass: nothing of the first user is written or kept, the second user is saved', (tester) async {
       final gate = Completer<void>();
-      final h = await pumpGuide(tester, now: base, prefs: seedPrefs(saved: {'a0': (savedEvent('a0', starts: const Duration(days: 5)), const [], base.subtract(const Duration(minutes: 5)))}), setup: (a) {
+      final writes = <String>[]; // every event copy that is written, in order
+      final h = await pumpGuide(tester, now: base, extraOverrides: (sp, now) => [eventCacheProvider.overrideWithValue(EventCache(_RecordingStore(PrefsKeyValueStore(sp), writes), now: now))], prefs: seedPrefs(saved: {'a0': (savedEvent('a0', starts: const Duration(days: 5)), const [], base.subtract(const Duration(minutes: 5)))}), setup: (a) {
         for (final id in ['a0', 'a1', 'b1']) {
           a.eventData[id] = eventJson(id, starts: Duration(days: id == 'a0' ? 5 : 3));
         }
@@ -275,6 +295,7 @@ void main() {
       await tester.pumpAndSettle();
       await saverDone(tester);
       expect(savedIds(h), ['b1'], reason: "A's copies are gone and A's slow fetch was never written");
+      expect(writes, ['${EventCache.prefix}b1'], reason: "A's slow fetch is never written, not even for a moment before B's pass");
       await h.finish();
     });
 
