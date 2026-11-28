@@ -1464,6 +1464,102 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Couldn\'t open that. Try again.'**
   String get openFailed;
+
+  /// No description provided for @guideStartsInDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts in {count, plural, =1{1 day} other{{count} days}}'**
+  String guideStartsInDays(int count);
+
+  /// No description provided for @guideStartsInHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts in {count, plural, =1{1 hour} other{{count} hours}}'**
+  String guideStartsInHours(int count);
+
+  /// No description provided for @guideStartsInMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts in {count, plural, =1{1 minute} other{{count} minutes}}'**
+  String guideStartsInMinutes(int count);
+
+  /// No description provided for @guideOnNow.
+  ///
+  /// In en, this message translates to:
+  /// **'On now'**
+  String get guideOnNow;
+
+  /// No description provided for @guideEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Ended'**
+  String get guideEnded;
+
+  /// No description provided for @guideCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'This event was cancelled'**
+  String get guideCancelled;
+
+  /// No description provided for @yourTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'Your tickets'**
+  String get yourTickets;
+
+  /// No description provided for @showTicket.
+  ///
+  /// In en, this message translates to:
+  /// **'Show ticket'**
+  String get showTicket;
+
+  /// No description provided for @nowTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get nowTitle;
+
+  /// No description provided for @nextTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get nextTitle;
+
+  /// No description provided for @fullSchedule.
+  ///
+  /// In en, this message translates to:
+  /// **'Full schedule'**
+  String get fullSchedule;
+
+  /// No description provided for @announcements.
+  ///
+  /// In en, this message translates to:
+  /// **'Announcements'**
+  String get announcements;
+
+  /// No description provided for @guideThanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Thank you for coming'**
+  String get guideThanks;
+
+  /// No description provided for @savedCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved copy · updated {time}. Newer announcements may exist.'**
+  String savedCopy(String time);
+
+  /// No description provided for @neverSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect once to save this event for offline use.'**
+  String get neverSaved;
+
+  /// No description provided for @needsConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs a connection'**
+  String get needsConnection;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

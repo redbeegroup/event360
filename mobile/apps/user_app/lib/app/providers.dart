@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'guide_providers.dart';
 import 'push.dart';
 
 /// Overridden in main() / tests.
@@ -66,8 +67,13 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     }
     await ref.read(apiProvider).logout();
     await ref.read(prefsProvider).remove(MyTicketsNotifier.cacheKey);
-    ref.invalidate(myTicketsProvider);
+    // myTicketsProvider watches this session, so it reloads (empty) when the state below changes; invalidating it from here is a circular
+    // dependency that trips a debug assertion once the ticket list has been read.
     state = const AsyncData(null);
+    // Saved events and announcements must not outlive the session on a shared phone. The session is already null here, so a fetch that was
+    // in flight cannot save a copy behind this (the guide only saves while signed in).
+    await ref.read(eventCacheProvider).clearAll();
+    ref.invalidate(guideProvider);
   }
 }
 

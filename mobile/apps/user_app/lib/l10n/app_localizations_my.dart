@@ -779,4 +779,61 @@ class L10nMy extends L10n {
 
   @override
   String get openFailed => 'ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။';
+
+  @override
+  String guideStartsInDays(int count) {
+    return '$count ရက်အကြာတွင် စတင်မည်';
+  }
+
+  @override
+  String guideStartsInHours(int count) {
+    return '$count နာရီအကြာတွင် စတင်မည်';
+  }
+
+  @override
+  String guideStartsInMinutes(int count) {
+    return '$count မိနစ်အကြာတွင် စတင်မည်';
+  }
+
+  @override
+  String get guideOnNow => 'ယခု ကျင်းပနေသည်';
+
+  @override
+  String get guideEnded => 'ပြီးဆုံးပါပြီ';
+
+  @override
+  String get guideCancelled => 'ဤပွဲကို ပယ်ဖျက်လိုက်ပါပြီ';
+
+  @override
+  String get yourTickets => 'သင့်လက်မှတ်များ';
+
+  @override
+  String get showTicket => 'လက်မှတ်ပြမည်';
+
+  @override
+  String get nowTitle => 'ယခု';
+
+  @override
+  String get nextTitle => 'နောက်ထပ်';
+
+  @override
+  String get fullSchedule => 'အချိန်ဇယား အပြည့်အစုံ';
+
+  @override
+  String get announcements => 'ကြေညာချက်များ';
+
+  @override
+  String get guideThanks => 'လာရောက်ပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်';
+
+  @override
+  String savedCopy(String time) {
+    return 'သိမ်းထားသော မိတ္တူ · $time တွင် ပြင်ဆင်ထားသည်။ ကြေညာချက်အသစ်များ ရှိနိုင်ပါသည်။';
+  }
+
+  @override
+  String get neverSaved =>
+      'ဤပွဲကို အင်တာနက်မရှိဘဲ ကြည့်နိုင်ရန် အင်တာနက်ချိတ်ပြီး တစ်ကြိမ် ဖွင့်ပါ။';
+
+  @override
+  String get needsConnection => 'အင်တာနက် လိုအပ်သည်';
 }

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
 import '../screens/checkout_screen.dart';
 import '../screens/event_detail_screen.dart';
+import '../screens/event_guide_screen.dart';
 import '../screens/explore_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/language_screen.dart';
@@ -18,6 +19,7 @@ import '../screens/ticket_screen.dart';
 import '../screens/tickets_screen.dart';
 import '../screens/watch_screen.dart';
 import '../widgets/waitlist_offer.dart';
+import 'guide_providers.dart';
 import 'providers.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -37,6 +39,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/event/:id', builder: (_, s) => EventDetailScreen(idOrSlug: s.pathParameters['id']!)),
       GoRoute(path: '/event/:id/seats', builder: (_, s) => SeatPickerScreen(idOrSlug: s.pathParameters['id']!, offerEntryId: s.uri.queryParameters['offer'])),
+      GoRoute(
+        path: '/event/:id/guide',
+        // Only for a signed-in holder of a VALID or CHECKED_IN ticket for this event (the screen enforces it again once the ticket list has loaded).
+        redirect: (context, state) {
+          final id = state.pathParameters['id']!;
+          final a = guideAccessOf(session: ref.read(sessionProvider), tickets: ref.read(myTicketsProvider), idOrSlug: id).access;
+          return switch (a) {
+            GuideAccess.signedOut => '/login?from=${Uri.encodeQueryComponent('/event/$id/guide')}',
+            GuideAccess.noTicket => '/event/$id',
+            _ => null,
+          };
+        },
+        builder: (_, s) => EventGuideScreen(eventId: s.pathParameters['id']!),
+      ),
       GoRoute(path: '/ticket/:id', builder: (_, s) => TicketScreen(ticketId: s.pathParameters['id']!)),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
       GoRoute(path: '/checkout/:id', builder: (_, s) => CheckoutScreen(orderId: s.pathParameters['id']!)),

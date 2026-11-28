@@ -227,5 +227,21 @@
   "ticketSeatLabel": "ခုံ",
   "ticketKind": "လက်မှတ်",
   "getDirections": "လမ်းညွှန်",
-  "openFailed": "ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။"
+  "openFailed": "ဖွင့်၍မရပါ။ ထပ်စမ်းကြည့်ပါ။",
+  "guideStartsInDays": "{count} ရက်အကြာတွင် စတင်မည်",
+  "guideStartsInHours": "{count} နာရီအကြာတွင် စတင်မည်",
+  "guideStartsInMinutes": "{count} မိနစ်အကြာတွင် စတင်မည်",
+  "guideOnNow": "ယခု ကျင်းပနေသည်",
+  "guideEnded": "ပြီးဆုံးပါပြီ",
+  "guideCancelled": "ဤပွဲကို ပယ်ဖျက်လိုက်ပါပြီ",
+  "yourTickets": "သင့်လက်မှတ်များ",
+  "showTicket": "လက်မှတ်ပြမည်",
+  "nowTitle": "ယခု",
+  "nextTitle": "နောက်ထပ်",
+  "fullSchedule": "အချိန်ဇယား အပြည့်အစုံ",
+  "announcements": "ကြေညာချက်များ",
+  "guideThanks": "လာရောက်ပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်",
+  "savedCopy": "သိမ်းထားသော မိတ္တူ · {time} တွင် ပြင်ဆင်ထားသည်။ ကြေညာချက်အသစ်များ ရှိနိုင်ပါသည်။",
+  "neverSaved": "ဤပွဲကို အင်တာနက်မရှိဘဲ ကြည့်နိုင်ရန် အင်တာနက်ချိတ်ပြီး တစ်ကြိမ် ဖွင့်ပါ။",
+  "needsConnection": "အင်တာနက် လိုအပ်သည်"
 }

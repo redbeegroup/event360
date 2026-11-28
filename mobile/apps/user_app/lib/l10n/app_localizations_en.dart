@@ -781,4 +781,78 @@ class L10nEn extends L10n {
 
   @override
   String get openFailed => 'Couldn\'t open that. Try again.';
+
+  @override
+  String guideStartsInDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Starts in $_temp0';
+  }
+
+  @override
+  String guideStartsInHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return 'Starts in $_temp0';
+  }
+
+  @override
+  String guideStartsInMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return 'Starts in $_temp0';
+  }
+
+  @override
+  String get guideOnNow => 'On now';
+
+  @override
+  String get guideEnded => 'Ended';
+
+  @override
+  String get guideCancelled => 'This event was cancelled';
+
+  @override
+  String get yourTickets => 'Your tickets';
+
+  @override
+  String get showTicket => 'Show ticket';
+
+  @override
+  String get nowTitle => 'Now';
+
+  @override
+  String get nextTitle => 'Next';
+
+  @override
+  String get fullSchedule => 'Full schedule';
+
+  @override
+  String get announcements => 'Announcements';
+
+  @override
+  String get guideThanks => 'Thank you for coming';
+
+  @override
+  String savedCopy(String time) {
+    return 'Saved copy · updated $time. Newer announcements may exist.';
+  }
+
+  @override
+  String get neverSaved => 'Connect once to save this event for offline use.';
+
+  @override
+  String get needsConnection => 'Needs a connection';
 }

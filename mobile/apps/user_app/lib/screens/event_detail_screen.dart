@@ -16,6 +16,7 @@ import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/event_card.dart';
+import '../widgets/event_sections.dart';
 import '../widgets/total_amounts.dart';
 import '../widgets/waitlist_offer.dart';
 
@@ -79,20 +80,7 @@ class _Detail extends ConsumerWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: bold), const SizedBox(height: 12), ...children]),
         );
 
-    final practical = <(IconData, String, String)>[
-      if (e.ageMin != null) (Icons.badge_outlined, t.ageLimit(e.ageMin!), ''),
-      if (!e.dressCode.isEmpty) (Icons.checkroom, t.dressCode, e.dressCode.of(lang)),
-      if (!e.languages.isEmpty) (Icons.translate, t.languages, e.languages.of(lang)),
-      if (!e.parking.isEmpty) (Icons.local_parking, t.parking, e.parking.of(lang)),
-      if (!e.accessibility.isEmpty) (Icons.accessible, t.accessibility, e.accessibility.of(lang)),
-      if (!e.whatToBring.isEmpty) (Icons.backpack_outlined, t.whatToBring, e.whatToBring.of(lang)),
-    ];
-
-    // Schedule grouped by (Myanmar-time) day
-    final days = <String, List<ScheduleItem>>{};
-    for (final s in e.schedule) {
-      days.putIfAbsent(formatDay(s.startsAt, lang), () => []).add(s);
-    }
+    final practical = practicalInfoItems(t, e, lang);
 
     // "Good to know": only what the event already tells us (price rises, group tiers, refund policy)
     final goodToKnow = <(String, String, bool)>[
@@ -301,34 +289,7 @@ class _Detail extends ConsumerWidget {
                   ),
                 ),
               ]),
-            if (days.isNotEmpty)
-              section(t.schedule, [
-                for (final day in days.entries) ...[
-                  Padding(padding: const EdgeInsets.only(top: 4, bottom: 4), child: Text(day.key, style: theme.textTheme.labelLarge)),
-                  for (final s in day.value)
-                    IntrinsicHeight(
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        SizedBox(
-                          width: 78,
-                          child: Padding(padding: const EdgeInsets.only(top: 10), child: Text(formatTime(s.startsAt, lang), style: theme.textTheme.labelLarge)),
-                        ),
-                        Container(width: 2, color: theme.colorScheme.outlineVariant),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(pickLang(lang, s.title, s.titleMy), style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
-                              Text([formatTimeRange(s.startsAt, s.endsAt, lang), if (s.location != null) s.location!].join(' · '),
-                                  style: theme.textTheme.bodySmall),
-                              if (pickLang(lang, s.description, s.descriptionMy).isNotEmpty) Text(pickLang(lang, s.description, s.descriptionMy), style: theme.textTheme.bodyMedium),
-                            ]),
-                          ),
-                        ),
-                      ]),
-                    ),
-                ],
-              ]),
+            if (e.schedule.isNotEmpty) section(t.schedule, [ScheduleDayList(items: e.schedule, lang: lang)]),
             if (e.performers.isNotEmpty)
               section(t.lineup, [
                 SizedBox(
@@ -363,10 +324,7 @@ class _Detail extends ConsumerWidget {
                 ),
               ]),
             if (practical.isNotEmpty)
-              section(t.practicalInfo, [
-                for (final (icon, title, value) in practical)
-                  Padding(padding: const EdgeInsets.only(bottom: 10), child: InfoRow(icon: icon, title: title, subtitle: value.isEmpty ? null : value)),
-              ]),
+              section(t.practicalInfo, [PracticalInfoRows(items: practical)]),
             if (e.venue != null)
               section(t.directions, [
                 _CardBox(
@@ -390,17 +348,7 @@ class _Detail extends ConsumerWidget {
                   ),
                 ),
               ]),
-            if (e.faqs.isNotEmpty)
-              section(t.faq, [
-                for (final f in e.faqs)
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    title: Text(pickLang(lang, f.question, f.questionMy), style: theme.textTheme.titleSmall?.copyWith(fontSize: 15)),
-                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                    childrenPadding: const EdgeInsets.only(bottom: 12),
-                    children: [Text(pickLang(lang, f.answer, f.answerMy), style: theme.textTheme.bodyMedium)],
-                  ),
-              ]),
+            if (e.faqs.isNotEmpty) section(t.faq, [FaqTiles(faqs: e.faqs, lang: lang)]),
             if (!e.terms.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 16),
