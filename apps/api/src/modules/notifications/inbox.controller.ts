@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, ServiceUnavailableException } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength } from 'class-validator';
 import { Auth, AuthUser, CurrentUser } from '../../common/auth';
@@ -50,6 +50,25 @@ export const ANNOUNCEMENTS_PER_DAY = 3;
 @Auth()
 export class InboxController {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Announcements for one event, for a user who holds a VALID or CHECKED_IN ticket for it. */
+  @Get('events/:eventId/announcements')
+  async eventAnnouncements(@CurrentUser() u: AuthUser, @Param('eventId', ParseUUIDPipe) eventId: string) {
+    const event = await this.prisma.event.findUnique({ where: { id: eventId }, select: { id: true } });
+    if (!event) throw new NotFoundException('Event not found');
+    const held = await this.prisma.ticket.findFirst({
+      where: { holderUserId: u.sub, ticketType: { eventId }, status: { in: ['VALID', 'CHECKED_IN'] } },
+      select: { id: true },
+    });
+    if (!held) throw new ForbiddenException('You do not hold a ticket for this event');
+    const rows = await this.prisma.announcement.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, title: true, titleMy: true, body: true, bodyMy: true, createdAt: true },
+    });
+    return rows.map((a) => ({ id: a.id, title: a.title, titleMy: a.titleMy, body: a.body, bodyMy: a.bodyMy, createdAt: a.createdAt }));
+  }
 
   @Get('notifications')
   async list(@CurrentUser() u: AuthUser, @Query('before') before?: string, @Query('limit') limit?: string, @Query('audience') audienceQ?: string) {

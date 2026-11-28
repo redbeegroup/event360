@@ -85,12 +85,25 @@ export class TicketsService {
         },
       },
     });
+    // Latest counted check-in per ticket, one query for all of the user's tickets
+    const scans = rows.length
+      ? await this.prisma.checkin.findMany({
+          where: { ticketId: { in: rows.map((t) => t.id) }, isDuplicate: false, undoneAt: null },
+          select: { ticketId: true, scannedAt: true },
+        })
+      : [];
+    const checkedInAt = new Map<string, Date>();
+    for (const c of scans) {
+      const cur = checkedInAt.get(c.ticketId);
+      if (!cur || c.scannedAt > cur) checkedInAt.set(c.ticketId, c.scannedAt);
+    }
     return rows.map((t) => {
       const e = t.ticketType.event;
       return {
         id: t.id,
         status: t.status,
         createdAt: t.createdAt,
+        checkedInAt: checkedInAt.get(t.id) ?? null,
         seatKey: t.seatKey,
         seatLabel: t.seatLabel,
         seatLabelMy: t.seatLabelMy,
