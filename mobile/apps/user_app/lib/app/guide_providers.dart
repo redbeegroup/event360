@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection' show ListBase;
 
 import 'package:event360_core/event360_core.dart';
 import 'package:flutter/foundation.dart';
@@ -53,7 +54,7 @@ Future<({String id, SavedEvent saved})?> findSavedEvent(EventCache cache, String
 }
 
 /// Loads the guide's event data. On success the saved copy is refreshed (under the event's real id, whatever the URL carried); with no
-/// network the saved copy (or `neverSaved`) is returned. Announcements that are refused (403) or missing (404) leave the live event without
+/// network the saved copy (or `neverSaved`) is returned. Announcements that are refused (401, 403) or missing (404) leave the live event without
 /// announcements (and without stale saved ones); other errors are errors.
 final guideProvider = FutureProvider.autoDispose.family<GuideData, String>(
   (ref, idOrSlug) async {
@@ -70,7 +71,13 @@ final guideProvider = FutureProvider.autoDispose.family<GuideData, String>(
     try {
       raw = await api.eventRaw(idOrSlug);
     } on ApiException catch (e) {
-      if (e.isNetwork) return fromSaved();
+      if (e.isNotFound) rethrow; // the event is gone: a copy of it would be a lie
+      if (e.isNetwork) {
+        if (kIsWeb) rethrow; // the web build keeps and serves no copies
+        return fromSaved();
+      }
+      // A server error: the saved copy (labelled) is better than an error page, when there is one.
+      if (!kIsWeb && (await findSavedEvent(cache, idOrSlug)) != null) return fromSaved();
       rethrow;
     }
     final event = EventSummary.fromJson(raw);
@@ -80,13 +87,13 @@ final guideProvider = FutureProvider.autoDispose.family<GuideData, String>(
     } on ApiException catch (e) {
       if (e.isNetwork) {
         // Half a connection: the saved copy keeps its label; with none, the live event is shown without announcements.
-        if ((await findSavedEvent(cache, event.id)) != null) return fromSaved();
+        if (!kIsWeb && (await findSavedEvent(cache, event.id)) != null) return fromSaved();
         return GuideData(event: event);
       }
-      if (!e.isForbidden && !e.isNotFound) rethrow;
+      if (!e.isForbidden && !e.isNotFound && !e.isUnauthorized) rethrow;
     }
     // Only while signed in: a fetch that finishes after sign-out must not leave a copy behind.
-    if (ref.read(sessionProvider).value != null) {
+    if (!kIsWeb && ref.read(sessionProvider).value != null) {
       try {
         await cache.write(event.id, raw, announcements);
       } catch (_) {} // a full or failing disk must not hide the live guide
@@ -149,7 +156,7 @@ Uri guideDirectionsUri(Venue v) {
 final todayEventsProvider = Provider.autoDispose<List<MyTicket>>((ref) {
   final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
   ref.onDispose(timer.cancel);
-  if (ref.watch(sessionProvider).value == null) return const [];
+  if (ref.watch(sessionProvider).value == null) return _TodayEvents(const []);
   final tickets = ref.watch(myTicketsProvider).value ?? const <MyTicket>[];
   final now = ref.read(nowProvider)();
   final byEvent = <String, MyTicket>{};
@@ -164,8 +171,37 @@ final todayEventsProvider = Provider.autoDispose<List<MyTicket>>((ref) {
       final c = a.startsAt.compareTo(b.startsAt);
       return c != 0 ? c : a.eventId.compareTo(b.eventId);
     });
-  return out;
+  return _TodayEvents(out);
 });
+
+/// The list [todayEventsProvider] hands out. Two lists are equal when they hold the same events (and tickets) in the same order, so the provider (which
+/// recomputes every minute) only notifies Home and Tickets when the set of today events (or the ticket shown for one) really changes.
+class _TodayEvents extends ListBase<MyTicket> {
+  _TodayEvents(this._items);
+  final List<MyTicket> _items;
+
+  @override
+  int get length => _items.length;
+  @override
+  set length(int _) => throw UnsupportedError('read only');
+  @override
+  MyTicket operator [](int index) => _items[index];
+  @override
+  void operator []=(int index, MyTicket value) => throw UnsupportedError('read only');
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! _TodayEvents || other.length != length) return false;
+    for (var i = 0; i < length; i++) {
+      final a = other._items[i], b = _items[i];
+      if (a.eventId != b.eventId || a.id != b.id || a.status != b.status || a.eventStatus != b.eventStatus) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(_items.map((t) => Object.hash(t.eventId, t.id, t.status, t.eventStatus)));
+}
 
 /// Saves up to [EventCache.maxEvents] upcoming events (with announcements) to the phone after the tickets load online.
 class EventSaver {
@@ -229,7 +265,7 @@ class EventSaver {
       if (!same()) return;
       try {
         final saved = cache.read(t.eventId);
-        if (saved != null && now.difference(saved.savedAt) < fresh) continue;
+        if (saved != null && now.difference(saved.savedAt).abs() < fresh) continue; // abs: the phone clock may have moved back
         final Map<String, dynamic> raw;
         try {
           raw = await api.eventRaw(t.eventId);
