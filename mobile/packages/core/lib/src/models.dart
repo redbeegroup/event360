@@ -64,7 +64,8 @@ class Venue {
 }
 
 class ScheduleItem {
-  ScheduleItem({required this.title, this.titleMy, this.description, this.descriptionMy, this.location, required this.startsAt, required this.endsAt});
+  ScheduleItem({this.id, required this.title, this.titleMy, this.description, this.descriptionMy, this.location, required this.startsAt, required this.endsAt});
+  final String? id;
   final String title;
   final String? titleMy;
   final String? description;
@@ -74,6 +75,7 @@ class ScheduleItem {
   final DateTime endsAt;
 
   factory ScheduleItem.fromJson(Map<String, dynamic> j) => ScheduleItem(
+        id: j['id'] as String?,
         title: j['title'] as String,
         titleMy: j['titleMy'] as String?,
         description: j['description'] as String?,
@@ -428,6 +430,9 @@ class MyTicket {
     this.isComplimentary = false,
     this.compLabel,
     this.canCancel = false,
+    this.checkedInAt,
+    this.eventStatus,
+    this.eventSlug,
   });
 
   final String id;
@@ -460,6 +465,15 @@ class MyTicket {
   /// The holder may give this free ticket back (free, own, valid, before the event starts).
   final bool canCancel;
 
+  /// When the ticket was scanned at the door, if it was.
+  final DateTime? checkedInAt;
+
+  /// The event's lifecycle status (PUBLISHED, CANCELLED, ...) and slug, when the server sent them.
+  final String? eventStatus;
+  final String? eventSlug;
+
+  bool get isCheckedIn => status == 'CHECKED_IN';
+
   String? seatText(String lang) => pickLang(lang, seatLabel, seatLabelMy).isEmpty ? null : pickLang(lang, seatLabel, seatLabelMy);
 
   bool get isUpcoming => endsAt.isAfter(DateTime.now());
@@ -490,6 +504,9 @@ class MyTicket {
       isComplimentary: j['isComplimentary'] as bool? ?? false,
       compLabel: j['compLabel'] as String?,
       canCancel: j['canCancel'] as bool? ?? false,
+      checkedInAt: _dtn(j['checkedInAt']),
+      eventStatus: e['status'] as String?,
+      eventSlug: e['slug'] as String?,
     );
   }
 
@@ -515,6 +532,9 @@ class MyTicket {
         'isComplimentary': isComplimentary,
         'compLabel': compLabel,
         'canCancel': canCancel,
+        'checkedInAt': checkedInAt?.toIso8601String(),
+        'eventStatus': eventStatus,
+        'eventSlug': eventSlug,
       };
 
   factory MyTicket.fromJson(Map<String, dynamic> j) => MyTicket(
@@ -539,7 +559,31 @@ class MyTicket {
         isComplimentary: j['isComplimentary'] as bool? ?? false,
         compLabel: j['compLabel'] as String?,
         canCancel: j['canCancel'] as bool? ?? false,
+        checkedInAt: _dtn(j['checkedInAt']),
+        eventStatus: j['eventStatus'] as String?,
+        eventSlug: j['eventSlug'] as String?,
       );
+}
+
+class EventAnnouncement {
+  EventAnnouncement({required this.id, required this.title, this.titleMy, required this.body, this.bodyMy, required this.createdAt});
+  final String id;
+  final String title;
+  final String? titleMy;
+  final String body;
+  final String? bodyMy;
+  final DateTime createdAt;
+
+  factory EventAnnouncement.fromJson(Map<String, dynamic> j) => EventAnnouncement(
+        id: j['id'] as String,
+        title: j['title'] as String,
+        titleMy: j['titleMy'] as String?,
+        body: j['body'] as String,
+        bodyMy: j['bodyMy'] as String?,
+        createdAt: _dt(j['createdAt']),
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'titleMy': titleMy, 'body': body, 'bodyMy': bodyMy, 'createdAt': createdAt.toIso8601String()};
 }
 
 class Me {

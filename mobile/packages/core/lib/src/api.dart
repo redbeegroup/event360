@@ -170,6 +170,18 @@ class Event360Api {
         (d) => EventSummary.fromJson(d as Map<String, dynamic>),
       );
 
+  /// The raw event JSON (what [event] parses), for the offline event cache.
+  Future<Map<String, dynamic>> eventRaw(String idOrSlug) => _call(
+        () => _dio.get('/events/${Uri.encodeComponent(idOrSlug)}', options: Options(extra: {'auth': false})),
+        (d) => d as Map<String, dynamic>,
+      );
+
+  /// Organizer announcements for an event the signed-in user holds a ticket for.
+  Future<List<EventAnnouncement>> eventAnnouncements(String eventId) => _call(
+        () => _dio.get('/me/events/${Uri.encodeComponent(eventId)}/announcements'),
+        (d) => (d as List).map((a) => EventAnnouncement.fromJson(a as Map<String, dynamic>)).toList(),
+      );
+
   Future<OrganizerProfile> organizer(String slug) => _call(
         () => _dio.get('/organizers/${Uri.encodeComponent(slug)}', options: Options(extra: {'auth': false})),
         (d) => OrganizerProfile.fromJson(d as Map<String, dynamic>),
