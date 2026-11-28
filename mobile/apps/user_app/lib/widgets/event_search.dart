@@ -119,11 +119,13 @@ class _SearchSheetState extends ConsumerState<_SearchSheet> {
                         padding: const EdgeInsets.all(24),
                         child: Text(t.searchNoResults(query), key: const Key('eventSearchNoResults'), textAlign: TextAlign.center, style: theme.textTheme.bodyLarge),
                       )
-                    : ListView(
+                    : ListView.builder(
                         key: const Key('eventSearchResults'),
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        children: [
-                          for (final (i, h) in hits.indexed) ...[
+                        itemCount: hits.length,
+                        itemBuilder: (context, i) {
+                          final h = hits[i];
+                          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             if (i == 0 || hits[i - 1].group != h.group)
                               Padding(
                                 key: Key('searchGroup-${h.group}'),
@@ -138,8 +140,8 @@ class _SearchSheetState extends ConsumerState<_SearchSheet> {
                               subtitle: h.snippet == null ? null : Text(h.snippet!, maxLines: 3, overflow: TextOverflow.ellipsis),
                               onTap: () => Navigator.of(context).pop(h),
                             ),
-                          ],
-                        ],
+                          ]);
+                        },
                       ),
           ),
         ]),
@@ -152,8 +154,9 @@ void _openHit(BuildContext context, EventSummary e, GuideHit hit, String lang) {
   final t = L10n.of(context);
   switch (hit.group) {
     case 'schedule':
-      final byId = hit.id == null ? null : e.schedule.where((s) => s.id == hit.id).firstOrNull;
-      final s = byId ?? (hit.index < e.schedule.length ? e.schedule[hit.index] : null);
+      // The hit's index is where the item was when it was found; look it up by id only if the schedule has moved since.
+      final atIndex = hit.index < e.schedule.length ? e.schedule[hit.index] : null;
+      final s = hit.id == null || atIndex?.id == hit.id ? atIndex : e.schedule.where((s) => s.id == hit.id).firstOrNull;
       if (s == null) return;
       final description = pickLang(lang, s.description, s.descriptionMy);
       _showTextSheet(context, const Key('searchSessionSheet'), pickLang(lang, s.title, s.titleMy), [

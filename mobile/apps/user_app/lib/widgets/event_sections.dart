@@ -92,22 +92,44 @@ class FaqTiles extends StatelessWidget {
   }
 }
 
+/// A performer's round photo; without one, the first letter of the name, or a neutral person icon when the name is empty.
+class PerformerAvatar extends StatelessWidget {
+  const PerformerAvatar({super.key, required this.performer, required this.radius, this.backgroundColor, this.letterStyle});
+  final Performer performer;
+  final double radius;
+  final Color? backgroundColor;
+  final TextStyle? letterStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = performer;
+    final initial = p.name.trim().characters.firstOrNull ?? (p.nameMy ?? '').trim().characters.firstOrNull;
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: backgroundColor,
+      backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
+      child: p.photoUrl != null
+          ? null
+          : initial == null
+              ? Icon(Icons.person_outline, size: radius) // no name to take a letter from
+              : Text(initial.toUpperCase(), style: letterStyle),
+    );
+  }
+}
+
 /// The performer bottom sheet (photo, name, role, bio). Shared by the event page and the event search.
 void showPerformerSheet(BuildContext context, Performer p, String lang) {
   final theme = Theme.of(context);
+  final name = pickLang(lang, p.name, p.nameMy).trim();
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     builder: (_) => Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        CircleAvatar(
-          radius: 48,
-          backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
-          child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.headlineMedium) : null,
-        ),
+        PerformerAvatar(performer: p, radius: 48, letterStyle: theme.textTheme.headlineMedium),
         const SizedBox(height: 12),
-        Text(pickLang(lang, p.name, p.nameMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        Text(name, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
         if (pickLang(lang, p.role, p.roleMy).isNotEmpty) Text(pickLang(lang, p.role, p.roleMy), style: theme.textTheme.bodyMedium),
         if (pickLang(lang, p.bio, p.bioMy).isNotEmpty) ...[const SizedBox(height: 12), Text(pickLang(lang, p.bio, p.bioMy))],
       ]),

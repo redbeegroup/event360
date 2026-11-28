@@ -315,12 +315,7 @@ class _Detail extends ConsumerWidget {
                         child: SizedBox(
                           width: 88,
                           child: Column(children: [
-                            CircleAvatar(
-                              radius: 36,
-                              backgroundColor: theme.colorScheme.secondaryContainer,
-                              backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
-                              child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.titleLarge) : null,
-                            ),
+                            PerformerAvatar(performer: p, radius: 36, backgroundColor: theme.colorScheme.secondaryContainer, letterStyle: theme.textTheme.titleLarge),
                             const SizedBox(height: 6),
                             Text(pickLang(lang, p.name, p.nameMy), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
                             if (pickLang(lang, p.role, p.roleMy).isNotEmpty)
