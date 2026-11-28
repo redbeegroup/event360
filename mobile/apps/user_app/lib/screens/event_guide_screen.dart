@@ -83,33 +83,56 @@ class EventGuideScreen extends ConsumerStatefulWidget {
   ConsumerState<EventGuideScreen> createState() => _EventGuideScreenState();
 }
 
-class _EventGuideScreenState extends ConsumerState<EventGuideScreen> {
+class _EventGuideScreenState extends ConsumerState<EventGuideScreen> with WidgetsBindingObserver {
   Timer? _refetch;
   Timer? _clock;
-  DateTime _lastAttempt = DateTime.now();
   bool _leaving = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimers();
+  }
+
+  void _startTimers() {
+    _refetch?.cancel();
+    _clock?.cancel();
     _refetch = Timer.periodic(guideRefreshInterval, (_) => _refresh());
     _clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {}); // the status line follows the clock
     });
   }
 
-  @override
-  void dispose() {
+  void _stopTimers() {
     _refetch?.cancel();
     _clock?.cancel();
+    _refetch = null;
+    _clock = null;
+  }
+
+  /// In the background nothing ticks; coming back refreshes once and restarts the clock.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_refetch == null) {
+        _startTimers();
+        _refresh();
+        setState(() {});
+      }
+    } else if (state != AppLifecycleState.inactive) {
+      _stopTimers();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTimers();
     super.dispose();
   }
 
-  /// Refetches the event; not when the last attempt found no network less than 30 seconds ago.
-  void _refresh({bool force = false}) {
-    final offline = ref.read(guideProvider(widget.eventId)).value?.offline ?? false;
-    if (!force && offline && DateTime.now().difference(_lastAttempt) < const Duration(seconds: 30)) return;
-    _lastAttempt = DateTime.now();
+  void _refresh() {
     ref.invalidate(guideProvider(widget.eventId));
     ref.invalidate(guideStreamsProvider(widget.eventId));
   }
@@ -126,7 +149,12 @@ class _EventGuideScreenState extends ConsumerState<EventGuideScreen> {
   Widget build(BuildContext context) {
     final t = L10n.of(context);
     final id = widget.eventId;
-    final access = guideAccessOf(session: ref.watch(sessionProvider), tickets: ref.watch(myTicketsProvider), idOrSlug: id);
+    final access = guideAccessOf(
+      session: ref.watch(sessionProvider),
+      tickets: ref.watch(myTicketsProvider),
+      idOrSlug: id,
+      ticketsOwner: ref.read(myTicketsProvider.notifier).owner,
+    );
 
     Widget scaffold(Widget body, {List<Widget> actions = const []}) => Scaffold(appBar: AppBar(title: Text(t.eventGuide), actions: actions), body: body);
     Widget loading() => scaffold(const Center(child: CircularProgressIndicator()));
@@ -149,8 +177,18 @@ class _EventGuideScreenState extends ConsumerState<EventGuideScreen> {
     final guide = ref.watch(guideProvider(id));
     final data = guide.value;
     if (data == null) {
+      final error = guide.error;
+      if (error is ApiException && error.isNotFound) {
+        // The event was removed: nothing to retry.
+        return scaffold(MessageView(
+          icon: Icons.event_busy,
+          message: t.guideGone,
+          actionLabel: MaterialLocalizations.of(context).backButtonTooltip,
+          onAction: () => context.canPop() ? context.pop() : context.go('/tickets'),
+        ));
+      }
       if (guide.hasError) {
-        return scaffold(MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: () => _refresh(force: true)));
+        return scaffold(MessageView(icon: Icons.wifi_off, message: t.loadError, actionLabel: t.retry, onAction: _refresh));
       }
       return loading();
     }
@@ -168,7 +206,7 @@ class _EventGuideScreenState extends ConsumerState<EventGuideScreen> {
     return scaffold(
       RefreshIndicator(
         onRefresh: () async {
-          _refresh(force: true);
+          _refresh();
           await ref.read(guideProvider(id).future).catchError((_) => data);
         },
         child: ListView(
@@ -381,6 +419,15 @@ Widget? _nowNextSection(BuildContext context, GuideContext g) {
       Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(t.nextTitle, style: theme.textTheme.titleLarge)),
       Column(key: const Key('guideNext'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final s in nn.next) session(s)]),
     ],
+    // Which sessions are on a stream is only known online: offline, an event with online sessions shows Watch disabled.
+    if (g.offline && e.format != 'IN_PERSON')
+      Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          OutlinedButton.icon(key: const Key('guideWatchOfflineSessions'), style: E360Buttons.outline, onPressed: null, icon: const Icon(Icons.live_tv), label: Text(t.watch)),
+          _needsConnection(context),
+        ]),
+      ),
     Align(
       alignment: AlignmentDirectional.centerStart,
       child: TextButton(
@@ -472,7 +519,7 @@ Widget? _watchSection(BuildContext context, GuideContext g) {
   final t = L10n.of(context);
   final theme = Theme.of(context);
   final live = g.streams?.live ?? const <LiveStream>[];
-  if (!g.offline && live.isEmpty) return null;
+  if (!g.offline && g.streams == null) return null; // not loaded yet, or not loadable
   Widget tile(LiveStream l) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: _card(
@@ -508,6 +555,19 @@ Widget? _watchSection(BuildContext context, GuideContext g) {
             const SizedBox(height: 8),
             OutlinedButton.icon(key: const Key('guideWatchOffline'), style: E360Buttons.outline, onPressed: null, icon: const Icon(Icons.live_tv), label: Text(t.watch)),
             _needsConnection(context),
+          ]),
+        ),
+      )
+    else if (live.isEmpty)
+      _card(
+        context,
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.formatOnline, style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(key: const Key('guideWatchNotStarted'), style: E360Buttons.outline, onPressed: null, icon: const Icon(Icons.live_tv), label: Text(t.watch)),
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text(t.guideStreamNotStarted, style: theme.textTheme.bodySmall)),
           ]),
         ),
       )

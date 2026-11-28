@@ -556,3 +556,5 @@
 "needsConnection","Needs a connection","အင်တာနက် လိုအပ်သည်","user app"
 "happeningToday","Happening today","ယနေ့ ကျင်းပမည့်ပွဲ","user app"
 "openGuide","Open your guide","လမ်းညွှန်ကို ဖွင့်ကြည့်ပါ","user app"
+"guideGone","This event is no longer available","ဤပွဲကို မရရှိနိုင်တော့ပါ","user app"
+"guideStreamNotStarted","Stream not started yet","တိုက်ရိုက်ထုတ်လွှင့်မှု မစတင်သေးပါ","user app"

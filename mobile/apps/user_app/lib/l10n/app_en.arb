@@ -447,5 +447,7 @@
   "savedCopy": "Saved copy · updated {time}. Newer announcements may exist.",
   "@savedCopy": {"placeholders": {"time": {"type": "String"}}},
   "neverSaved": "Connect once to save this event for offline use.",
-  "needsConnection": "Needs a connection"
+  "needsConnection": "Needs a connection",
+  "guideGone": "This event is no longer available",
+  "guideStreamNotStarted": "Stream not started yet"
 }

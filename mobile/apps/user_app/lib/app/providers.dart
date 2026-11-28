@@ -5,7 +5,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'guide_providers.dart';
 import 'push.dart';
 
 /// Overridden in main() / tests.
@@ -16,6 +15,24 @@ final apiProvider = Provider<Event360Api>((ref) => Event360Api(ref.watch(configP
 
 /// The clock (UTC). Tests override it to pin time.
 final nowProvider = Provider<DateTime Function()>((ref) => () => DateTime.now().toUtc());
+
+/// [KeyValueStore] over SharedPreferences, for the offline event cache.
+class PrefsKeyValueStore implements KeyValueStore {
+  PrefsKeyValueStore(this.prefs);
+  final SharedPreferences prefs;
+
+  @override
+  String? getString(String key) => prefs.getString(key);
+  @override
+  Future<void> setString(String key, String value) => prefs.setString(key, value);
+  @override
+  Future<void> remove(String key) => prefs.remove(key);
+  @override
+  Iterable<String> keys() => prefs.getKeys();
+}
+
+/// Saved copies of the events the buyer holds tickets for (next to the ticket cache).
+final eventCacheProvider = Provider<EventCache>((ref) => EventCache(PrefsKeyValueStore(ref.watch(prefsProvider)), now: () => ref.read(nowProvider)()));
 
 // ───── Language ─────
 
@@ -73,7 +90,6 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     // Saved events and announcements must not outlive the session on a shared phone. The session is already null here, so a fetch that was
     // in flight cannot save a copy behind this (the guide only saves while signed in).
     await ref.read(eventCacheProvider).clearAll();
-    ref.invalidate(guideProvider);
   }
 }
 
@@ -141,18 +157,44 @@ class MyTicketsNotifier extends AsyncNotifier<List<MyTicket>> {
   /// Whether the last list came from the offline cache.
   bool fromCache = false;
 
+  /// The id of the signed-in user the current list belongs to (null when signed out or not loaded yet). A list is never shown to
+  /// another session: when the session user changes the value is dropped before the reload starts.
+  String? owner;
+
   @override
   Future<List<MyTicket>> build() async {
+    void drop() {
+      owner = null;
+      fromCache = false;
+      state = const AsyncLoading<List<MyTicket>>();
+    }
+
+    final session = ref.read(sessionProvider);
+    if (owner != null && (session.isLoading || owner != session.value?.id)) drop();
     final me = await ref.watch(sessionProvider.future);
-    if (me == null) return const [];
+    if (me == null) {
+      owner = null;
+      return const [];
+    }
+    if (owner != null && owner != me.id) drop(); // a different user signed in: their list starts empty, not as the previous one's
+    final prefs = ref.read(prefsProvider);
     try {
       final fresh = await ref.read(apiProvider).myTickets();
-      await ref.read(prefsProvider).setString(cacheKey, jsonEncode(fresh.map((t) => t.toJson()).toList()));
+      // A fetch that was already in flight when the session ended must not write the signed-out (or the next user's) cache.
+      var current = false;
+      try {
+        current = ref.mounted && ref.read(sessionProvider).value?.id == me.id;
+      } catch (_) {}
+      if (current) {
+        await prefs.setString(cacheKey, jsonEncode(fresh.map((t) => t.toJson()).toList()));
+        owner = me.id;
+      }
       fromCache = false;
       return fresh;
     } on ApiException catch (e) {
       if (e.isNetwork) {
         fromCache = true;
+        owner = me.id;
         return _cached();
       }
       rethrow;

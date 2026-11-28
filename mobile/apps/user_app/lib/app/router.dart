@@ -44,7 +44,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         // Only for a signed-in holder of a VALID or CHECKED_IN ticket for this event (the screen enforces it again once the ticket list has loaded).
         redirect: (context, state) {
           final id = state.pathParameters['id']!;
-          final a = guideAccessOf(session: ref.read(sessionProvider), tickets: ref.read(myTicketsProvider), idOrSlug: id).access;
+          final a = guideAccessOf(session: ref.read(sessionProvider), tickets: ref.read(myTicketsProvider), idOrSlug: id, ticketsOwner: ref.read(myTicketsProvider.notifier).owner).access;
           return switch (a) {
             GuideAccess.signedOut => '/login?from=${Uri.encodeQueryComponent('/event/$id/guide')}',
             GuideAccess.noTicket => '/event/$id',

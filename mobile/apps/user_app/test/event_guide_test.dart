@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:event360_core/event360_core.dart';
@@ -35,6 +36,9 @@ class GuideApi extends Event360Api {
   final announcementData = <String, List<Map<String, dynamic>>>{};
   final streamData = <String, Map<String, dynamic>>{};
   List<Map<String, dynamic>> tickets = [];
+  String meId = 'u1';
+  Duration meDelay = Duration.zero;
+  Completer<void>? ticketGate;
   int rawCalls = 0;
   int announcementCalls = 0;
 
@@ -44,7 +48,7 @@ class GuideApi extends Event360Api {
   Future<Map<String, dynamic>> eventRaw(String idOrSlug) async {
     rawCalls++;
     if (offline) throw _net;
-    final e = eventData[idOrSlug];
+    final e = eventData[idOrSlug] ?? eventData.values.where((j) => j['slug'] == idOrSlug).firstOrNull;
     if (e == null) throw ApiException(404, 'Not found');
     return e;
   }
@@ -54,6 +58,7 @@ class GuideApi extends Event360Api {
     announcementCalls++;
     if (offline) throw _net;
     if (announcementsError != null) throw ApiException(announcementsError, 'nope');
+    if (!eventData.containsKey(eventId)) throw ApiException(404, 'Not found'); // the server knows ids, not slugs
     return (announcementData[eventId] ?? const []).map(EventAnnouncement.fromJson).toList();
   }
 
@@ -68,12 +73,22 @@ class GuideApi extends Event360Api {
 
   @override
   Future<List<MyTicket>> myTickets() async {
+    if (ticketGate != null) await ticketGate!.future;
     if (offline) throw _net;
     return tickets.map(MyTicket.fromApi).toList();
   }
 
   @override
-  Future<Me> me() async => Me(id: 'u1', phone: '+959790000001');
+  Future<Me> me() async {
+    if (meDelay > Duration.zero) await Future<void>.delayed(meDelay);
+    return Me(id: meId, phone: '+959790000001');
+  }
+
+  @override
+  Future<String?> requestOtp(String phone) async => '123456';
+
+  @override
+  Future<void> verifyOtp(String phone, String code) async => tokensStore.save('a', 'r');
 
   // The pages behind the guide (Discover, the event page) need these to be quiet.
   @override
@@ -749,6 +764,211 @@ void main() {
       expect(find.byType(EventGuideScreen), findsNothing);
       await tester.pump(const Duration(minutes: 20));
       expect(h.api.rawCalls, saver + 3);
+      await h.finish();
+    });
+  });
+
+  group('fix round 1', () {
+    for (final signOutFirst in [true, false]) {
+    testWidgets("one user's tickets never reach the next session (${signOutFirst ? 'after sign-out' : 'signing straight in as someone else'})", (tester) async {
+      final h = await pumpGuide(tester, setup: (a) => setUpConcert(a), route: '/event/concert/guide');
+      expect(find.byKey(const Key('guideShowTicket')), findsOneWidget);
+      h.router.pop();
+      await tester.pumpAndSettle();
+      if (signOutFirst) {
+        await h.container.read(sessionProvider.notifier).signOut();
+        await tester.pumpAndSettle();
+      }
+      // User B signs in (slowly) and holds nothing for this event.
+      h.api
+        ..tickets = []
+        ..meId = 'u2'
+        ..meDelay = const Duration(milliseconds: 300);
+      await h.api.tokensStore.save('b', 'r');
+      final gate = Completer<void>(); // B's ticket list is slow too
+      h.api.ticketGate = gate;
+      final signedIn = h.container.read(sessionProvider.notifier).signedIn();
+      h.router.push('/event/concert/guide');
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.byKey(const Key('guideShowTicket')), findsNothing, reason: 'frame $i');
+        expect(find.byKey(const Key('guideTicket-tk-concert-1')), findsNothing, reason: 'frame $i');
+        expect(find.byKey(const Key('guideTickets')), findsNothing, reason: 'frame $i');
+      }
+      await signedIn;
+      h.router.go('/tickets');
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing, reason: "while B's list loads");
+      expect(find.byKey(const Key('guideShowTicket')), findsNothing);
+      gate.complete();
+      await tester.pumpAndSettle();
+      h.router.push('/event/concert/guide');
+      await tester.pumpAndSettle();
+      expect(find.byType(EventGuideScreen), findsNothing);
+      expect(find.byType(EventDetailScreen), findsOneWidget);
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
+      await h.finish();
+    });
+    }
+
+    testWidgets('a ticket fetch in flight at sign-out does not rewrite the ticket cache', (tester) async {
+      final gate = Completer<void>();
+      final h = await pumpGuide(tester, setup: (a) {
+        setUpConcert(a);
+        a.ticketGate = gate;
+      });
+      await h.container.read(sessionProvider.notifier).signOut();
+      await tester.pump();
+      expect(h.prefs.getString(MyTicketsNotifier.cacheKey), isNull);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(h.prefs.getString(MyTicketsNotifier.cacheKey), isNull, reason: 'the late answer must not be saved for nobody');
+      await h.finish();
+    });
+
+    testWidgets('opened by slug: announcements load, the copy is saved under the id and survives prune', (tester) async {
+      final h = await pumpGuide(tester, setup: (a) {
+        setUpConcert(a);
+        a.announcementData['concert'] = [announcement('a1', 'Gates open at 4', const Duration(hours: 1))];
+      }, route: '/event/slug-concert/guide');
+      expect(find.text('Gates open at 4'), findsOneWidget);
+      final cache = h.container.read(eventCacheProvider);
+      expect(cache.read('concert')!.announcements, hasLength(1));
+      expect(cache.read('slug-concert'), isNull);
+      await cache.prune(keepEventIds: {'concert'});
+      expect(cache.read('concert'), isNotNull);
+      await h.finish();
+    });
+
+    testWidgets('opened by slug while offline: the saved copy is found by its slug', (tester) async {
+      final tickets = [ticketJson('tk-fest', 'fest', starts: Duration.zero, length: const Duration(hours: 52))];
+      final h = await pumpGuide(
+        tester,
+        now: festivalNow,
+        prefs: seedPrefs(tickets: tickets, saved: {'fest': (festivalJson(), const [], base)}),
+        setup: (a) => a.offline = true,
+        route: '/event/slug-fest/guide',
+      );
+      expect(find.byKey(const Key('guideSavedCopy')), findsOneWidget);
+      expect(find.byKey(const Key('guideNow')), findsOneWidget);
+      await h.finish();
+    });
+
+    testWidgets('the refetch and the clock pause in the background and refresh once on resume', (tester) async {
+      final h = await pumpGuide(tester, setup: (a) => setUpConcert(a), route: '/event/concert/guide');
+      final calls = h.api.rawCalls;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(minutes: 20));
+      expect(h.api.rawCalls, calls, reason: 'nothing ticks in the background');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(h.api.rawCalls, calls + 1, reason: 'one refresh on resume');
+      await tester.pump(guideRefreshInterval);
+      await tester.pumpAndSettle();
+      expect(h.api.rawCalls, calls + 2, reason: 'the interval runs again');
+      await h.finish();
+    });
+
+    testWidgets('a saved entry that is not an event counts as never saved and is removed', (tester) async {
+      final tickets = [ticketJson('tk-fest', 'fest', starts: Duration.zero, length: const Duration(hours: 52))];
+      final h = await pumpGuide(
+        tester,
+        prefs: seedPrefs(tickets: tickets, saved: {'fest': ({'id': 'fest', 'slug': 'slug-fest', 'nonsense': true}, const [], base)}),
+        setup: (a) => a.offline = true,
+        route: '/event/fest/guide',
+      );
+      expect(find.byKey(const Key('guideNeverSaved')), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(h.prefs.getString('${EventCache.prefix}fest'), isNull);
+      await h.finish();
+    });
+
+    testWidgets('an event that was removed shows a gone state with a back action, not Retry', (tester) async {
+      final h = await pumpGuide(tester, setup: (a) {
+        a.tickets = [ticketJson('tk-gone', 'gone')];
+      }, route: '/event/gone/guide');
+      expect(find.text('This event is no longer available'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      await tester.tap(find.text('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(EventGuideScreen), findsNothing);
+      await h.finish();
+    });
+
+    testWidgets('offline, an event with online sessions shows Watch disabled in Now and next', (tester) async {
+      final hybrid = {...festivalJson(), 'format': 'HYBRID'};
+      final tickets = [ticketJson('tk-fest', 'fest', starts: Duration.zero, length: const Duration(hours: 52))];
+      final h = await pumpGuide(
+        tester,
+        now: festivalNow,
+        prefs: seedPrefs(tickets: tickets, saved: {'fest': (hybrid, const [], base)}),
+        setup: (a) => a.offline = true,
+        route: '/event/fest/guide',
+      );
+      final watch = find.byKey(const Key('guideWatchOfflineSessions'));
+      expect(watch, findsOneWidget);
+      expect(tester.widget<OutlinedButton>(watch).onPressed, isNull);
+      expect(find.descendant(of: find.byKey(const Key('guideNowNext')), matching: find.text('Needs a connection')), findsOneWidget);
+      await h.finish();
+    });
+
+    testWidgets('online-only and live-soon but no stream yet: Watch is disabled with a note', (tester) async {
+      final h = await pumpGuide(tester, now: base.add(const Duration(hours: 1)), setup: (a) {
+        a.eventData['web'] = eventJson('web', starts: Duration.zero, extra: {'format': 'ONLINE', 'venue': null});
+        a.tickets = [ticketJson('tk-web', 'web', starts: Duration.zero)];
+      }, route: '/event/web/guide');
+      final watch = find.byKey(const Key('guideWatchNotStarted'));
+      expect(tester.widget<OutlinedButton>(watch).onPressed, isNull);
+      expect(find.text('Stream not started yet'), findsOneWidget);
+      await h.finish();
+    });
+
+    testWidgets('announcements 403 with a saved copy: stale announcements are not shown and are removed from the copy', (tester) async {
+      final tickets = [ticketJson('tk-fest', 'fest', starts: Duration.zero, length: const Duration(hours: 52))];
+      final h = await pumpGuide(
+        tester,
+        now: festivalNow,
+        prefs: seedPrefs(tickets: tickets, saved: {'fest': (festivalJson(), [announcement('old', 'Stale news', const Duration(hours: 5))], festivalNow)}),
+        setup: (a) {
+          a.eventData['fest'] = festivalJson();
+          a.tickets = tickets;
+          a.announcementsError = 403;
+        },
+        route: '/event/fest/guide',
+      );
+      expect(find.text('Stale news'), findsNothing);
+      expect(find.byKey(const Key('guideAnnouncements')), findsNothing);
+      expect(h.container.read(eventCacheProvider).read('fest')!.announcements, isEmpty);
+      await h.finish();
+    });
+
+    testWidgets('the status line flips to On now when the clock passes the start, without a refresh', (tester) async {
+      final h = await pumpGuide(tester, now: base.subtract(const Duration(seconds: 90)), setup: (a) {
+        a.eventData['x'] = eventJson('x', starts: Duration.zero);
+        a.tickets = [ticketJson('tk-x', 'x', starts: Duration.zero)];
+      }, route: '/event/x/guide');
+      expect(textOf(tester, 'guideStatus'), 'Starts in 1 minute');
+      final calls = h.api.rawCalls;
+      h.now = () => base.add(const Duration(minutes: 1));
+      await tester.pump(const Duration(minutes: 1));
+      expect(textOf(tester, 'guideStatus'), 'On now');
+      expect(h.api.rawCalls, calls);
+      await h.finish();
+    });
+
+    testWidgets('signed out: the deep link returns to the guide after signing in', (tester) async {
+      final h = await pumpGuide(tester, signedIn: false, setup: (a) => setUpConcert(a));
+      h.router.go('/event/concert/guide'); // a link opened cold: nothing underneath
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginScreen), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '09790000001');
+      await tester.tap(find.byType(FilledButton));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '123456');
+      await tester.tap(find.byType(FilledButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(EventGuideScreen), findsOneWidget);
+      expect(find.byKey(const Key('guideShowTicket')), findsOneWidget);
       await h.finish();
     });
   });

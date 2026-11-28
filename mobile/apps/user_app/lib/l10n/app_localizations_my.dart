@@ -842,4 +842,10 @@ class L10nMy extends L10n {
 
   @override
   String get needsConnection => 'အင်တာနက် လိုအပ်သည်';
+
+  @override
+  String get guideGone => 'ဤပွဲကို မရရှိနိုင်တော့ပါ';
+
+  @override
+  String get guideStreamNotStarted => 'တိုက်ရိုက်ထုတ်လွှင့်မှု မစတင်သေးပါ';
 }

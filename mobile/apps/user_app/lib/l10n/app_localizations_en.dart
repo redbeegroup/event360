@@ -861,4 +861,10 @@ class L10nEn extends L10n {
 
   @override
   String get needsConnection => 'Needs a connection';
+
+  @override
+  String get guideGone => 'This event is no longer available';
+
+  @override
+  String get guideStreamNotStarted => 'Stream not started yet';
 }

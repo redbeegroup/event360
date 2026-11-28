@@ -1572,6 +1572,18 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Needs a connection'**
   String get needsConnection;
+
+  /// No description provided for @guideGone.
+  ///
+  /// In en, this message translates to:
+  /// **'This event is no longer available'**
+  String get guideGone;
+
+  /// No description provided for @guideStreamNotStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Stream not started yet'**
+  String get guideStreamNotStarted;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {
