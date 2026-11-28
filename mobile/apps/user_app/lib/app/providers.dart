@@ -13,6 +13,9 @@ final configProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment(Ev
 final tokenStoreProvider = Provider<TokenStore>((ref) => SecureTokenStore());
 final apiProvider = Provider<Event360Api>((ref) => Event360Api(ref.watch(configProvider), ref.watch(tokenStoreProvider)));
 
+/// The clock (UTC). Tests override it to pin time.
+final nowProvider = Provider<DateTime Function()>((ref) => () => DateTime.now().toUtc());
+
 // ───── Language ─────
 
 class LocaleNotifier extends Notifier<Locale?> {

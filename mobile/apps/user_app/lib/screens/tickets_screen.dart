@@ -35,8 +35,15 @@ class TicketsScreen extends ConsumerWidget {
               Expanded(child: MessageView(icon: Icons.confirmation_number_outlined, message: t.noTickets, actionLabel: t.explore, onAction: () => context.go('/explore'))),
             ]);
           }
-          final upcoming = list.where((x) => x.isUpcoming).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-          final past = list.where((x) => !x.isUpcoming).toList();
+          final now = ref.watch(nowProvider)();
+          final byEvent = <String, List<MyTicket>>{};
+          for (final x in list) {
+            byEvent.putIfAbsent(x.eventId, () => []).add(x);
+          }
+          final groups = byEvent.values.toList();
+          DateTime endOf(List<MyTicket> g) => g.first.endsAt;
+          final upcoming = groups.where((g) => endOf(g).isAfter(now)).toList()..sort((a, b) => a.first.startsAt.compareTo(b.first.startsAt));
+          final past = groups.where((g) => !endOf(g).isAfter(now)).toList();
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(pendingOrdersProvider);
@@ -50,9 +57,9 @@ class TicketsScreen extends ConsumerWidget {
               if (pending.isNotEmpty) _Header(t.pendingPayments),
               for (final o in pending) _PendingTile(order: o),
               if (upcoming.isNotEmpty) _Header(t.upcomingTickets),
-              for (final x in upcoming) _TicketTile(ticket: x),
+              for (final g in upcoming) _EventGroup(tickets: g, now: now),
               if (past.isNotEmpty) _Header(t.past),
-              for (final x in past) _TicketTile(ticket: x, dim: true),
+              for (final g in past) _EventGroup(tickets: g, now: now, dim: true),
             ]),
           );
         },
@@ -72,9 +79,11 @@ class _Header extends StatelessWidget {
       );
 }
 
-class _TicketTile extends ConsumerWidget {
-  const _TicketTile({required this.ticket, this.dim = false});
-  final MyTicket ticket;
+/// One event: a header (cover, title, date, guide link) and a row per ticket held for it.
+class _EventGroup extends ConsumerWidget {
+  const _EventGroup({required this.tickets, required this.now, this.dim = false});
+  final List<MyTicket> tickets;
+  final DateTime now;
   final bool dim;
 
   @override
@@ -82,36 +91,94 @@ class _TicketTile extends ConsumerWidget {
     final t = L10n.of(context);
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
+    final first = tickets.first;
+    final hasGuide = tickets.any((x) => x.status == 'VALID' || x.isCheckedIn) && guideLinkVisible(endsAt: first.endsAt, now: now);
     return Opacity(
       opacity: dim ? 0.6 : 1,
       child: Card(
+        key: Key('ticketGroup-${first.eventId}'),
         margin: const EdgeInsets.only(bottom: 12),
-        child: InkWell(
-          onTap: () => context.push('/ticket/${ticket.id}'),
-          child: Padding(
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
             padding: const EdgeInsets.all(12),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 84, height: 84, child: EventCover(url: ticket.coverImageUrl, aspectRatio: 1))),
+              ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 64, height: 64, child: EventCover(url: first.coverImageUrl, aspectRatio: 1))),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(pickLang(lang, ticket.eventTitle, ticket.eventTitleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+                  Text(pickLang(lang, first.eventTitle, first.eventTitleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
                   const SizedBox(height: 2),
-                  Text(formatEventDate(ticket.startsAt, lang), style: theme.textTheme.bodySmall),
-                  Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy), style: theme.textTheme.bodySmall),
-                  if (ticket.seatText(lang) != null)
-                    Text(ticket.seatText(lang)!, key: Key('seat-${ticket.id}'), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.primary)),
-                  if (ticket.isComplimentary)
-                    Text(
-                      ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
-                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.brightness == Brightness.dark ? E360DarkColors.success : E360Colors.success),
+                  Text(formatEventDate(first.startsAt, lang), style: theme.textTheme.bodySmall),
+                  if (hasGuide)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton(
+                        key: Key('groupGuideLink-${first.eventId}'),
+                        style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+                        onPressed: () => context.push('/event/${first.eventId}/guide'),
+                        child: Text(t.eventGuide),
+                      ),
                     ),
                 ]),
               ),
-              const Padding(padding: EdgeInsets.only(left: 8, top: 4), child: Icon(Icons.qr_code_2)),
             ]),
           ),
-        ),
+          for (final x in tickets) ...[
+            const Divider(height: 1),
+            _TicketRow(ticket: x),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+class _TicketRow extends ConsumerWidget {
+  const _TicketRow({required this.ticket});
+  final MyTicket ticket;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = L10n.of(context);
+    final lang = ref.watch(langProvider);
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final String? status = switch (ticket.status) {
+      'VALID' => null,
+      'CHECKED_IN' => ticket.checkedInAt == null ? t.checkedIn : t.checkedInAt(formatTime(ticket.checkedInAt!, lang)),
+      'REFUNDED' => t.ticketStatusRefunded,
+      _ => t.ticketStatusCancelled,
+    };
+    return InkWell(
+      key: Key('ticketRow-${ticket.id}'),
+      onTap: () => context.push('/ticket/${ticket.id}'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(pickLang(lang, ticket.ticketTypeName, ticket.ticketTypeNameMy), style: theme.textTheme.bodyMedium),
+              if (ticket.seatText(lang) != null)
+                Text(ticket.seatText(lang)!, key: Key('seat-${ticket.id}'), style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.primary)),
+              if (ticket.isComplimentary)
+                Text(
+                  ticket.compLabel == null || ticket.compLabel!.isEmpty ? t.complimentary : t.complimentaryLabel(ticket.compLabel!),
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: dark ? E360DarkColors.success : E360Colors.success),
+                ),
+              if (status != null)
+                Text(
+                  status,
+                  key: Key('ticketStatus-${ticket.id}'),
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: ticket.isCheckedIn ? (dark ? E360DarkColors.success : E360Colors.success) : theme.colorScheme.onSurfaceVariant),
+                ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 8, top: 2),
+            child: Icon(ticket.status == 'VALID' ? Icons.qr_code_2 : (ticket.isCheckedIn ? Icons.check_circle_outline : Icons.block)),
+          ),
+        ]),
       ),
     );
   }

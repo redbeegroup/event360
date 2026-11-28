@@ -1015,6 +1015,42 @@ abstract class L10n {
   /// **'Cancel'**
   String get cancel;
 
+  /// No description provided for @eventGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Event guide'**
+  String get eventGuide;
+
+  /// No description provided for @checkedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked in'**
+  String get checkedIn;
+
+  /// No description provided for @checkedInAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked in at {time}'**
+  String checkedInAt(String time);
+
+  /// No description provided for @ticketUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'This ticket has been used to enter'**
+  String get ticketUsed;
+
+  /// No description provided for @ticketStatusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get ticketStatusCancelled;
+
+  /// No description provided for @ticketStatusRefunded.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded'**
+  String get ticketStatusRefunded;
+
   /// No description provided for @transferDone.
   ///
   /// In en, this message translates to:

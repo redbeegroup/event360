@@ -272,6 +272,19 @@
   "transferHint": "Enter the Myanmar phone number of the person who will use this ticket. Your QR stops working and they will find the ticket in the app after signing in with that number.",
   "send": "Send",
   "cancel": "Cancel",
+  "eventGuide": "Event guide",
+  "checkedIn": "Checked in",
+  "checkedInAt": "Checked in at {time}",
+  "@checkedInAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ticketUsed": "This ticket has been used to enter",
+  "ticketStatusCancelled": "Cancelled",
+  "ticketStatusRefunded": "Refunded",
   "transferDone": "Ticket sent to {phone}",
   "@transferDone": {
     "placeholders": {

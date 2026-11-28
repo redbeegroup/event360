@@ -513,6 +513,26 @@ class L10nEn extends L10n {
   String get cancel => 'Cancel';
 
   @override
+  String get eventGuide => 'Event guide';
+
+  @override
+  String get checkedIn => 'Checked in';
+
+  @override
+  String checkedInAt(String time) {
+    return 'Checked in at $time';
+  }
+
+  @override
+  String get ticketUsed => 'This ticket has been used to enter';
+
+  @override
+  String get ticketStatusCancelled => 'Cancelled';
+
+  @override
+  String get ticketStatusRefunded => 'Refunded';
+
+  @override
   String transferDone(String phone) {
     return 'Ticket sent to $phone';
   }

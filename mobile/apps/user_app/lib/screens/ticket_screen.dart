@@ -332,6 +332,36 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                             E360Badge('#${x.id.substring(0, 8).toUpperCase()}'),
                           ],
                         )
+                      : x.isCheckedIn
+                      ? Column(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_outline,
+                              size: 48,
+                              color: E360Colors.success,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              x.checkedInAt == null
+                                  ? t.checkedIn
+                                  : t.checkedInAt(formatTime(x.checkedInAt!, lang)),
+                              key: const Key('ticketCheckedIn'),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: E360Colors.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              t.ticketUsed,
+                              key: const Key('ticketUsed'),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: E360Colors.muted,
+                              ),
+                            ),
+                          ],
+                        )
                       : Column(
                           children: [
                             const Icon(
@@ -413,6 +443,21 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                   ),
                 );
               },
+            ),
+          if ((x.status == 'VALID' || x.isCheckedIn) &&
+              guideLinkVisible(endsAt: x.endsAt, now: ref.watch(nowProvider)()))
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: TextButton.icon(
+                key: const Key('ticketGuideLink'),
+                style: TextButton.styleFrom(
+                  foregroundColor: onNavy,
+                  minimumSize: const Size(44, 48),
+                ),
+                onPressed: () => context.push('/event/${x.eventId}/guide'),
+                icon: const Icon(Icons.menu_book_outlined),
+                label: Text(t.eventGuide),
+              ),
             ),
           if (x.canTransfer)
             Padding(

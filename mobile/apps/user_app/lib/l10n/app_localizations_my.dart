@@ -514,6 +514,26 @@ class L10nMy extends L10n {
   String get cancel => 'မလုပ်တော့ပါ';
 
   @override
+  String get eventGuide => 'ပွဲလမ်းညွှန်';
+
+  @override
+  String get checkedIn => 'ဝင်ပြီးပါပြီ';
+
+  @override
+  String checkedInAt(String time) {
+    return '$time တွင် ဝင်ပြီးပါပြီ';
+  }
+
+  @override
+  String get ticketUsed => 'ဤလက်မှတ်ဖြင့် ဝင်ပြီးဖြစ်ပါသည်';
+
+  @override
+  String get ticketStatusCancelled => 'ပယ်ဖျက်ပြီး';
+
+  @override
+  String get ticketStatusRefunded => 'ငွေပြန်အမ်းပြီး';
+
+  @override
   String transferDone(String phone) {
     return 'လက်မှတ်ကို $phone ထံ ပို့ပြီးပါပြီ';
   }

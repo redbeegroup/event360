@@ -14,9 +14,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/format.dart';
 import 'package:user_app/app/providers.dart';
 import 'package:user_app/app/push.dart';
+import 'package:user_app/app/router.dart';
 import 'package:user_app/l10n/app_localizations.dart';
 import 'package:user_app/widgets/event_card.dart';
 import 'package:user_app/widgets/event_row.dart';
+import 'package:user_app/widgets/waitlist_offer.dart';
 import 'package:user_app/main.dart';
 import 'package:user_app/screens/checkout_screen.dart';
 import 'package:user_app/screens/seat_picker_screen.dart';
@@ -556,7 +558,7 @@ class FakePush implements PushClient {
   Future<void> deleteToken() async {}
 }
 
-Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}, void Function(FakeApi)? setup, PushClient? push}) async {
+Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang = 'en', bool signedIn = false, Map<String, Object> prefs = const {}, void Function(FakeApi)? setup, PushClient? push, DateTime Function()? now}) async {
   phoneScreen(tester);
   SharedPreferences.setMockInitialValues({'lang': lang, ...prefs});
   final sp = await SharedPreferences.getInstance();
@@ -568,6 +570,7 @@ Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang =
   await tester.pumpWidget(ProviderScope(overrides: [
     openPaymentUrlProvider.overrideWithValue((url) async => openedUrls.add(url)),
     pushProvider.overrideWithValue(push ?? const NoPush()),
+    if (now != null) nowProvider.overrideWithValue(now),
     prefsProvider.overrideWithValue(sp),
     apiProvider.overrideWithValue(api),
     // No video plugin in tests: show the URL the real player would open
@@ -576,6 +579,14 @@ Future<(FakeApi, SharedPreferences)> pumpApp(WidgetTester tester, {String lang =
   await tester.pumpAndSettle();
   return (api, sp);
 }
+
+/// The first ticket row inside the Tickets-tab group of the event titled [title].
+Finder firstRowOf(String title) => find
+    .descendant(
+      of: find.ancestor(of: find.text(title), matching: find.byWidgetPredicate((w) => w.key.toString().startsWith("[<'ticketGroup-"))),
+      matching: find.byWidgetPredicate((w) => w.key.toString().startsWith("[<'ticketRow-")),
+    )
+    .first;
 
 late FakeApi pickerApi;
 
@@ -856,7 +867,7 @@ void main() {
     await tester.drag(find.text('Yangon Food Fair e1'), const Offset(0, 400));
     await tester.pumpAndSettle();
     expect(find.text('Available offline'), findsOneWidget);
-    await tester.tap(find.text('Yangon Food Fair e1'));
+    await tester.tap(firstRowOf('Yangon Food Fair e1'));
     await tester.pumpAndSettle();
     expect(find.text('Show this QR code at the entrance'), findsOneWidget);
   });
@@ -1209,9 +1220,11 @@ void main() {
     final (api, _) = await pumpApp(tester, signedIn: true);
     await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Yangon Food Fair e1').first);
+    await tester.tap(firstRowOf('Yangon Food Fair e1'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('transfer')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('transfer')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('transferPhone')), '0911');
@@ -1784,7 +1797,7 @@ void main() {
   final compTicket = {
     ...seatTicket,
     'id': 'ticket-comp-0002',
-    'event': {...(seatTicket['event'] as Map<String, dynamic>), 'title': 'Gala Dinner'},
+    'event': {...(seatTicket['event'] as Map<String, dynamic>), 'id': 'gala', 'title': 'Gala Dinner'},
     'seatKey': 'A:2:2',
     'seatLabel': 'Stalls · Row 2 · Seat 2',
     'seatLabelMy': 'ရှေ့ခန်း · အတန်း 2 · ခုံ 2',
@@ -1799,7 +1812,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Stalls · Row 1 · Seat 1'), findsOneWidget);
     expect(find.text('Complimentary · Press'), findsOneWidget);
-    await tester.tap(find.text('Gala Dinner'));
+    await tester.tap(firstRowOf('Gala Dinner'));
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.byKey(const Key('ticketSeat'))).data, 'Stalls · Row 2 · Seat 2');
     expect(find.byKey(const Key('ticketComp')), findsOneWidget);
@@ -1820,20 +1833,22 @@ void main() {
     await tester.tap(find.text('Tickets'));
     await tester.pumpAndSettle();
     // A comp ticket and the plain default ticket can't be cancelled
-    await tester.tap(find.text('Gala Dinner'));
+    await tester.tap(firstRowOf('Gala Dinner'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('cancelTicket')), findsNothing);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Yangon Food Fair e1').first);
+    await tester.tap(firstRowOf('Yangon Food Fair e1'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('cancelTicket')), findsNothing);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Opera Night'));
+    await tester.tap(firstRowOf('Opera Night'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cancelTicket')));
     await tester.pumpAndSettle();
     expect(find.text('Cancel this ticket?'), findsOneWidget);
@@ -2584,7 +2599,7 @@ void main() {
   Future<void> openTicket(WidgetTester tester, String title) async {
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/tickets');
     await tester.pumpAndSettle();
-    await tester.tap(find.text(title).first);
+    await tester.tap(firstRowOf(title));
     await tester.pumpAndSettle();
   }
 
@@ -2640,10 +2655,12 @@ void main() {
     GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
     await tester.pumpAndSettle();
     // Cancelable: the cancel link asks first, then cancels
-    await tester.tap(find.text('Opera Night'));
+    await tester.tap(firstRowOf('Opera Night'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('ticketComp')), findsNothing);
     await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cancelTicket')));
     await tester.pumpAndSettle();
     expect(find.text('Cancel this ticket?'), findsOneWidget);
@@ -2788,6 +2805,185 @@ void main() {
     await tester.ensureVisible(badge);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // ───── Tickets grouped by event, checked-in tickets, the Event guide link ─────
+  final pinnedNow = DateTime.utc(2026, 11, 28, 12);
+  DateTime pinned() => pinnedNow;
+  Map<String, dynamic> ticketJson(String id, String eventId, String title, {required DateTime start, required DateTime end, String status = 'VALID', String type = 'General', String? checkedInAt, String? seat}) => {
+        'id': id,
+        'status': status,
+        'ticketType': {'name': type, 'nameMy': null},
+        'event': {
+          'id': eventId,
+          'title': title,
+          'titleMy': null,
+          'startsAt': start.toIso8601String(),
+          'endsAt': end.toIso8601String(),
+          'venue': {'name': 'Kandawgyi Park', 'city': 'Yangon'},
+          'coverImageUrl': null,
+          'organization': 'Yangon Live',
+          'status': 'PUBLISHED',
+          'slug': eventId,
+        },
+        'qr': status == 'VALID' ? 'eyJ0aWQiOiJ0In0.c2ln' : null,
+        'canTransfer': false,
+        'canCancel': false,
+        'checkedInAt': checkedInAt,
+        if (seat != null) 'seatLabel': seat,
+      };
+  DateTime ago(Duration d) => pinnedNow.subtract(d);
+  // An event that ended [endedAgo] ago
+  Map<String, dynamic> endedTicket(String id, String eventId, Duration endedAgo, {String status = 'VALID', String title = 'Old Show', String? checkedInAt}) =>
+      ticketJson(id, eventId, title, start: ago(endedAgo + const Duration(hours: 4)), end: ago(endedAgo), status: status, checkedInAt: checkedInAt);
+  // pumpApp's default ticket (e1, 2099) is dropped in these tests by only looking at the group under test
+  Future<void> openTicketsTab(WidgetTester tester) async {
+    await tester.tap(find.text('Tickets'));
+    await tester.pumpAndSettle();
+  }
+
+  String locationOf(WidgetTester tester) => ProviderScope.containerOf(tester.element(find.byType(UserApp))).read(routerProvider).routerDelegate.currentConfiguration.last.matchedLocation;
+
+  testWidgets('two tickets for one event are one group with two rows; groups run upcoming by start, then past', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          ticketJson('ticket-late-0001', 'late', 'Late Show', start: DateTime.utc(2099, 3, 1, 10), end: DateTime.utc(2099, 3, 1, 14)),
+          ticketJson('ticket-e1b-0001', 'e1', 'Yangon Food Fair e1', start: DateTime.utc(2099, 1, 15, 10, 30), end: DateTime.utc(2099, 1, 15, 15, 30), type: 'VIP', seat: 'Row 2 · Seat 4'),
+          ticketJson('ticket-early-0001', 'early', 'Early Show', start: DateTime.utc(2099, 1, 12, 10), end: DateTime.utc(2099, 1, 12, 14)),
+          endedTicket('ticket-old-0001', 'old', const Duration(days: 30)),
+        ]);
+    await openTicketsTab(tester);
+    await tester.binding.setSurfaceSize(const Size(412, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpAndSettle();
+    final e1 = find.byKey(const Key('ticketGroup-e1'));
+    expect(e1, findsOneWidget);
+    expect(find.descendant(of: e1, matching: find.byWidgetPredicate((w) => w.key.toString().startsWith("[<'ticketRow-"))), findsNWidgets(2));
+    expect(find.descendant(of: e1, matching: find.text('VIP')), findsOneWidget);
+    expect(find.descendant(of: e1, matching: find.text('Row 2 · Seat 4')), findsOneWidget);
+    expect(find.text('Yangon Food Fair e1'), findsOneWidget, reason: 'one header, not one title per ticket');
+    double top(String id) => tester.getTopLeft(find.byKey(Key('ticketGroup-$id'))).dy;
+    expect(top('early'), lessThan(top('e1')));
+    expect(top('e1'), lessThan(top('late')));
+    expect(top('late'), lessThan(tester.getTopLeft(find.text('Past')).dy));
+    expect(tester.getTopLeft(find.text('Past')).dy, lessThan(top('old')));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a checked-in ticket says Checked in on the row and the ticket screen, shows no QR and never says Cancelled', (tester) async {
+    final at = DateTime.utc(2026, 11, 28, 3, 30);
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-in-0001', 'today', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Today Show', checkedInAt: at.toIso8601String()),
+          endedTicket('ticket-in2-0001', 'today2', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Unknown Time Show'),
+        ]);
+    await openTicketsTab(tester);
+    expect(find.descendant(of: find.byKey(const Key('ticketRow-ticket-in-0001')), matching: find.text('Checked in at ${formatTime(at, 'en')}')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('ticketRow-ticket-in2-0001')), matching: find.text('Checked in')), findsOneWidget);
+    expect(find.text('Cancelled'), findsNothing);
+    expect(find.text('This ticket is no longer valid'), findsNothing);
+    await tester.tap(find.byKey(const Key('ticketRow-ticket-in-0001')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketCheckedIn')), findsOneWidget);
+    expect(find.text('Checked in at ${formatTime(at, 'en')}'), findsOneWidget);
+    expect(find.text('This ticket has been used to enter'), findsOneWidget);
+    expect(find.byType(QrImageView), findsNothing);
+    expect(find.byKey(const Key('ticketVoid')), findsNothing);
+    expect(find.text('This ticket is no longer valid'), findsNothing);
+    expect(goldButtons(tester), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    // Without a known time it still reads Checked in
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [endedTicket('ticket-in2-0001', 'today2', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Unknown Time Show')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-in2-0001');
+    await tester.pumpAndSettle();
+    expect(find.text('Checked in'), findsOneWidget);
+    expect(find.text('This ticket has been used to enter'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('void tickets still say Cancelled and refunded ones say Refunded', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-void-0001', 'v', const Duration(days: 1), status: 'VOID', title: 'Void Show'),
+          endedTicket('ticket-ref-0001', 'r', const Duration(days: 1), status: 'REFUNDED', title: 'Refund Show'),
+        ]);
+    await openTicketsTab(tester);
+    expect(find.descendant(of: find.byKey(const Key('ticketRow-ticket-void-0001')), matching: find.text('Cancelled')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('ticketRow-ticket-ref-0001')), matching: find.text('Refunded')), findsOneWidget);
+    expect(find.text('Checked in'), findsNothing);
+    await tester.tap(find.byKey(const Key('ticketRow-ticket-void-0001')));
+    await tester.pumpAndSettle();
+    expect(find.text('This ticket is no longer valid'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the Event guide link shows for six days after the event, not at eight, and not for refunded or void tickets', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-6-0001', 'six', const Duration(days: 6), title: 'Six Days Show'),
+          endedTicket('ticket-8-0001', 'eight', const Duration(days: 8), title: 'Eight Days Show'),
+          endedTicket('ticket-6r-0001', 'sixr', const Duration(days: 1), status: 'REFUNDED', title: 'Refunded Show'),
+          endedTicket('ticket-6v-0001', 'sixv', const Duration(days: 1), status: 'VOID', title: 'Void Show'),
+          endedTicket('ticket-ci-0001', 'ci', const Duration(days: 2), status: 'CHECKED_IN', title: 'Checked Show'),
+        ]);
+    await openTicketsTab(tester);
+    await tester.binding.setSurfaceSize(const Size(412, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('groupGuideLink-six')), findsOneWidget);
+    expect(find.byKey(const Key('groupGuideLink-ci')), findsOneWidget);
+    expect(find.byKey(const Key('groupGuideLink-eight')), findsNothing);
+    expect(find.byKey(const Key('groupGuideLink-sixr')), findsNothing);
+    expect(find.byKey(const Key('groupGuideLink-sixv')), findsNothing);
+    expect(find.descendant(of: find.byKey(const Key('groupGuideLink-six')), matching: find.text('Event guide')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('groupGuideLink-six')));
+    await tester.pumpAndSettle();
+    expect(locationOf(tester), '/event/six/guide');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the ticket screen has the Event guide link under the same rule and it opens the guide', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-6-0001', 'six', const Duration(days: 6), title: 'Six Days Show'),
+          endedTicket('ticket-8-0001', 'eight', const Duration(days: 8), title: 'Eight Days Show'),
+          endedTicket('ticket-6r-0001', 'sixr', const Duration(days: 1), status: 'REFUNDED', title: 'Refunded Show'),
+        ]);
+    final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+    router.push('/ticket/ticket-8-0001');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketGuideLink')), findsNothing);
+    router.pop();
+    router.push('/ticket/ticket-6r-0001');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketGuideLink')), findsNothing);
+    router.pop();
+    router.push('/ticket/ticket-6-0001');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketGuideLink')), findsOneWidget);
+    expect(find.text('Event guide'), findsOneWidget);
+    expect(goldButtons(tester), hasLength(1), reason: 'the link is not a gold button');
+    await tester.ensureVisible(find.byKey(const Key('ticketGuideLink')));
+    await tester.tap(find.byKey(const Key('ticketGuideLink')));
+    await tester.pumpAndSettle();
+    expect(locationOf(tester), '/event/six/guide');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('pending payments and the offer banner stay above the grouped tickets; offline copy still says so', (tester) async {
+    final (api, _) = await pumpApp(tester, signedIn: true, now: pinned, setup: (a) {
+      a.methods = [PaymentMethod(code: 'MOCK', label: 'Mock pay (test)')];
+      a.orders['ord-1'] = FakeApi.orderJson('ord-1', 'PENDING_PAYMENT');
+      a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
+    });
+    await openTicketsTab(tester);
+    expect(find.text('Awaiting payment'), findsOneWidget);
+    expect(find.text('Continue payment'), findsOneWidget);
+    expect(find.byType(OfferBanner), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Awaiting payment')).dy, lessThan(tester.getTopLeft(find.text('Upcoming')).dy));
+    expect(tester.getTopLeft(find.byType(OfferBanner)).dy, lessThan(tester.getTopLeft(find.text('Awaiting payment')).dy));
+    expect(find.text('Available offline'), findsNothing);
+    api.offline = true;
+    await tester.drag(find.text('Awaiting payment'), const Offset(0, 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Available offline'), findsOneWidget);
+    expect(find.byKey(const Key('ticketGroup-e1')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -2955,6 +3151,11 @@ void main() {
       ];
       a.waitlist = [FakeApi.waitlistRow('w9', status: 'OFFERED', event: 'mixed', type: 'tt-mix-c', offeredQty: 2, left: const Duration(minutes: 20))];
     }, then: null),
+    'my tickets, grouped with a checked-in ticket': (route: '/tickets', signedIn: true, setup: (a) => a.extraTickets = [
+      {...seatTicket, 'id': 'ticket-seat-0002', 'seatLabel': 'Stalls · Row 1 · Seat 2', 'seatLabelMy': 'ရှေ့ခန်း · အတန်း 1 · ခုံ 2', 'status': 'CHECKED_IN', 'qr': null, 'checkedInAt': '2099-01-15T10:40:00.000Z'},
+      seatTicket,
+    ], then: null),
+    'ticket, checked in': (route: '/ticket/ticket-in-0006', signedIn: true, setup: (a) => a.extraTickets = [{...seatTicket, 'id': 'ticket-in-0006', 'status': 'CHECKED_IN', 'qr': null, 'canCancel': false, 'checkedInAt': '2099-01-15T10:40:00.000Z'}], then: null),
     'my tickets, signed out': (route: '/tickets', signedIn: false, setup: null, then: null),
     'ticket (QR)': (route: '/ticket/ticket-0001-abcd', signedIn: true, setup: null, then: null),
     'ticket with a seat and a long title': (route: '/ticket/ticket-seat-0001', signedIn: true, setup: (a) => a.extraTickets = [seatTicket], then: null),
