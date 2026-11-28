@@ -867,4 +867,15 @@ class L10nEn extends L10n {
 
   @override
   String get guideStreamNotStarted => 'Stream not started yet';
+
+  @override
+  String get searchThisEvent => 'Search this event';
+
+  @override
+  String get searchEventHint => 'Sessions, line-up, questions';
+
+  @override
+  String searchNoResults(String query) {
+    return 'Nothing found for “$query”';
+  }
 }

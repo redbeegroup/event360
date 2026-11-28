@@ -10,6 +10,7 @@ import '../app/format.dart';
 import '../app/guide_providers.dart';
 import '../app/providers.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/event_search.dart';
 import '../widgets/event_sections.dart';
 
 /// How often the open guide refetches the event.
@@ -225,8 +226,8 @@ class _EventGuideScreenState extends ConsumerState<EventGuideScreen> with Widget
   }
 }
 
-/// The app bar's action slot (search joins it in a later change).
-List<Widget> _appBarActions(BuildContext context, GuideContext g) => const [];
+/// The app bar's action slot: search this event (from the live or the saved copy).
+List<Widget> _appBarActions(BuildContext context, GuideContext g) => [if (eventSearchAction(context, g.event) case final w?) w];
 
 // ───── Building blocks ─────
 

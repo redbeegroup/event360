@@ -848,4 +848,15 @@ class L10nMy extends L10n {
 
   @override
   String get guideStreamNotStarted => 'တိုက်ရိုက်ထုတ်လွှင့်မှု မစတင်သေးပါ';
+
+  @override
+  String get searchThisEvent => 'ဤပွဲတွင် ရှာဖွေရန်';
+
+  @override
+  String get searchEventHint => 'အစီအစဉ်၊ တင်ဆက်သူ၊ မေးခွန်းများ';
+
+  @override
+  String searchNoResults(String query) {
+    return '“$query” အတွက် ရလဒ် မတွေ့ပါ';
+  }
 }

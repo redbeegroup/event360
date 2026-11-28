@@ -449,5 +449,15 @@
   "neverSaved": "Connect once to save this event for offline use.",
   "needsConnection": "Needs a connection",
   "guideGone": "This event is no longer available",
-  "guideStreamNotStarted": "Stream not started yet"
+  "guideStreamNotStarted": "Stream not started yet",
+  "searchThisEvent": "Search this event",
+  "searchEventHint": "Sessions, line-up, questions",
+  "searchNoResults": "Nothing found for “{query}”",
+  "@searchNoResults": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  }
 }

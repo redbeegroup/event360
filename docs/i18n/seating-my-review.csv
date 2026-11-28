@@ -558,3 +558,6 @@
 "openGuide","Open your guide","လမ်းညွှန်ကို ဖွင့်ကြည့်ပါ","user app"
 "guideGone","This event is no longer available","ဤပွဲကို မရရှိနိုင်တော့ပါ","user app"
 "guideStreamNotStarted","Stream not started yet","တိုက်ရိုက်ထုတ်လွှင့်မှု မစတင်သေးပါ","user app"
+"searchThisEvent","Search this event","ဤပွဲတွင် ရှာဖွေရန်","user app"
+"searchEventHint","Sessions, line-up, questions","အစီအစဉ်၊ တင်ဆက်သူ၊ မေးခွန်းများ","user app"
+"searchNoResults","Nothing found for “{query}”","“{query}” အတွက် ရလဒ် မတွေ့ပါ","user app"

@@ -1584,6 +1584,24 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Stream not started yet'**
   String get guideStreamNotStarted;
+
+  /// No description provided for @searchThisEvent.
+  ///
+  /// In en, this message translates to:
+  /// **'Search this event'**
+  String get searchThisEvent;
+
+  /// No description provided for @searchEventHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions, line-up, questions'**
+  String get searchEventHint;
+
+  /// No description provided for @searchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing found for “{query}”'**
+  String searchNoResults(String query);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

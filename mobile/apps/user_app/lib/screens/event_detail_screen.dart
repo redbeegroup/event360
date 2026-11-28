@@ -16,6 +16,7 @@ import '../app/waitlist_text.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/discount_lines.dart';
 import '../widgets/event_card.dart';
+import '../widgets/event_search.dart';
 import '../widgets/event_sections.dart';
 import '../widgets/total_amounts.dart';
 import '../widgets/waitlist_offer.dart';
@@ -107,6 +108,7 @@ class _Detail extends ConsumerWidget {
         title: pickLang(lang, e.title, e.titleMy),
         onBack: () => context.canPop() ? context.pop() : context.go('/'),
         onShare: () => SharePlus.instance.share(ShareParams(text: shareText(e, lang))),
+        onSearch: eventIsSearchable(e) ? () => showEventSearch(context, e) : null,
         slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
@@ -124,6 +126,13 @@ class _Detail extends ConsumerWidget {
                     onPressed: () => context.canPop() ? context.pop() : context.go('/'),
                   ),
                   const Spacer(),
+                  if (eventIsSearchable(e)) ...[
+                    KeyedSubtree(
+                      key: const Key('eventSearchAction'),
+                      child: _RoundIcon(icon: Icons.search, tooltip: t.searchThisEvent, onPressed: () => showEventSearch(context, e)),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   _RoundIcon(icon: Icons.event_available, tooltip: t.addToCalendar, onPressed: () => open(ref.read(apiProvider).calendarUri(e.id))),
                   const SizedBox(width: 10),
                   _RoundIcon(
@@ -513,27 +522,7 @@ class _Detail extends ConsumerWidget {
     );
   }
 
-  void _showPerformer(BuildContext context, Performer p, String lang) {
-    final theme = Theme.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircleAvatar(
-            radius: 48,
-            backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
-            child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.headlineMedium) : null,
-          ),
-          const SizedBox(height: 12),
-          Text(pickLang(lang, p.name, p.nameMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-          if (pickLang(lang, p.role, p.roleMy).isNotEmpty) Text(pickLang(lang, p.role, p.roleMy), style: theme.textTheme.bodyMedium),
-          if (pickLang(lang, p.bio, p.bioMy).isNotEmpty) ...[const SizedBox(height: 12), Text(pickLang(lang, p.bio, p.bioMy))],
-        ]),
-      ),
-    );
-  }
+  void _showPerformer(BuildContext context, Performer p, String lang) => showPerformerSheet(context, p, lang);
 
   void _openGallery(BuildContext context, List<GalleryImage> images, int start, String lang) {
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -1309,10 +1298,11 @@ class _WatchSection extends ConsumerWidget {
 
 /// The page's scroll view with a slim pinned bar (back, title, share) that fades in once the cover has scrolled away.
 class _ScrollWithBar extends StatefulWidget {
-  const _ScrollWithBar({required this.slivers, required this.title, required this.onBack, required this.onShare});
+  const _ScrollWithBar({required this.slivers, required this.title, required this.onBack, required this.onShare, this.onSearch});
   final List<Widget> slivers;
   final String title;
   final VoidCallback onBack, onShare;
+  final VoidCallback? onSearch;
   @override
   State<_ScrollWithBar> createState() => _ScrollWithBarState();
 }
@@ -1364,6 +1354,14 @@ class _ScrollWithBarState extends State<_ScrollWithBar> {
                       onPressed: widget.onBack,
                     ),
                     Expanded(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium)),
+                    if (widget.onSearch != null)
+                      IconButton(
+                        key: const Key('eventSearchActionPinned'),
+                        tooltip: t.searchThisEvent,
+                        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                        icon: const Icon(Icons.search),
+                        onPressed: widget.onSearch,
+                      ),
                     IconButton(
                       tooltip: t.share,
                       constraints: const BoxConstraints.tightFor(width: 44, height: 44),

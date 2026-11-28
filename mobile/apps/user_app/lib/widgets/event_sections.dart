@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:event360_core/event360_core.dart';
 import 'package:event360_ui/event360_ui.dart';
 import 'package:flutter/material.dart';
@@ -89,4 +90,27 @@ class FaqTiles extends StatelessWidget {
         ),
     ]);
   }
+}
+
+/// The performer bottom sheet (photo, name, role, bio). Shared by the event page and the event search.
+void showPerformerSheet(BuildContext context, Performer p, String lang) {
+  final theme = Theme.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        CircleAvatar(
+          radius: 48,
+          backgroundImage: p.photoUrl == null ? null : CachedNetworkImageProvider(p.photoUrl!),
+          child: p.photoUrl == null ? Text(p.name.characters.first.toUpperCase(), style: theme.textTheme.headlineMedium) : null,
+        ),
+        const SizedBox(height: 12),
+        Text(pickLang(lang, p.name, p.nameMy), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        if (pickLang(lang, p.role, p.roleMy).isNotEmpty) Text(pickLang(lang, p.role, p.roleMy), style: theme.textTheme.bodyMedium),
+        if (pickLang(lang, p.bio, p.bioMy).isNotEmpty) ...[const SizedBox(height: 12), Text(pickLang(lang, p.bio, p.bioMy))],
+      ]),
+    ),
+  );
 }
