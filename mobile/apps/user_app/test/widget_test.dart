@@ -487,7 +487,10 @@ class FakeApi extends Event360Api {
   Future<String?> requestOtp(String phone) async => '123456';
 
   @override
-  Future<void> verifyOtp(String phone, String code) async => store.save('a', 'r');
+  Future<String?> verifyOtp(String phone, String code) async {
+    await store.save('a', 'r');
+    return null;
+  }
 
   @override
   Future<List<String>> register(String eventId, String ticketTypeId, int quantity) async {

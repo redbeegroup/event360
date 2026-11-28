@@ -60,6 +60,26 @@ class _FailingSaveStore extends MemoryTokenStore {
 }
 
 void main() {
+  group('verifyOtp', () {
+    Future<(String?, MemoryTokenStore)> verify(String body) async {
+      final store = MemoryTokenStore();
+      final api = Event360Api(const AppConfig(app: Event360App.user, apiBaseUrl: 'https://api.example'), store,
+          dio: Dio(BaseOptions(baseUrl: 'https://api.example/v1'))..httpClientAdapter = _ScriptAdapter((o) => (200, body)));
+      return (await api.verifyOtp('0979', '123456'), store);
+    }
+
+    test('returns the signed-in user id and saves the tokens', () async {
+      final (id, store) = await verify('{"accessToken":"a","refreshToken":"r","user":{"id":"u7","phone":"0979"}}');
+      expect(id, 'u7');
+      expect(await store.accessToken(), 'a');
+    });
+
+    test('null when the response carries no user', () async {
+      expect((await verify('{"accessToken":"a","refreshToken":"r"}')).$1, isNull);
+      expect((await verify('{"accessToken":"a","refreshToken":"r","user":{"id":""}}')).$1, isNull);
+    });
+  });
+
   group('token refresh outcomes', () {
     ({Event360Api api, _ScriptAdapter ad, MemoryTokenStore store, List<int> ended}) setup((int, String) Function(RequestOptions) refresh) {
       final store = MemoryTokenStore()..save('old', 'rt');

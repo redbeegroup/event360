@@ -198,12 +198,16 @@ class Event360Api {
         (d) => (d as Map<String, dynamic>)['devCode'] as String?,
       );
 
-  Future<void> verifyOtp(String phone, String code) async {
+  /// Signs in; returns the id of the user the server signed in (null if the response carries none).
+  Future<String?> verifyOtp(String phone, String code) async {
     final d = await _call(
       () => _dio.post('/auth/otp/verify', data: {'phone': phone, 'code': code}, options: Options(extra: {'auth': false})),
       (d) => d as Map<String, dynamic>,
     );
     await tokens.save(d['accessToken'] as String, d['refreshToken'] as String);
+    final user = d['user'];
+    final id = user is Map ? user['id'] : null;
+    return id is String && id.isNotEmpty ? id : null;
   }
 
   Future<Me> me() => _call(() => _dio.get('/auth/me'), (d) => Me.fromJson(d as Map<String, dynamic>));

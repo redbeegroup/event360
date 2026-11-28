@@ -49,6 +49,9 @@ class GuideApi extends Event360Api {
 
   /// `me()` fails with this (a 401, or a network error for the offline start).
   ApiException? meError;
+
+  /// The user id the verify response carries (null: none).
+  String? verifyUserId;
   Completer<void>? removeDeviceGate;
   int removeDeviceCalls = 0;
   int logoutCalls = 0;
@@ -123,7 +126,10 @@ class GuideApi extends Event360Api {
   Future<String?> requestOtp(String phone) async => '123456';
 
   @override
-  Future<void> verifyOtp(String phone, String code) async => tokensStore.save('a', 'r');
+  Future<String?> verifyOtp(String phone, String code) async {
+    await tokensStore.save('a', 'r');
+    return verifyUserId;
+  }
 
   // The pages behind the guide (Discover, the event page) need these to be quiet.
   @override

@@ -146,6 +146,110 @@ void main() {
       await h.finish();
     });
 
+    testWidgets('P3: B signs in with an opaque token while /auth/me and tickets fail: nothing of A, A is gone from disk', (tester) async {
+      final h = await endedSessionOfA(tester);
+      h.api
+        ..meError = offlineError
+        ..offline = true;
+      await h.api.tokensStore.save('opaque', 'r');
+      await h.container.read(sessionProvider.notifier).signedIn(userId: 'u2');
+      await tester.pumpAndSettle();
+      expect(ticketCache(h), isNull);
+      expect(h.prefs.getKeys().where((k) => k.startsWith(EventCache.prefix)), isEmpty);
+      expect(h.prefs.getString(SessionNotifier.userIdKey), 'u2');
+      await openTickets(h);
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
+      expect(find.byKey(const Key('todayCard-concert')), findsNothing);
+      expect(find.byKey(const Key('homeTodayBanner')), findsNothing);
+      h.router.go('/event/concert/guide');
+      await tester.pumpAndSettle();
+      expect(find.byType(EventGuideScreen), findsNothing);
+      await h.finish();
+    });
+
+    testWidgets('a sign-in whose user cannot be known inherits nothing', (tester) async {
+      final h = await endedSessionOfA(tester);
+      h.api
+        ..meError = offlineError
+        ..offline = true;
+      await h.api.tokensStore.save('opaque', 'r');
+      await h.container.read(sessionProvider.notifier).signedIn(); // no id from the server, none in the token
+      await tester.pumpAndSettle();
+      expect(ticketCache(h), isNull);
+      expect(h.prefs.getString(SessionNotifier.userIdKey), isNull);
+      await openTickets(h);
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
+      await h.finish();
+    });
+
+    testWidgets('P4: an old-build plain list is not shown to the next person who signs in (readable token, offline)', (tester) async {
+      final h = await pumpGuide(tester, signedIn: false, now: base, prefs: seedPrefs(tickets: [concertTicket]), setup: (a) {
+        a.meError = offlineError;
+        a.offline = true;
+      });
+      expect(ticketCache(h), isNotNull, reason: 'a cold start without a session keeps it');
+      await h.api.tokensStore.save(jwtFor('u2'), 'r');
+      await h.container.read(sessionProvider.notifier).signedIn();
+      await tester.pumpAndSettle();
+      expect(ticketCache(h), isNull);
+      await openTickets(h);
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
+      await h.finish();
+    });
+
+    testWidgets('D3: A signs in again (verify returns A) with no signal: the tagged cache is kept and the QR shows', (tester) async {
+      final h = await endedSessionOfA(tester);
+      h.api
+        ..meError = offlineError
+        ..offline = true;
+      await h.api.tokensStore.save('opaque', 'r');
+      await h.container.read(sessionProvider.notifier).signedIn(userId: 'u1');
+      await tester.pumpAndSettle();
+      expect(ticketCache(h), isNotNull);
+      await openTickets(h);
+      expect(find.text('Available offline'), findsOneWidget);
+      await expectQr(h, 'concert');
+      await h.finish();
+    });
+
+    testWidgets('D2: a cold start with a legacy list, a valid token and no signal still shows the QR', (tester) async {
+      final h = await pumpGuide(tester, now: base, prefs: seedPrefs(tickets: [concertTicket]), setup: (a) {
+        a.meError = offlineError;
+        a.offline = true;
+      });
+      await openTickets(h);
+      await expectQr(h, 'concert');
+      expect(ticketCache(h), isNotNull);
+      await h.finish();
+    });
+
+    testWidgets('a deep link to /login while A is signed in: when B verifies, A\'s data is gone before the session resolves', (tester) async {
+      final h = await pumpGuide(tester, now: base, setup: (a) => setUpConcert(a));
+      await tester.pumpAndSettle();
+      expect(ticketCache(h), isNotNull);
+      h.api
+        ..verifyUserId = 'u2'
+        ..meId = 'u2'
+        ..meDelay = const Duration(milliseconds: 500)
+        ..tickets = []
+        ..offline = true;
+      h.router.go('/login');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '09790000002');
+      await tester.tap(find.text('Send code'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '123456');
+      await tester.tap(find.text('Verify'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(h.container.read(sessionProvider).isLoading, isTrue, reason: 'B\'s session has not resolved yet');
+      expect(ticketCache(h), isNull);
+      expect(h.prefs.getKeys().where((k) => k.startsWith(EventCache.prefix)), isEmpty);
+      expect(h.prefs.getString(SessionNotifier.userIdKey), 'u2');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
+      await h.finish();
+    });
+
     testWidgets('6: with no answer from /auth/me the token says whose cache it is', (tester) async {
       for (final (sub, shown) in [('u1', true), ('u9', false)]) {
         final h = await pumpGuide(
@@ -236,7 +340,7 @@ void main() {
       await h.finish();
     });
 
-    testWidgets('a tagged cache that belongs to another owner is rejected, offline (c)', (tester) async {
+    testWidgets('a tagged cache that belongs to another owner is never shown, offline (c)', (tester) async {
       final h = await pumpGuide(
         tester,
         now: base,
@@ -247,10 +351,9 @@ void main() {
         },
       );
       await openTickets(h);
-      expect(find.text('Retry'), findsOneWidget);
       expect(find.byKey(const Key('ticketGroup-concert')), findsNothing);
       expect(find.text('Available offline'), findsNothing);
-      expect(h.container.read(myTicketsProvider).hasError, isTrue);
+      expect(ticketCache(h), isNull, reason: 'the session user is known, so the stranger\'s copy is deleted when the session loads');
       await h.finish();
     });
 

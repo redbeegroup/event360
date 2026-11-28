@@ -74,21 +74,40 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     } catch (_) {} // nothing here may keep the app from starting
   }
 
-  /// [id] is now signed in. If the copies on this phone belong to somebody else (the stored id, or the owner tag of the ticket cache,
-  /// says so) they are removed before anything reads them; then the id is remembered.
+  /// [id] is signed in (a cold start or `/auth/me` confirmed it). If the copies on this phone belong to somebody else (the stored id, or
+  /// the owner tag of the ticket cache, says so) they are removed before anything reads them; then the id is remembered.
   Future<void> _adopt(String id) async {
     if (id.isEmpty) return;
     final prefs = ref.read(prefsProvider);
     final stored = prefs.getString(userIdKey);
-    var other = stored != null && stored.isNotEmpty && stored != id;
-    if (!other && (stored == null || stored.isEmpty)) {
-      final owner = MyTicketsNotifier.ownerOf(prefs.getString(MyTicketsNotifier.cacheKey));
-      other = owner != null && owner.isNotEmpty && owner != id;
-    }
+    final owner = MyTicketsNotifier.ownerOf(prefs.getString(MyTicketsNotifier.cacheKey));
+    final other = (stored != null && stored.isNotEmpty && stored != id) || (owner != null && owner.isNotEmpty && owner != id);
     if (other) await _forgetAccount();
     try {
       await prefs.setString(userIdKey, id);
     } catch (_) {}
+  }
+
+  /// A sign-in (not a cold start): whoever signed in must not inherit what is on the phone unless it is provably theirs. [id] is the
+  /// user the server answered with, else the token's `sub`; unknown means nothing can be confirmed. Copies are removed when the stored id or
+  /// the cache's owner is somebody else, when the cache cannot be attributed (an untagged list or an unknown owner with no stored id), or when
+  /// [id] itself is unknown; then the id is stored. Runs before the session is rebuilt.
+  Future<void> _adoptSignIn(String? id) async {
+    final prefs = ref.read(prefsProvider);
+    final stored = prefs.getString(userIdKey) ?? '';
+    final raw = prefs.getString(MyTicketsNotifier.cacheKey);
+    final owner = MyTicketsNotifier.ownerOf(raw);
+    final mine = id != null && id.isNotEmpty;
+    final theirs = !mine ||
+        (stored.isNotEmpty && stored != id) ||
+        (owner != null && owner.isNotEmpty && owner != id) ||
+        (stored.isEmpty && raw != null && (owner == null || owner.isEmpty));
+    if (theirs) await _forgetAccount();
+    if (mine) {
+      try {
+        await prefs.setString(userIdKey, id);
+      } catch (_) {}
+    }
   }
 
   @override
@@ -113,7 +132,12 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     }
   }
 
-  Future<void> signedIn() async => ref.invalidateSelf();
+  /// Call after a successful sign-in with the user id of the verify response (the token's `sub` is used when it is null).
+  Future<void> signedIn({String? userId}) async {
+    final token = await ref.read(apiProvider).tokens.accessToken();
+    await _adoptSignIn(userId ?? userIdFromToken(token));
+    ref.invalidateSelf();
+  }
 
   Future<void>? _signingOut;
 

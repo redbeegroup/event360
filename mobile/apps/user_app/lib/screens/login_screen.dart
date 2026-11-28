@@ -58,8 +58,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(apiProvider).verifyOtp(_phone.text, _code.text);
-      await ref.read(sessionProvider.notifier).signedIn();
+      final userId = await ref.read(apiProvider).verifyOtp(_phone.text, _code.text);
+      await ref.read(sessionProvider.notifier).signedIn(userId: userId);
       ref.invalidate(myTicketsProvider);
       if (!mounted) return;
       if (widget.returnTo != null) {
