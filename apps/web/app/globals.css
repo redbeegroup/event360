@@ -15,9 +15,9 @@
   --ok-ink: #14594a;
   --ok-bg: #d9f2e9;
   --amber-ink: #8a4b00;
-  --amber-bg: #fdecc4;
+  --amber-bg: #fcefcb;
   --danger: #b42318;
-  --danger-bg: #fde4e1;
+  --danger-bg: #fde8e6;
   --danger-ink: #ffffff;
   --field-line: #8a8fb0;     /* input border, >= 3:1 on card */
   --btn-bg: var(--night);      /* navy filled button */
@@ -48,12 +48,12 @@
     --tint: #262a52;
     --night: #8f96e8;
     --jade: #6fd3b5;
-    --ok-ink: #8fe0c4;
-    --ok-bg: #123a33;
+    --ok-ink: #a7ecd6;
+    --ok-bg: #123d33;
     --amber-ink: #f2c46a;
     --amber-bg: #3a2f10;
-    --danger: #f27066;
-    --danger-bg: #43201f;
+    --danger: #ff8a80;
+    --danger-bg: #3a1f26;
     --danger-ink: #111326;
     --field-line: #6a709e;
     --btn-bg: #8f96e8;
