@@ -1,6 +1,21 @@
 # Event guide for ticket holders — design (round 1 of 3)
 
-Date: 2026-11-28. Status: awaiting approval.
+Date: 2026-11-28. Status: approved and built.
+
+Changes during the build:
+- Saved data and accounts. Signing out deletes the saved tickets and event information on the phone. A session
+  that ends on its own (expired, or signed out elsewhere) only hides them: they stay on the phone, labelled with
+  their owner, and come back when the same person signs in again, so a ticket is never lost at the door. When a
+  different person signs in, everything saved for the previous person is deleted first.
+- A cancelled event gets no "Happening today" card or banner; its guide stays reachable from the Tickets tab.
+- The "Event guide" link on a ticket's own screen follows that ticket: a refunded or void ticket has no link there
+  (the event's group on the Tickets tab still has it when another ticket is usable).
+- Directions from the ticket screen stay a venue-name search; the guide uses the map pin.
+- Several events on the same day: the home banner shows the earliest and "+N more".
+- Run-through was done on a local copy only (no test accounts are created on dev or prod).
+
+Known and left for later: the wallet waits for the network before showing saved tickets on a very poor signal
+(own design); an index on ticket holder before real volume; the countdown rounds down.
 
 This is the first of three rounds inspired by a conference companion app the owner reviewed. Round 2 (groups and
 tracks, richer info hub, fuller session pages) and round 3 (who's attending, company directory, needs and leads)
