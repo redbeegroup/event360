@@ -46,6 +46,7 @@ class EventCache {
     }
   }
 
+  /// An entry whose event JSON has no parsable `endsAt` is never treated as ended: it is kept if it is in the keep set (and within the cap).
   /// Keeps only events in [keepEventIds] that ended at most 7 days ago (and unreadable entries go), at most [maxEvents], newest save first.
   Future<void> prune({required Set<String> keepEventIds}) async {
     final now = _now().toUtc();
@@ -62,7 +63,12 @@ class EventCache {
       }
     }
     if (kept.length > maxEvents) {
-      final oldestFirst = kept.keys.toList()..sort((a, b) => kept[a]!.compareTo(kept[b]!));
+      // Equal save times fall back to the key so the result is deterministic.
+      final oldestFirst = kept.keys.toList()
+        ..sort((a, b) {
+          final c = kept[a]!.compareTo(kept[b]!);
+          return c != 0 ? c : a.compareTo(b);
+        });
       for (final k in oldestFirst.take(kept.length - maxEvents)) {
         await store.remove(k);
       }

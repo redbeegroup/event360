@@ -71,6 +71,28 @@ void main() {
     expect(store.m.containsKey('${EventCache.prefix}bad'), isFalse);
   });
 
+  test('prune keeps an event with no parsable endsAt (subject to keep set)', () async {
+    await cache.write('noend', {'id': 'x'}, []);
+    await cache.write('badend', {'endsAt': 'soon'}, []);
+    await cache.write('dropped', {'id': 'x'}, []);
+    await cache.prune(keepEventIds: {'noend', 'badend'});
+    expect(cache.read('noend'), isNotNull);
+    expect(cache.read('badend'), isNotNull);
+    expect(cache.read('dropped'), isNull);
+  });
+
+  test('prune cap with equal savedAt is deterministic (drops lowest ids)', () async {
+    final ids = [for (var i = 0; i < 12; i++) 'e${i.toString().padLeft(2, '0')}'];
+    for (final id in ids.reversed) {
+      await cache.write(id, ev(now.add(const Duration(days: 1))), []);
+    }
+    await cache.prune(keepEventIds: ids.toSet());
+    expect(cache.read('e00'), isNull);
+    expect(cache.read('e01'), isNull);
+    expect(cache.read('e02'), isNotNull);
+    expect(cache.read('e11'), isNotNull);
+  });
+
   test('prune caps at 10 by most recent save', () async {
     final ids = [for (var i = 0; i < 12; i++) 'e$i'];
     for (var i = 0; i < ids.length; i++) {

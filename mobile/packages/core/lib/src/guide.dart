@@ -39,20 +39,31 @@ bool guideLinkVisible({required DateTime endsAt, required DateTime now}) => now.
 
 /// Sessions running at [now] (start order) and the next [nextCount] sessions that have not started.
 ({List<ScheduleItem> now, List<ScheduleItem> next}) nowAndNext(List<ScheduleItem> sessions, DateTime now, {int nextCount = 3}) {
-  final sorted = [...sessions]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+  int byTime(ScheduleItem a, ScheduleItem b) {
+    final c = a.startsAt.compareTo(b.startsAt);
+    if (c != 0) return c;
+    final e = a.endsAt.compareTo(b.endsAt);
+    return e != 0 ? e : a.title.compareTo(b.title);
+  }
+
+  final sorted = [...sessions]..sort(byTime);
   final running = sorted.where((s) => !s.startsAt.isAfter(now) && now.isBefore(s.endsAt)).toList();
   final upcoming = sorted.where((s) => s.startsAt.isAfter(now)).take(nextCount).toList();
   return (now: running, next: upcoming);
 }
 
 class GuideHit {
-  const GuideHit({required this.group, required this.index, required this.title, this.snippet});
+  const GuideHit({required this.group, required this.index, required this.title, this.snippet, this.id});
 
   /// 'schedule' | 'lineup' | 'faq' | 'info'
   final String group;
 
-  /// Position in the event's list for that group. For 'info' it is the position in [infoFields].
+  /// Position in the event's own list for that group (`event.schedule`, `event.performers`, `event.faqs`, or [infoFields] for 'info'),
+  /// never in a re-sorted or day-grouped list.
   final int index;
+
+  /// The session's id for 'schedule' hits (null for other groups, or sessions without an id).
+  final String? id;
   final String title;
   final String? snippet;
 }
@@ -79,7 +90,7 @@ List<GuideHit> searchEvent(EventSummary event, String query, {String lang = 'en'
   for (var i = 0; i < event.schedule.length; i++) {
     final s = event.schedule[i];
     final m = match([s.title, s.titleMy, s.description, s.descriptionMy, s.location]);
-    if (m != null) hits.add(GuideHit(group: 'schedule', index: i, title: pickLang(lang, s.title, s.titleMy), snippet: m));
+    if (m != null) hits.add(GuideHit(group: 'schedule', index: i, title: pickLang(lang, s.title, s.titleMy), snippet: m, id: s.id));
   }
   for (var i = 0; i < event.performers.length; i++) {
     final p = event.performers[i];
