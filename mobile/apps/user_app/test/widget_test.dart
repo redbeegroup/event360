@@ -2966,6 +2966,24 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('past groups run newest end first, equal ends fall back to event id', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-pa-000001', 'pa', const Duration(days: 20), title: 'Oldest'),
+          endedTicket('ticket-pz-000001', 'pz', const Duration(days: 3), title: 'Tie Z'),
+          endedTicket('ticket-pb-000001', 'pb', const Duration(days: 10), title: 'Middle'),
+          endedTicket('ticket-pc-000001', 'pc', const Duration(days: 3), title: 'Tie C'),
+        ]);
+    await openTicketsTab(tester);
+    await tester.binding.setSurfaceSize(const Size(412, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpAndSettle();
+    double top(String id) => tester.getTopLeft(find.byKey(Key('ticketGroup-$id'))).dy;
+    expect(top('pc'), lessThan(top('pz')));
+    expect(top('pz'), lessThan(top('pb')));
+    expect(top('pb'), lessThan(top('pa')));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a group ends when its latest ticket ends', (tester) async {
     await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
           endedTicket('ticket-lata-0001', 'lat', const Duration(days: 9), title: 'Late Ender'),

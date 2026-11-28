@@ -46,7 +46,11 @@ class TicketsScreen extends ConsumerWidget {
               final c = a.first.startsAt.compareTo(b.first.startsAt);
               return c != 0 ? c : a.first.eventId.compareTo(b.first.eventId);
             });
-          final past = groups.where((g) => !endOf(g).isAfter(now)).toList()..sort((a, b) => a.first.eventId.compareTo(b.first.eventId));
+          final past = groups.where((g) => !endOf(g).isAfter(now)).toList()
+            ..sort((a, b) {
+              final c = endOf(b).compareTo(endOf(a)); // most recent first
+              return c != 0 ? c : a.first.eventId.compareTo(b.first.eventId);
+            });
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(pendingOrdersProvider);
