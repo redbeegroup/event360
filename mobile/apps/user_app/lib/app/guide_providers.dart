@@ -288,7 +288,6 @@ class EventSaver {
     try {
       await cache.prune(keepEventIds: usable.map((t) => t.eventId).toSet());
     } catch (_) {}
-    if (!_disposed && _ref.read(sessionProvider).value == null) await cache.clearAll();
   }
 }
 
