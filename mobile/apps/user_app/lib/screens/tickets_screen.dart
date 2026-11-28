@@ -41,9 +41,12 @@ class TicketsScreen extends ConsumerWidget {
             byEvent.putIfAbsent(x.eventId, () => []).add(x);
           }
           final groups = byEvent.values.toList();
-          DateTime endOf(List<MyTicket> g) => g.first.endsAt;
-          final upcoming = groups.where((g) => endOf(g).isAfter(now)).toList()..sort((a, b) => a.first.startsAt.compareTo(b.first.startsAt));
-          final past = groups.where((g) => !endOf(g).isAfter(now)).toList();
+          DateTime endOf(List<MyTicket> g) => g.map((x) => x.endsAt).reduce((a, b) => a.isAfter(b) ? a : b);
+          final upcoming = groups.where((g) => endOf(g).isAfter(now)).toList()..sort((a, b) {
+              final c = a.first.startsAt.compareTo(b.first.startsAt);
+              return c != 0 ? c : a.first.eventId.compareTo(b.first.eventId);
+            });
+          final past = groups.where((g) => !endOf(g).isAfter(now)).toList()..sort((a, b) => a.first.eventId.compareTo(b.first.eventId));
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(pendingOrdersProvider);
@@ -92,15 +95,20 @@ class _EventGroup extends ConsumerWidget {
     final lang = ref.watch(langProvider);
     final theme = Theme.of(context);
     final first = tickets.first;
-    final hasGuide = tickets.any((x) => x.status == 'VALID' || x.isCheckedIn) && guideLinkVisible(endsAt: first.endsAt, now: now);
-    return Opacity(
-      opacity: dim ? 0.6 : 1,
-      child: Card(
-        key: Key('ticketGroup-${first.eventId}'),
-        margin: const EdgeInsets.only(bottom: 12),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
+    final end = tickets.map((x) => x.endsAt).reduce((a, b) => a.isAfter(b) ? a : b);
+    final hasGuide = tickets.any((x) => x.status == 'VALID' || x.isCheckedIn) && guideLinkVisible(endsAt: end, now: now);
+    Widget dimmed(Widget child) => Opacity(opacity: dim ? 0.6 : 1, child: child);
+    // A single ticket: the header opens it, as the old card did. With several, only the rows are tappable.
+    final single = tickets.length == 1 ? tickets.first : null;
+    return Card(
+      key: Key('ticketGroup-${first.eventId}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          key: Key('ticketHeader-${first.eventId}'),
+          onTap: single == null ? null : () => context.push('/ticket/${single.id}'),
+          child: dimmed(Padding(
             padding: const EdgeInsets.all(12),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 64, height: 64, child: EventCover(url: first.coverImageUrl, aspectRatio: 1))),
@@ -110,26 +118,30 @@ class _EventGroup extends ConsumerWidget {
                   Text(pickLang(lang, first.eventTitle, first.eventTitleMy), maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
                   const SizedBox(height: 2),
                   Text(formatEventDate(first.startsAt, lang), style: theme.textTheme.bodySmall),
-                  if (hasGuide)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: TextButton(
-                        key: Key('groupGuideLink-${first.eventId}'),
-                        style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
-                        onPressed: () => context.push('/event/${first.eventId}/guide'),
-                        child: Text(t.eventGuide),
-                      ),
-                    ),
                 ]),
               ),
             ]),
+          )),
+        ),
+        if (hasGuide)
+          // Full opacity even in Past: the link is the way into the guide for a week after the event
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 84, bottom: 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                key: Key('groupGuideLink-${first.eventId}'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+                onPressed: () => context.push('/event/${first.eventId}/guide'),
+                child: Text(t.eventGuide),
+              ),
+            ),
           ),
-          for (final x in tickets) ...[
-            const Divider(height: 1),
-            _TicketRow(ticket: x),
-          ],
-        ]),
-      ),
+        for (final x in tickets) ...[
+          const Divider(height: 1),
+          dimmed(_TicketRow(ticket: x)),
+        ],
+      ]),
     );
   }
 }

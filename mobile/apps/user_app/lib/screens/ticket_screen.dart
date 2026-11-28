@@ -444,21 +444,6 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                 );
               },
             ),
-          if ((x.status == 'VALID' || x.isCheckedIn) &&
-              guideLinkVisible(endsAt: x.endsAt, now: ref.watch(nowProvider)()))
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: TextButton.icon(
-                key: const Key('ticketGuideLink'),
-                style: TextButton.styleFrom(
-                  foregroundColor: onNavy,
-                  minimumSize: const Size(44, 48),
-                ),
-                onPressed: () => context.push('/event/${x.eventId}/guide'),
-                icon: const Icon(Icons.menu_book_outlined),
-                label: Text(t.eventGuide),
-              ),
-            ),
           if (x.canTransfer)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -482,6 +467,21 @@ class _TicketScreenState extends ConsumerState<TicketScreen> {
                 onPressed: () => _cancel(x),
                 icon: const Icon(Icons.cancel_outlined),
                 label: Text(t.cancelTicket),
+              ),
+            ),
+          if ((x.status == 'VALID' || x.isCheckedIn) &&
+              guideLinkVisible(endsAt: x.endsAt, now: ref.watch(nowProvider)()))
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: TextButton.icon(
+                key: const Key('ticketGuideLink'),
+                style: TextButton.styleFrom(
+                  foregroundColor: onNavy,
+                  minimumSize: const Size(44, 48),
+                ),
+                onPressed: () => context.push('/event/${x.eventId}/guide'),
+                icon: const Icon(Icons.menu_book_outlined),
+                label: Text(t.eventGuide),
               ),
             ),
         ],

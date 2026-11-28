@@ -1223,8 +1223,6 @@ void main() {
     await tester.tap(firstRowOf('Yangon Food Fair e1'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('transfer')), 200, scrollable: find.byType(Scrollable).first);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('transfer')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('transferPhone')), '0911');
@@ -1847,8 +1845,6 @@ void main() {
     await tester.tap(firstRowOf('Opera Night'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cancelTicket')));
     await tester.pumpAndSettle();
     expect(find.text('Cancel this ticket?'), findsOneWidget);
@@ -2659,8 +2655,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('ticketComp')), findsNothing);
     await tester.scrollUntilVisible(find.byKey(const Key('cancelTicket')), 200, scrollable: find.byType(Scrollable).first);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300)); // the guide link adds a row: bring the button fully on screen
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cancelTicket')));
     await tester.pumpAndSettle();
     expect(find.text('Cancel this ticket?'), findsOneWidget);
@@ -2837,6 +2831,9 @@ void main() {
   // An event that ended [endedAgo] ago
   Map<String, dynamic> endedTicket(String id, String eventId, Duration endedAgo, {String status = 'VALID', String title = 'Old Show', String? checkedInAt}) =>
       ticketJson(id, eventId, title, start: ago(endedAgo + const Duration(hours: 4)), end: ago(endedAgo), status: status, checkedInAt: checkedInAt);
+  // An event that started 1 hour ago and ends in 3 hours
+  Map<String, dynamic> liveTicket(String id, String eventId, {String status = 'VALID', String title = 'Live Show', String? checkedInAt}) =>
+      ticketJson(id, eventId, title, start: ago(const Duration(hours: 1)), end: pinnedNow.add(const Duration(hours: 3)), status: status, checkedInAt: checkedInAt);
   // pumpApp's default ticket (e1, 2099) is dropped in these tests by only looking at the group under test
   Future<void> openTicketsTab(WidgetTester tester) async {
     await tester.tap(find.text('Tickets'));
@@ -2873,8 +2870,8 @@ void main() {
   testWidgets('a checked-in ticket says Checked in on the row and the ticket screen, shows no QR and never says Cancelled', (tester) async {
     final at = DateTime.utc(2026, 11, 28, 3, 30);
     await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
-          endedTicket('ticket-in-0001', 'today', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Today Show', checkedInAt: at.toIso8601String()),
-          endedTicket('ticket-in2-0001', 'today2', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Unknown Time Show'),
+          liveTicket('ticket-in-0001', 'today', status: 'CHECKED_IN', title: 'Today Show', checkedInAt: at.toIso8601String()),
+          liveTicket('ticket-in2-0001', 'today2', status: 'CHECKED_IN', title: 'Unknown Time Show'),
         ]);
     await openTicketsTab(tester);
     expect(find.descendant(of: find.byKey(const Key('ticketRow-ticket-in-0001')), matching: find.text('Checked in at ${formatTime(at, 'en')}')), findsOneWidget);
@@ -2892,7 +2889,7 @@ void main() {
     expect(goldButtons(tester), isEmpty);
     await tester.pumpWidget(const SizedBox());
     // Without a known time it still reads Checked in
-    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [endedTicket('ticket-in2-0001', 'today2', const Duration(hours: -3), status: 'CHECKED_IN', title: 'Unknown Time Show')]);
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [liveTicket('ticket-in2-0001', 'today2', status: 'CHECKED_IN', title: 'Unknown Time Show')]);
     GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-in2-0001');
     await tester.pumpAndSettle();
     expect(find.text('Checked in'), findsOneWidget);
@@ -2936,6 +2933,54 @@ void main() {
     await tester.tap(find.byKey(const Key('groupGuideLink-six')));
     await tester.pumpAndSettle();
     expect(locationOf(tester), '/event/six/guide');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a group with one valid and one refunded ticket still shows the header link; a past group keeps it at full opacity', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-mixa-0001', 'mix', const Duration(days: 2), title: 'Mixed Show'),
+          endedTicket('ticket-mixb-0001', 'mix', const Duration(days: 2), status: 'REFUNDED', title: 'Mixed Show'),
+        ]);
+    await openTicketsTab(tester);
+    expect(find.byKey(const Key('groupGuideLink-mix')), findsOneWidget);
+    double opacityAbove(Finder f) => tester.widget<Opacity>(find.ancestor(of: f, matching: find.byType(Opacity)).first).opacity;
+    expect(opacityAbove(find.text('Mixed Show')), 0.6);
+    expect(find.ancestor(of: find.byKey(const Key('groupGuideLink-mix')), matching: find.byWidgetPredicate((w) => w is Opacity && w.opacity < 1)), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the header opens the ticket when the group has one ticket and does nothing with several', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          liveTicket('ticket-solo-0001', 'solo', title: 'Solo Show'),
+          liveTicket('ticket-duoa-0001', 'duo', title: 'Duo Show'),
+          liveTicket('ticket-duob-0001', 'duo', title: 'Duo Show'),
+        ]);
+    await openTicketsTab(tester);
+    await tester.tap(find.byKey(const Key('ticketHeader-duo')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketCard')), findsNothing);
+    await tester.tap(find.byKey(const Key('ticketHeader-solo')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketCard')), findsOneWidget);
+    expect(find.text('Solo Show'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a group ends when its latest ticket ends', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [
+          endedTicket('ticket-lata-0001', 'lat', const Duration(days: 9), title: 'Late Ender'),
+          endedTicket('ticket-latb-0001', 'lat', const Duration(days: 2), title: 'Late Ender'),
+        ]);
+    await openTicketsTab(tester);
+    expect(find.byKey(const Key('groupGuideLink-lat')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a checked-in ticket screen has the Event guide link', (tester) async {
+    await pumpApp(tester, signedIn: true, now: pinned, setup: (a) => a.extraTickets = [liveTicket('ticket-cig-00001', 'cig', status: 'CHECKED_IN')]);
+    GoRouter.of(tester.element(find.byType(Scaffold).first)).push('/ticket/ticket-cig-00001');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ticketGuideLink')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
